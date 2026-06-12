@@ -1,0 +1,87 @@
+@layer components {
+  #modal_overlay {
+    @apply pointer-events-none fixed top-0 bottom-0 hidden overflow-auto bg-transparent;
+
+    .modal-overlay-active & {
+      @apply pointer-events-auto inset-0 z-50 grid place-items-center bg-overlay-base/60 backdrop-blur-sm;
+    }
+
+    > .modal {
+      @apply flex w-full max-w-2xl flex-col gap-4 rounded-xl border border-border bg-panel-bg p-6 shadow-2xl backdrop-blur-lg whitespace-normal break-words;
+
+      h4 {
+        @apply mb-0 text-center;
+        em { @apply font-semibold text-primary; }
+      }
+
+      h5 { @apply my-3 text-foreground; }
+
+      p { @apply text-sm leading-relaxed text-foreground; }
+
+      > ul {
+        @apply overflow-auto rounded-lg border border-border bg-background/60 p-3;
+      }
+
+      label.btn {
+        @apply border border-border bg-background/60 text-foreground hover:border-border;
+      }
+
+      pre {
+        @apply overflow-auto;
+        &.errors { @apply border-destructive/60 bg-destructive/20 text-destructive; }
+      }
+
+      pre + pre { @apply mt-3; }
+
+      .button-row,
+      div.left,
+      div.right {
+        @apply flex shrink-0 gap-3 border-t border-border p-4;
+      }
+
+      div.left         { @apply justify-start; }
+      .button-row,
+      div.right        { @apply justify-end; }
+
+      &.uci-dialog {
+        ins, del, var {
+          @apply font-mono not-italic no-underline shadow-sm;
+        }
+
+        ins { @apply rounded border border-success bg-success/80 text-success-fg; }
+        del { @apply rounded border border-destructive bg-destructive/80 text-destructive-fg; }
+        var { @apply rounded border border-info bg-info/80 text-info-fg; }
+
+        .uci-change-legend {
+          @apply mt-4 grid grid-cols-2 gap-3 rounded-lg border border-border bg-background/60 p-4;
+
+          .uci-change-legend-label {
+            @apply flex items-center gap-2 text-sm font-medium text-foreground;
+
+            ins, del, var {
+              @apply flex h-6 min-w-6 items-center justify-center rounded px-2 text-xs font-semibold;
+            }
+          }
+        }
+
+        .uci-change-list {
+          @apply mt-4 space-y-3;
+
+          h5 {
+            @apply mb-2 mt-4 rounded-lg bg-muted px-3 py-2 text-sm font-semibold text-foreground first:mt-0;
+          }
+
+          ins, del {
+            @apply block rounded-lg px-3 py-2 text-sm;
+            strong { @apply text-sm; }
+          }
+
+          var {
+            @apply inline-block rounded px-1.5 py-0.5 text-sm;
+            ins, del { @apply ml-1 inline-block px-1 py-px text-xs; }
+          }
+        }
+      }
+    }
+  }
+}

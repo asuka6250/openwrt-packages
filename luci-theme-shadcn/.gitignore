@@ -1,0 +1,14 @@
+# Dependencies
+.dev/node_modules/
+
+# Environment secrets (host, SSH keys)
+.dev/.env
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

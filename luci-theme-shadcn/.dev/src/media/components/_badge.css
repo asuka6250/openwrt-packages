@@ -1,0 +1,47 @@
+@layer components {
+  .label {
+    @apply inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground;
+
+    &.important { @apply bg-info/15 text-info; }
+    &.warning   { @apply bg-warning/15 text-warning-fg; }
+    &.success   { @apply bg-success/15 text-success; }
+    &.notice    { @apply bg-warning/15 text-warning-fg; }
+  }
+
+  .zonebadge {
+    @apply inline-flex items-center gap-1 overflow-visible rounded-full border border-secondary bg-secondary px-1 py-1 text-sm font-medium text-secondary-foreground transition-colors duration-200;
+
+    &[style*="--zone-color-rgb"] {
+      @apply bg-[rgb(var(--zone-color-rgb)/.7)]!;
+    }
+
+    .cbi-dropdown & {
+      @apply rounded-lg px-1 py-0.5;
+    }
+  }
+
+  .ifacebadge {
+    @apply inline-flex cursor-default flex-wrap items-center gap-1.5 rounded-lg border border-border bg-label-surface px-2.5 py-1.5 text-sm font-normal text-foreground transition-colors duration-200;
+
+    .cbi-dropdown &,
+    .cbi-tooltip & {
+      @apply flex-nowrap;
+    }
+
+    .zonebadge > &,
+    .cbi-dropdown & {
+      @apply rounded-md px-1.5 py-0;
+      img { @apply mr-1 w-4; }
+    }
+
+    > img { @apply w-5 shrink-0 self-center; }
+
+    > span {
+      .nowrap { @apply mb-1.5 inline-block text-sm; }
+    }
+
+    &.ifacebadge-active { @apply border-primary font-semibold; }
+
+    &.large { @apply min-w-48 flex-1 px-4 py-3; }
+  }
+}
