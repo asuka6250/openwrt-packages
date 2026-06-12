@@ -1,0 +1,41 @@
+name: Clear Action Logs
+
+on:
+  schedule:
+    - cron: '0 */12 * * *' 
+  workflow_dispatch:    
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    
+    steps:
+      - name: Delete successful and cancelled runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 0
+          delete_run_by_conclusion_pattern: "success,cancelled,skipped"
+
+      - name: Delete invalid workflow runs (YAML errors)
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 0
+          delete_run_by_conclusion_pattern: "startup_failure,action_required"
+
+      - name: Delete failed runs older than 3 days
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 3
+          keep_minimum_runs: 0
+          delete_run_by_conclusion_pattern: "failure,timed_out"

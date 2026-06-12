@@ -1,0 +1,24 @@
+name: Cleanup Cloudflare Pages Deployments
+
+on:
+  schedule:
+    - cron: '22 16 * * *'
+  workflow_dispatch: 
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cleanup Cloudflare Pages Deployments
+        uses: Th3S4mur41/cleanup-cloudflare-deployments@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cloudflare-api-token: ${{ secrets.CF_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CF_ACCOUNT_ID }}
+          cloudflare-project-name: 'op-packages'
+          cleanup-types: 'all'      # 包含 preview 和 production
+          preview-keep: 1           # 保留最新的 1 个预览版部署
+          production-keep: 5        # 保留最新的 5 个正式版部署

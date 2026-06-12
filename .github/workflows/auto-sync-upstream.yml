@@ -1,0 +1,74 @@
+name: Auto Sync Upstream Plugins
+
+on:
+  schedule:
+    - cron: '13 */4 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/patches/**'
+      - '.github/scripts/sync-upstream.sh'
+      # - '.github/workflows/auto-sync-upstream.yml'
+
+jobs:
+  sync-plugins:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT || github.token }}
+
+      - name: Clean Up Old Caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "🧹 Cleaning up old caches..."
+          keys=$(gh cache list -R $REPO --limit 100 | grep "sync-state-" | awk '{print $2}' || true)
+          for key in $keys; do
+            echo "🗑️ Deleting old cache: $key"
+            gh cache delete "$key" -R $REPO || true
+          done
+          echo "✨ Cache cleanup complete!"
+
+      - name: Restore Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .github/sync-state/
+          key: sync-state-${{ github.run_id }}
+          restore-keys: |
+            sync-state-
+
+      - name: Run sync script & atomic commits
+        run: |
+          chmod +x .github/scripts/sync-upstream.sh
+          ./.github/scripts/sync-upstream.sh || true
+
+      - name: Push changes securely
+        run: |
+          if [ "$(git rev-list HEAD...origin/master --count)" -gt 0 ]; then
+            echo "🚀 Pushing new atomic commits to GitHub..."
+            for i in {1..5}; do
+              if git push; then
+                echo "🎉 Push successful!"
+                break
+              fi
+              echo "⚠️ Push collision detected. Re-fetching and retrying..."
+              git pull --rebase origin master
+              sleep $((RANDOM % 5 + 3))
+            done
+          else
+            echo "💤 No new updates to push."
+          fi
+
+      - name: Save Cache
+        uses: actions/cache/save@v4
+        if: success()
+        with:
+          path: .github/sync-state/
+          key: sync-state-${{ github.run_id }}
