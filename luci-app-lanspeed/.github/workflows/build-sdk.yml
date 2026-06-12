@@ -1,0 +1,211 @@
+name: Build SDK Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  APK_SDK_URL: https://downloads.immortalwrt.org/releases/25.12.0-rc2/targets/x86/64/immortalwrt-sdk-25.12.0-rc2-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+  APK_SDK_SHA256: fb665aabb627d3b3a7d98cd426ee90febdb84ceffa6ce4c18fbda934c46053d5
+  APK_AARCH64_SDK_URL: https://downloads.immortalwrt.org/releases/25.12.0-rc2/targets/armsr/armv8/immortalwrt-sdk-25.12.0-rc2-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+  APK_AARCH64_SDK_SHA256: 8fd6e4177ad99b567035cbc2825dd060773556249831fad5560cb1ef9eb1e290
+  IPK_SDK_URL: https://downloads.immortalwrt.org/releases/23.05.6/targets/x86/64/immortalwrt-sdk-23.05.6-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+  IPK_SDK_SHA256: 4dc46a6a612031f14d7d64ca9717895cd8907da7fd01b85f0edee18cb895dc77
+  IPK_AARCH64_SDK_URL: https://downloads.immortalwrt.org/releases/23.05.6/targets/armsr/armv8/immortalwrt-sdk-23.05.6-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+  IPK_AARCH64_SDK_SHA256: a56748c4d70b956102d4a728418d9b7bcf1208b526816221b4389597a24238fa
+  IPK_BASE_FEED_REF: 5804844cf812c07b2d66d513bec2e36e7a8270ee
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run unit validations
+        run: ./tests/run.sh unit
+
+  release:
+    needs: unit
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches code version
+        id: meta
+        run: |
+          code_version="$(sh ./scripts/release-version.sh)"
+          expected_tag="v${code_version}"
+          if [ "${GITHUB_REF_NAME}" != "$expected_tag" ]; then
+            printf '%s\n' "error: release tag ${GITHUB_REF_NAME} does not match code version ${code_version}" >&2
+            exit 1
+          fi
+          printf 'code_version=%s\n' "$code_version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex g++ gawk gcc-multilib gettext git libncurses5-dev libssl-dev python3 rsync unzip wget xz-utils zlib1g-dev zstd
+
+      - name: Download public SDKs
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk-apk-base"
+          curl -L "$APK_SDK_URL" -o "$RUNNER_TEMP/sdk-apk-base/sdk.tar.zst"
+          printf '%s  %s\n' "$APK_SDK_SHA256" "$RUNNER_TEMP/sdk-apk-base/sdk.tar.zst" | sha256sum -c -
+          tar --zstd -xf "$RUNNER_TEMP/sdk-apk-base/sdk.tar.zst" -C "$RUNNER_TEMP/sdk-apk-base" --strip-components=1
+
+          mkdir -p "$RUNNER_TEMP/sdk-apk-bpf"
+          cp -a "$RUNNER_TEMP/sdk-apk-base/." "$RUNNER_TEMP/sdk-apk-bpf/"
+
+          mkdir -p "$RUNNER_TEMP/sdk-apk-aarch64-base"
+          curl -L "$APK_AARCH64_SDK_URL" -o "$RUNNER_TEMP/sdk-apk-aarch64-base/sdk.tar.zst"
+          printf '%s  %s\n' "$APK_AARCH64_SDK_SHA256" "$RUNNER_TEMP/sdk-apk-aarch64-base/sdk.tar.zst" | sha256sum -c -
+          tar --zstd -xf "$RUNNER_TEMP/sdk-apk-aarch64-base/sdk.tar.zst" -C "$RUNNER_TEMP/sdk-apk-aarch64-base" --strip-components=1
+
+          mkdir -p "$RUNNER_TEMP/sdk-apk-aarch64-bpf"
+          cp -a "$RUNNER_TEMP/sdk-apk-aarch64-base/." "$RUNNER_TEMP/sdk-apk-aarch64-bpf/"
+
+          mkdir -p "$RUNNER_TEMP/sdk-ipk-base"
+          curl -L "$IPK_SDK_URL" -o "$RUNNER_TEMP/sdk-ipk-base/sdk.tar.xz"
+          printf '%s  %s\n' "$IPK_SDK_SHA256" "$RUNNER_TEMP/sdk-ipk-base/sdk.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/sdk-ipk-base/sdk.tar.xz" -C "$RUNNER_TEMP/sdk-ipk-base" --strip-components=1
+
+          mkdir -p "$RUNNER_TEMP/sdk-ipk-bpf"
+          cp -a "$RUNNER_TEMP/sdk-ipk-base/." "$RUNNER_TEMP/sdk-ipk-bpf/"
+
+          mkdir -p "$RUNNER_TEMP/sdk-ipk-aarch64-base"
+          curl -L "$IPK_AARCH64_SDK_URL" -o "$RUNNER_TEMP/sdk-ipk-aarch64-base/sdk.tar.xz"
+          printf '%s  %s\n' "$IPK_AARCH64_SDK_SHA256" "$RUNNER_TEMP/sdk-ipk-aarch64-base/sdk.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/sdk-ipk-aarch64-base/sdk.tar.xz" -C "$RUNNER_TEMP/sdk-ipk-aarch64-base" --strip-components=1
+
+          mkdir -p "$RUNNER_TEMP/sdk-ipk-aarch64-bpf"
+          cp -a "$RUNNER_TEMP/sdk-ipk-aarch64-base/." "$RUNNER_TEMP/sdk-ipk-aarch64-bpf/"
+
+      - name: Build SDK packages
+        run: |
+          umask 022
+
+          run_build() {
+            name=$1
+            sdk_dir=$2
+            enable_bpf=$3
+            sdk_release=$4
+            base_feed_ref=${5:-}
+            log_file="$RUNNER_TEMP/${name}.log"
+            (
+              ENABLE_BPF="$enable_bpf" SDK_RELEASE="$sdk_release" SDK_BASE_FEED_REF="$base_feed_ref" SDK_DIR="$sdk_dir" ./scripts/build-sdk.sh all
+            ) > "$log_file" 2>&1 &
+            printf '%s %s %s\n' "$!" "$name" "$log_file" >> "$RUNNER_TEMP/build-pids.txt"
+          }
+
+          : > "$RUNNER_TEMP/build-pids.txt"
+          run_build apk-base "$RUNNER_TEMP/sdk-apk-base" 0 25.12
+          run_build apk-bpf "$RUNNER_TEMP/sdk-apk-bpf" 1 25.12
+          run_build apk-aarch64-base "$RUNNER_TEMP/sdk-apk-aarch64-base" 0 25.12
+          run_build apk-aarch64-bpf "$RUNNER_TEMP/sdk-apk-aarch64-bpf" 1 25.12
+          run_build ipk-base "$RUNNER_TEMP/sdk-ipk-base" 0 23.05 "$IPK_BASE_FEED_REF"
+          run_build ipk-bpf "$RUNNER_TEMP/sdk-ipk-bpf" 1 23.05 "$IPK_BASE_FEED_REF"
+          run_build ipk-aarch64-base "$RUNNER_TEMP/sdk-ipk-aarch64-base" 0 23.05 "$IPK_BASE_FEED_REF"
+          run_build ipk-aarch64-bpf "$RUNNER_TEMP/sdk-ipk-aarch64-bpf" 1 23.05 "$IPK_BASE_FEED_REF"
+
+          status=0
+          while read -r pid name log_file; do
+            if wait "$pid"; then
+              printf '%s\n' "build ok: $name"
+            else
+              rc=$?
+              printf '%s\n' "build failed: $name exit=$rc" >&2
+              sed 's/^/  /' "$log_file" >&2
+              status=1
+            fi
+          done < "$RUNNER_TEMP/build-pids.txt"
+          exit "$status"
+
+      - name: Collect release files
+        id: release_files
+        run: |
+          code_version="${{ steps.meta.outputs.code_version }}"
+          ipk_version="${code_version%-r*}-${code_version##*-r}"
+          release_dir="$RUNNER_TEMP/release/files"
+          file_list="$RUNNER_TEMP/release/files.txt"
+          mkdir -p "$release_dir"
+          : > "$file_list"
+
+          collect_one() {
+            sdk_dir=$1
+            pattern=$2
+            asset_name=${3:-}
+            found=0
+            for file in "$sdk_dir"/bin/packages/*/lanspeed/$pattern "$sdk_dir"/bin/packages/*/base/$pattern; do
+              [ -f "$file" ] || continue
+              if [ -n "$asset_name" ]; then
+                cp "$file" "$release_dir/$asset_name"
+                printf '%s/%s\n' "$release_dir" "$asset_name" >> "$file_list"
+              else
+                cp "$file" "$release_dir/"
+                printf '%s/%s\n' "$release_dir" "$(basename "$file")" >> "$file_list"
+              fi
+              found=1
+            done
+            if [ "$found" = 0 ]; then
+              printf '%s\n' "error: missing release package $pattern in $sdk_dir/bin" >&2
+              exit 1
+            fi
+          }
+
+          collect_one "$RUNNER_TEMP/sdk-apk-base" "lanspeedd-${code_version}.apk"
+          collect_one "$RUNNER_TEMP/sdk-apk-bpf" "lanspeedd-bpf-${code_version}.apk"
+          collect_one "$RUNNER_TEMP/sdk-apk-base" "luci-app-lanspeed-${code_version}.apk"
+          collect_one "$RUNNER_TEMP/sdk-apk-aarch64-base" "lanspeedd-${code_version}.apk" "lanspeedd-${code_version}-aarch64.apk"
+          collect_one "$RUNNER_TEMP/sdk-apk-aarch64-bpf" "lanspeedd-bpf-${code_version}.apk" "lanspeedd-bpf-${code_version}-aarch64.apk"
+          collect_one "$RUNNER_TEMP/sdk-apk-aarch64-base" "luci-app-lanspeed-${code_version}.apk" "luci-app-lanspeed-${code_version}-aarch64.apk"
+          collect_one "$RUNNER_TEMP/sdk-ipk-base" "lanspeedd_${ipk_version}_*.ipk"
+          collect_one "$RUNNER_TEMP/sdk-ipk-bpf" "lanspeedd-bpf_${ipk_version}_*.ipk"
+          collect_one "$RUNNER_TEMP/sdk-ipk-base" "luci-app-lanspeed_${ipk_version}_*.ipk"
+          collect_one "$RUNNER_TEMP/sdk-ipk-aarch64-base" "lanspeedd_${ipk_version}_*.ipk" "lanspeedd_${ipk_version}_aarch64.ipk"
+          collect_one "$RUNNER_TEMP/sdk-ipk-aarch64-bpf" "lanspeedd-bpf_${ipk_version}_*.ipk" "lanspeedd-bpf_${ipk_version}_aarch64.ipk"
+          collect_one "$RUNNER_TEMP/sdk-ipk-aarch64-base" "luci-app-lanspeed_${ipk_version}_*.ipk" "luci-app-lanspeed_${ipk_version}_aarch64.ipk"
+
+          if [ ! -s "$file_list" ]; then
+            printf '%s\n' "error: no release files were collected" >&2
+            exit 1
+          fi
+          {
+            printf 'files<<EOF\n'
+            cat "$file_list"
+            printf 'EOF\n'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Remove previous release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+              [ -n "$asset" ] || continue
+              gh release delete-asset "$GITHUB_REF_NAME" "$asset" --yes
+            done
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2.6.2
+        with:
+          name: ${{ steps.meta.outputs.code_version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          files: ${{ steps.release_files.outputs.files }}

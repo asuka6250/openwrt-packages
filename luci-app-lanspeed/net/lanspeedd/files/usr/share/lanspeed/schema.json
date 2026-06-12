@@ -1,0 +1,781 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanspeed.local/schema.json",
+  "title": "lanspeed ubus contract",
+  "description": "Stable JSON contract for deterministic lanspeedd ubus method responses. Task 2 fixtures are skeleton values only and do not represent live traffic metrics.",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/status"
+    },
+    {
+      "$ref": "#/$defs/clients"
+    },
+    {
+      "$ref": "#/$defs/overview"
+    },
+    {
+      "$ref": "#/$defs/health"
+    },
+    {
+      "$ref": "#/$defs/interfaces"
+    },
+    {
+      "$ref": "#/$defs/sysdevices"
+    }
+  ],
+  "$defs": {
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low",
+        "unsupported"
+      ]
+    },
+    "warning": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Machine-readable facts used to explain mode, confidence, conflicts, and warnings. Values may be strings, numbers, booleans, arrays, objects, or null."
+    },
+    "collectorMode": {
+      "type": "string",
+      "enum": ["auto", "bpf", "nss_ecm_direct", "nss_conntrack_sync", "conntrack_netlink", "conntrack_procfs"]
+    },
+    "rateCollectorMode": {
+      "type": "string",
+      "enum": ["auto", "bpf", "nss_ecm_direct", "nss_conntrack_sync"]
+    },
+    "connCollectorMode": {
+      "type": "string",
+      "enum": ["auto", "conntrack_netlink", "conntrack_procfs"]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bpf": {
+          "type": "boolean"
+        },
+        "bpf_package": {
+          "type": "boolean"
+        },
+        "bpf_object": {
+          "type": "boolean"
+        },
+        "conntrack_fallback": {
+          "type": "boolean"
+        },
+        "live_metrics": {
+          "type": "boolean"
+        },
+        "fw4": {
+          "type": "boolean"
+        },
+        "nft": {
+          "type": "boolean"
+        },
+        "software_flow_offload": {
+          "type": "boolean"
+        },
+        "hardware_flow_offload": {
+          "type": "boolean"
+        },
+        "nss_ecm_direct": {
+          "type": "boolean"
+        },
+        "fullcone": {
+          "type": "boolean"
+        },
+        "nf_conntrack_acct": {
+          "type": "boolean"
+        },
+        "flowtable_counter": {
+          "type": "boolean"
+        },
+        "tc": {
+          "type": "boolean"
+        },
+        "tc_clsact": {
+          "type": "boolean"
+        },
+        "existing_tc_filters": {
+          "type": "boolean"
+        },
+        "ifb": {
+          "type": "boolean"
+        },
+        "sqm": {
+          "type": "boolean"
+        },
+        "qosify": {
+          "type": "boolean"
+        },
+        "openclash": {
+          "type": "boolean"
+        },
+        "openclash_fake_ip": {
+          "type": "boolean"
+        },
+        "openclash_tun_mix": {
+          "type": "boolean"
+        },
+        "openclash_redirect_dns": {
+          "type": "boolean"
+        },
+        "openclash_dns_chain_complete": {
+          "type": "boolean"
+        },
+        "openclash_router_self_proxy": {
+          "type": "boolean"
+        },
+        "openclash_udp_proxy": {
+          "type": "boolean"
+        },
+        "openclash_ipv6": {
+          "type": "boolean"
+        },
+        "dae": {
+          "type": "boolean"
+        },
+        "homeproxy": {
+          "type": "boolean"
+        },
+        "lan_bridge": {
+          "type": "boolean"
+        },
+        "vlan": {
+          "type": "boolean"
+        },
+        "wlan": {
+          "type": "boolean"
+        },
+        "lan_edge": {
+          "type": "boolean"
+        },
+        "safe_attach": {
+          "type": "boolean"
+        },
+        "map_full": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "bpf",
+        "conntrack_fallback",
+        "live_metrics"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Sliding-window coverage computed by the daemon. Direction semantics: tx = client upload (client→router), rx = client download (router→client).",
+      "properties": {
+        "quality": {
+          "type": "string",
+          "enum": ["warmup", "idle", "counter_reset", "ok", "unsupported"]
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "window_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tx_pct": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "rx_pct": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "denom_rx_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "denom_tx_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "numer_rx_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "numer_tx_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["quality", "samples"]
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "Full",
+            "Degraded",
+            "Unsupported"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "refresh_interval_ms": {
+          "type": "integer",
+          "minimum": 500
+        },
+        "active_client_window_ms": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "active_client_min_bps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "overview_window_samples": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "collector_mode": {
+          "$ref": "#/$defs/collectorMode"
+        },
+        "rate_collector_mode": {
+          "$ref": "#/$defs/rateCollectorMode"
+        },
+        "conn_collector_mode": {
+          "$ref": "#/$defs/connCollectorMode"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        }
+      },
+      "required": [
+        "mode",
+        "confidence",
+        "warnings",
+        "evidence",
+        "refresh_interval_ms",
+        "rate_collector_mode",
+        "conn_collector_mode",
+        "version",
+        "capabilities"
+      ]
+    },
+    "overviewSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sample_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tx_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rx_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "client_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active_clients": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tcp_conns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_conns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_dns_conns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_other_conns": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "sample_ms",
+        "tx_bps",
+        "rx_bps",
+        "client_count",
+        "active_clients"
+      ]
+    },
+    "overview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/overviewSample"
+          }
+        },
+        "max_samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overview_window_samples": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "active_client_window_ms": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "active_client_min_bps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sample_source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conn_semantics": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "samples"
+      ]
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mac": {
+          "type": "string",
+          "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+        },
+        "ips": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "identity_key": {
+          "type": "string",
+          "description": "Stable client identity key derived from normalized MAC plus VLAN/zone, never from an IP address."
+        },
+        "zone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hostname": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Best known hostname from DHCP or wireless identity sources; null when a static client has no hostname evidence."
+        },
+        "rx_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tx_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_seen": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sample_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Monotonic timestamp (ms) of the byte counter sample that produced rx_bytes/tx_bytes and the accompanying rx_bps/tx_bps. Consumers can align client samples with interface samples by this clock."
+        },
+        "rx_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cumulative rx bytes observed for this client at sample_ms. Counter may reset when a MAC disappears from the BPF LRU map or when conntrack flows rotate; consumers must tolerate decreases."
+        },
+        "tx_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cumulative tx bytes observed for this client at sample_ms."
+        },
+        "collector_mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "tcp_conns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_conns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_dns_conns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_other_conns": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "mac",
+        "identity_key",
+        "zone",
+        "interface",
+        "ips",
+        "hostname",
+        "rx_bps",
+        "tx_bps",
+        "last_seen",
+        "collector_mode",
+        "confidence",
+        "warnings"
+      ]
+    },
+    "clients": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clients": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client"
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "tcp_conns_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_conns_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_dns_conns_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "udp_other_conns_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conntrack_entries_seen": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conntrack_entries_matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conntrack_parse_errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conn_source": {
+          "type": "string",
+          "enum": ["conntrack", "conntrack_netlink", "conntrack_procfs", "nss_ecm_direct"]
+        },
+        "nss_ecm_direct_flows_seen": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nss_ecm_direct_flows_matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nss_ecm_direct_parse_errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conn_collector_mode": {
+          "$ref": "#/$defs/connCollectorMode"
+        },
+        "conn_semantics": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "clients"
+      ]
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "Full",
+            "Degraded",
+            "Unsupported"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "id",
+              "severity",
+              "message"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "warning",
+                  "critical"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "required": [
+        "mode",
+        "confidence",
+        "capabilities",
+        "conflicts",
+        "warnings",
+        "evidence"
+      ]
+    },
+    "interface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "lan",
+            "wan",
+            "excluded",
+            "unknown"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "active",
+            "available",
+            "missing",
+            "excluded",
+            "unsupported"
+          ]
+        },
+        "rx_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tx_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rx_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tx_bps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delta_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sample_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Monotonic timestamp (ms) of the rx_bytes/tx_bytes sample. Pair with client.sample_ms to compute coverage over a common time window."
+        },
+        "source": {
+          "type": "string"
+        },
+        "coverage": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "required": [
+        "name",
+        "role",
+        "status"
+      ]
+    },
+    "interfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/interface"
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "required": [
+        "interfaces"
+      ]
+    },
+    "sysdevice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selected": {
+          "type": "boolean"
+        },
+        "observed": {
+          "type": "boolean"
+        },
+        "recommended_lan": {
+          "type": "boolean"
+        },
+        "is_bridge": {
+          "type": "boolean"
+        },
+        "is_bridge_port": {
+          "type": "boolean"
+        },
+        "is_nss_ifb": {
+          "type": "boolean"
+        },
+        "speed_mbps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "selected",
+        "observed",
+        "recommended_lan",
+        "is_bridge",
+        "is_bridge_port",
+        "is_nss_ifb"
+      ]
+    },
+    "sysdevices": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sysdevice"
+          }
+        },
+        "current_ifnames": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "current_observed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "devices",
+        "current_ifnames",
+        "current_observed"
+      ]
+    }
+  }
+}

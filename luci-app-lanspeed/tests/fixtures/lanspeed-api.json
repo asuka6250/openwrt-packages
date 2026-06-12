@@ -1,0 +1,193 @@
+{
+  "status": {
+    "mode": "Unsupported",
+    "confidence": "unsupported",
+    "warnings": [
+      "stub_no_live_metrics"
+    ],
+    "evidence": {
+      "source": "lanspeedd_stub",
+      "method": "status",
+      "fixture_safe": true,
+      "live_metrics": false
+    },
+    "refresh_interval_ms": 1000,
+    "collector_mode": "auto",
+    "rate_collector_mode": "auto",
+    "conn_collector_mode": "auto",
+    "version": "0.1.5-r1",
+    "capabilities": {
+      "bpf": false,
+      "bpf_package": false,
+      "bpf_object": false,
+      "conntrack_fallback": true,
+      "live_metrics": false,
+      "fw4": false,
+      "nft": false,
+      "software_flow_offload": false,
+      "hardware_flow_offload": false,
+      "fullcone": false,
+      "nf_conntrack_acct": false,
+      "flowtable_counter": false,
+      "tc": false,
+      "tc_clsact": false,
+      "existing_tc_filters": false,
+      "ifb": false,
+      "sqm": false,
+      "qosify": false,
+      "openclash": false,
+      "dae": false,
+      "homeproxy": false,
+      "lan_bridge": false,
+      "vlan": false,
+      "wlan": false,
+      "lan_edge": false,
+      "safe_attach": false,
+      "map_full": false
+    },
+    "active_client_window_ms": 10000,
+    "active_client_min_bps": 1,
+    "overview_window_samples": 240
+  },
+  "clients": {
+    "clients": [
+      {
+        "mac": "02:00:00:00:00:01",
+        "identity_key": "02:00:00:00:00:01@lan",
+        "zone": "lan",
+        "interface": "br-lan",
+        "ips": [
+          "192.0.2.10"
+        ],
+        "hostname": "fixture-client",
+        "rx_bps": 0,
+        "tx_bps": 0,
+        "last_seen": 0,
+        "collector_mode": "stub",
+        "confidence": "unsupported",
+        "warnings": [
+          "stub_no_live_metrics"
+        ]
+      }
+    ],
+    "evidence": {
+      "source": "lanspeedd_stub",
+      "method": "clients",
+      "fixture_safe": true,
+      "live_metrics": false
+    }
+  },
+  "overview": {
+    "samples": [
+      {
+        "sample_ms": 0,
+        "tx_bps": 0,
+        "rx_bps": 0,
+        "client_count": 1,
+        "active_clients": 0,
+        "tcp_conns": 0,
+        "udp_conns": 0,
+        "udp_dns_conns": 0,
+        "udp_other_conns": 0
+      }
+    ],
+    "max_samples": 240,
+    "sample_source": "clients_refresh_daemon_ring",
+    "conn_semantics": "conntrack_current_tcp_established_assured_udp_assured_dns_split",
+    "overview_window_samples": 240,
+    "active_client_window_ms": 10000,
+    "active_client_min_bps": 1
+  },
+  "health": {
+    "mode": "Unsupported",
+    "confidence": "unsupported",
+    "capabilities": {
+      "bpf": false,
+      "bpf_package": false,
+      "bpf_object": false,
+      "conntrack_fallback": true,
+      "live_metrics": false,
+      "fw4": false,
+      "nft": false,
+      "software_flow_offload": false,
+      "hardware_flow_offload": false,
+      "fullcone": false,
+      "nf_conntrack_acct": false,
+      "flowtable_counter": false,
+      "tc": false,
+      "tc_clsact": false,
+      "existing_tc_filters": false,
+      "ifb": false,
+      "sqm": false,
+      "qosify": false,
+      "openclash": false,
+      "dae": false,
+      "homeproxy": false,
+      "lan_bridge": false,
+      "vlan": false,
+      "wlan": false,
+      "lan_edge": false,
+      "safe_attach": false,
+      "map_full": false
+    },
+    "conflicts": [],
+    "warnings": [
+      "stub_no_live_metrics"
+    ],
+    "evidence": {
+      "source": "lanspeedd_stub",
+      "method": "health",
+      "fixture_safe": true,
+      "live_metrics": false
+    }
+  },
+  "interfaces": {
+    "interfaces": [
+      {
+        "name": "br-lan",
+        "role": "lan",
+        "status": "pending",
+        "evidence": {
+          "configured": true,
+          "source": "uci_default",
+          "live_probe": false
+        }
+      }
+    ],
+    "evidence": {
+      "source": "lanspeedd_stub",
+      "method": "interfaces",
+      "fixture_safe": true,
+      "live_metrics": false
+    }
+  },
+  "sysdevices": {
+    "devices": [
+      {
+        "name": "br-lan",
+        "selected": true,
+        "observed": false,
+        "recommended_lan": true,
+        "is_bridge": true,
+        "is_bridge_port": false,
+        "is_nss_ifb": false,
+        "speed_mbps": 1000
+      },
+      {
+        "name": "nssifb",
+        "selected": false,
+        "observed": true,
+        "recommended_lan": false,
+        "is_bridge": false,
+        "is_bridge_port": false,
+        "is_nss_ifb": true
+      }
+    ],
+    "current_ifnames": [
+      "br-lan"
+    ],
+    "current_observed": [
+      "nssifb"
+    ]
+  }
+}
