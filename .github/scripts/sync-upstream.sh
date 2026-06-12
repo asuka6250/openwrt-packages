@@ -63,7 +63,7 @@ FULL_REPOS=(
 # ---------------------------------------------------
 SPARSE_REPOS=(
     "coolsnowwolf/luci|openwrt-25.12|themes/luci-theme-design"
-    "immortalwrt/packages|openwrt-25.12|net/ua2f devel/rust-bindgen"
+    "immortalwrt/packages|openwrt-25.12|net/ua2f"
     "immortalwrt/immortalwrt|openwrt-25.12|package/emortal/cpufreq"
     "immortalwrt/luci|openwrt-25.12|applications/luci-app-ua2f applications/luci-app-arpbind applications/luci-app-cpufreq"
     "sbwml/openwrt_helloworld||luci-app-ssr-plus dae daed luci-app-dae luci-app-daed lua-neturl dns2tcp"
