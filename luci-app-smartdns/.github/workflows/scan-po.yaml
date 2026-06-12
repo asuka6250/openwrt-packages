@@ -1,0 +1,72 @@
+name: Update PO Files
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-po:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext
+
+      - name: Extract i18n strings from JS
+        run: |
+          # 指定 POT 文件存放路径
+          mkdir -p po/templates
+          xgettext --language=JavaScript \
+                   --from-code=UTF-8 \
+                   --keyword=_ \
+                   --add-location=full \
+                   --output=po/templates/smartdns.pot \
+                   htdocs/luci-static/resources/view/smartdns/*.js
+          sed -E -i '
+            s#(htdocs/luci-static/resources/view/smartdns/)##g
+          ' po/templates/smartdns.pot
+          
+          awk '{
+            if ($1=="#:") {
+              if (prev_line) {
+                sub("^#:[[:space:]]*","")
+                printf(" %s",$0)
+              } else {
+                # 首行
+                printf("%s",$0)
+                prev_line=1
+              }
+              next
+            } else {
+              if (prev_line) {
+                print ""         # 结束引用行，换行
+                prev_line=0
+              }
+              print $0
+            }
+          }' po/templates/smartdns.pot > po/templates/smartdns.tmp
+          
+          mv po/templates/smartdns.tmp po/templates/smartdns.pot
+
+      - name: Update existing PO files
+        run: |
+          for f in po/*/*.po; do
+            echo "Updating $f ..."
+            msgmerge --update --backup=off $f po/templates/smartdns.pot
+          done
+
+      - name: Commit updated PO files
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add po/**/*.po po/templates/smartdns.pot
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(i18n): Update PO files after JS changes"
+            git push
+          else
+            echo "No PO updates required."
+          fi
