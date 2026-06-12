@@ -56,6 +56,7 @@ FULL_REPOS=(
     ["https://github.com/QiuSimons/vmlinux-btf.git"]=""
     # ["https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git"]=""
     ["https://github.com/xianren78/luci-app-smartdns.git"]="" 
+    ["https://github.com/eamonxg/luci-theme-shadcn.git"]=""
 )
 
 # ---------------------------------------------------
