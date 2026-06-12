@@ -2,7 +2,7 @@ name: Auto Sync Upstream Plugins
 
 on:
   schedule:
-    - cron: '13 */4 * * *'
+    - cron: '4 */4 * * *'
   workflow_dispatch:
   push:
     paths:
