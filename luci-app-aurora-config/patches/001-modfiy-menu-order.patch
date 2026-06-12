@@ -1,0 +1,11 @@
+--- a/root/usr/share/luci/menu.d/luci-app-aurora.json
++++ b/root/usr/share/luci/menu.d/luci-app-aurora.json
+@@ -1,7 +1,7 @@
+ {
+   "admin/system/aurora": {
+     "title": "Aurora Settings",
+-    "order": 100,
++    "order": 90,
+     "action": {
+       "type": "firstchild"
+     },

@@ -1,0 +1,797 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1731
+msgid "(No icons uploaded)"
+msgstr "(Піктограми не завантажено)"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1528
+msgid "(None)"
+msgstr "(Немає)"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:423
+msgid "Accent"
+msgstr "Акцентний колір"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:424
+msgid "Accent Foreground"
+msgstr "Акцентний передній план"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1462
+msgid "Actions"
+msgstr "Дії"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1694
+msgid "Add, remove, and drag to reorder toolbar buttons."
+msgstr "Додавайте, видаляйте та перетягуйте кнопки панелі інструментів для зміни їхнього порядку."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:953
+msgid ""
+"Adjust navigation style, element spacing, corner radius, and page container "
+"width."
+msgstr "Налаштування стилю навігації, відступів елементів, радіуса закруглення кутів та ширини контейнера сторінки."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:480
+msgid "Amber Sand"
+msgstr "Бурштиновий пісок"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1565
+msgid "App Icon 192×192"
+msgstr "Піктограма додатка 192×192"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1566
+msgid "App Icon 512×512"
+msgstr "Піктограма додатка 512×512"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1564
+msgid "Apple Touch Icon"
+msgstr "Apple Touch Icon"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:617
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:623
+msgid "Apply"
+msgstr "Застосувати"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:567
+msgid "Apply Preset"
+msgstr "Застосувати пресет"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:571
+msgid "Apply Theme Preset"
+msgstr "Застосувати пресет теми"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:710
+msgid "Apply configuration?"
+msgstr "Застосувати конфігурацію?"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:607
+msgid "Apply failed: %s"
+msgstr "Помилка застосування: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:587
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:737
+msgid "Applying..."
+msgstr "Застосування..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:802
+msgid ""
+"Are you sure you want to reset all theme settings (Color, Layout & "
+"Typography, Branding) back to the default theme's original configuration? "
+"This will revert everything to the default theme's initial state."
+msgstr "Ви впевнені, що хочете скинути всі налаштування теми (колір, макет і типографіку, брендинг) до початкової конфігурації за замовчуванням? Це поверне все до первісного стану теми за замовчуванням."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:38
+msgid ""
+"Are you sure you want to update <strong>%h</strong> to version <strong>%h</"
+"strong>?"
+msgstr "Ви впевнені, що хочете оновити <strong>%h</strong> до версії <strong>%h</strong>?"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1178
+msgid "Asset Library"
+msgstr "Бібліотека ресурсів"
+
+#: applications/luci-app-aurora-config/root/usr/share/luci/menu.d/luci-app-aurora.json:3
+msgid "Aurora Settings"
+msgstr "Налаштування Aurora"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:466
+msgid "Aurora Theme Settings"
+msgstr "Налаштування теми Aurora"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:395
+msgid "Background"
+msgstr "Фон"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:442
+msgid "Base Colors"
+msgstr "Базові кольори"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:401
+msgid "Border"
+msgstr "Межа"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:981
+msgid "Border Radius"
+msgstr "Радіус межі"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:964
+msgid "Boxed Dropdown"
+msgstr "Блокове випадаюче меню"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:927
+msgid "Branding"
+msgstr "Брендинг"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:509
+msgid "Built-in"
+msgstr "Вбудований"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1708
+msgid "Button Title"
+msgstr "Заголовок кнопки"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1712
+msgid "Button title cannot be empty"
+msgstr "Заголовок кнопки не може бути порожнім"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:580
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:728
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:806
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1401
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:48
+msgid "Cancel"
+msgstr "Скасувати"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:385
+msgid "Check for Updates"
+msgstr "Перевірити оновлення"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:351
+msgid ""
+"Check for and install updates for Aurora theme and configuration packages. "
+"Updates are downloaded from the latest releases of the Aurora theme and "
+"configuration plugin GitHub repositories."
+msgstr "Перевірка та встановлення оновлень для теми Aurora та пакетів конфігурації. Оновлення завантажуються з останніх релізів репозиторіїв Aurora на GitHub."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:702
+msgid "Checking file…"
+msgstr "Перевірка файлу…"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:213
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:239
+msgid "Checking for updates..."
+msgstr "Перевірка оновлень..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:227
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:264
+msgid "Checking..."
+msgstr "Перевірка..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1485
+msgid ""
+"Choose the favicon, logo, and login background. Upload images via the Asset "
+"Library above."
+msgstr "Виберіть favicon, логотип та фон сторінки входу. Завантажуйте зображення через Бібліотеку ресурсів вище."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:477
+msgid "Classic"
+msgstr "Класичний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:142
+msgid "Click to select color visually"
+msgstr "Натисніть, щоб вибрати колір візуально"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:162
+msgid "Close"
+msgstr "Закрити"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:925
+msgid "Color"
+msgstr "Колір"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:450
+msgid "Component Colors"
+msgstr "Кольори компонентів"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:905
+msgid "Config:"
+msgstr "Конфіг:"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:670
+msgid "Configuration exported successfully."
+msgstr "Конфігурацію успішно експортовано."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:749
+msgid "Configuration imported successfully."
+msgstr "Конфігурацію успішно імпортовано."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:840
+msgid "Confirm Reset"
+msgstr "Підтвердити скидання"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:768
+msgid "Continue"
+msgstr "Продовжити"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:452
+msgid ""
+"Controls colors used by specific UI components: top navigation bar (Header) "
+"and boxed dropdown hover background (Header Interactive), progress bar "
+"gradient (Progress Bar Start/End), log panel (Terminal), overlay mask "
+"(Overlay), links (Link), checked radios/checkboxes (Input Checked), tooltip "
+"bubble (Tooltip), and section header surfaces (Label Surface)."
+msgstr "Керування кольорами окремих компонентів інтерфейсу: верхньої панелі навігації (Header), її інтерактивного фону при наведенні (Header Interactive), градієнта індикатора прогресу (Progress Bar Start/End), панелі логів (Terminal), маски перекриття (Overlay), посилань (Link), вибраних перемикачів/прапорців (Input Checked), підказок (Tooltip) та поверхонь заголовків розділів (Label Surface)."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:939
+msgid "Dark Mode"
+msgstr "Темний режим"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:427
+msgid "Default"
+msgstr "За замовчуванням"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:428
+msgid "Default Foreground"
+msgstr "Передній план за замовчуванням"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1437
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1443
+msgid "Delete"
+msgstr "Видалити"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1396
+msgid "Delete '%s'?"
+msgstr "Видалити '%s'?"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1395
+msgid "Delete Asset"
+msgstr "Видалити ресурс"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1418
+msgid "Deleted: %s"
+msgstr "Видалено: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1409
+msgid "Deleting…"
+msgstr "Видалення…"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:421
+msgid "Destructive"
+msgstr "Небезпечна дія"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:422
+msgid "Destructive Foreground"
+msgstr "Передній план небезпечної дії"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:67
+msgid "Downloading update files..."
+msgstr "Завантаження файлів оновлення..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1276
+msgid "Drop image here, or click to browse"
+msgstr "Перетягніть зображення сюди або натисніть для вибору"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:971
+msgid "Element Spacing"
+msgstr "Інтервал між елементами"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1680
+msgid "Enable Floating Toolbar"
+msgstr "Увімкнути плаваючу панель"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1683
+msgid "Enable or disable the floating toolbar on the right side of the screen."
+msgstr "Увімкнути або вимкнути плаваючу панель інструментів у правій частині екрана."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1703
+msgid "Enabled"
+msgstr "Увімкнено"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:435
+msgid "Error"
+msgstr "Помилка"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:436
+msgid "Error Foreground"
+msgstr "Передній план помилки"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:831
+msgid "Error: %s"
+msgstr "Помилка: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:683
+msgid "Export"
+msgstr "Експорт"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:630
+msgid "Export Configuration"
+msgstr "Експорт конфігурації"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:635
+msgid "Export failed"
+msgstr "Експорт не вдався"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:677
+msgid "Export failed: %s"
+msgstr "Експорт не вдався: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:320
+msgid "Failed to check for updates: %s. Please check your internet connection."
+msgstr "Не вдалося перевірити оновлення: %s. Будь ласка, перевірте підключення до інтернету."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1426
+msgid "Failed to delete: %s"
+msgstr "Не вдалося видалити: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1542
+msgid "Favicon (ICO / Legacy)"
+msgstr "Favicon (ICO / застарілий)"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1516
+msgid "Favicon (PNG)"
+msgstr "Favicon (PNG)"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1461
+msgid "Filename"
+msgstr "Ім'я файлу"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1673
+msgid "Floating Toolbar"
+msgstr "Плаваюча панель"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1087
+msgid "Font CSS file is empty"
+msgstr "CSS файл шрифтів порожній"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1083
+msgid "Font CSS file is not available"
+msgstr "CSS файл шрифтів недоступний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1005
+msgid "Font Settings"
+msgstr "Налаштування шрифтів"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1161
+msgid "Font preparation failed:"
+msgstr "Підготовка шрифтів не вдалася:"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:396
+msgid "Foreground"
+msgstr "Передній план"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1597
+msgid "Full-screen background on the login page."
+msgstr "Повноекранний фон на сторінці входу."
+
+#: applications/luci-app-aurora-config/root/usr/share/rpcd/acl.d/luci-app-aurora.json:3
+msgid "Grant access to Aurora theme configuration"
+msgstr "Надати доступ до конфігурації теми Aurora"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:405
+msgid "Header Background"
+msgstr "Фон шапки навігації"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:406
+msgid "Header Interactive"
+msgstr "Інтерактивні елементи шапки"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1544
+msgid "ICO favicon served to legacy browsers as fallback."
+msgstr "Favicon у форматі ICO для застарілих браузерів як резервний варіант."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1720
+msgid "Icon"
+msgstr "Піктограма"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:788
+msgid "Import"
+msgstr "Імпорт"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:690
+msgid "Import Configuration"
+msgstr "Імпорт конфігурації"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:760
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:777
+msgid "Import failed: %s"
+msgstr "Імпорт не вдався: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:736
+msgid "Importing..."
+msgstr "Імпорт..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:429
+msgid "Info"
+msgstr "Інформація"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:430
+msgid "Info Foreground"
+msgstr "Передній план інформації"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:414
+msgid "Input Checked"
+msgstr "Вибраний елемент введення"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:111
+msgid "Installation Details"
+msgstr "Деталі встановлення"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:392
+msgid "Installed Version"
+msgstr "Встановлена версія"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:78
+msgid "Installing update packages..."
+msgstr "Встановлення пакетів оновлення..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1284
+msgid "JPG · PNG · WebP · AVIF · SVG · GIF"
+msgstr "JPG · PNG · WebP · AVIF · SVG · GIF"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:415
+msgid "Label Surface"
+msgstr "Поверхня міток"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:393
+msgid "Latest Version"
+msgstr "Остання версія"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:951
+msgid "Layout"
+msgstr "Макет"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:926
+msgid "Layout & Typography"
+msgstr "Макет і типографіка"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:938
+msgid "Light Mode"
+msgstr "Світлий режим"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:413
+msgid "Link"
+msgstr "Посилання"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1595
+msgid "Login Background"
+msgstr "Фон входу"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1490
+msgid "Logo / Favicon"
+msgstr "Логотип / Favicon"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1180
+msgid ""
+"Manage image files used by the theme. All files are stored in <code>/www/"
+"luci-static/aurora/images/</code>."
+msgstr "Керування зображеннями, що використовуються темою. Усі файли зберігаються в <code>/www/luci-static/aurora/images/</code>."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:963
+msgid "Mega Menu"
+msgstr "Мега-меню"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:478
+msgid "Monochrome"
+msgstr "Монохромний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1031
+msgid "Monospace Typeface"
+msgstr "Моноширинний шрифт"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:425
+msgid "Muted"
+msgstr "Приглушений"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:426
+msgid "Muted Foreground"
+msgstr "Приглушений передній план"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:961
+msgid "Navigation Submenu Type"
+msgstr "Тип підменю навігації"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1456
+msgid "No assets uploaded yet."
+msgstr "Ресурси ще не завантажено."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:700
+msgid "No file selected or upload failed"
+msgstr "Файл не вибрано або завантаження не вдалося"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:273
+msgid "No packages found. Please check your installation."
+msgstr "Пакетів не знайдено. Будь ласка, перевірте встановлення."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1605
+msgid "None"
+msgstr "Немає"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:212
+msgid "Not installed"
+msgstr "Не встановлено"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1519
+msgid "Optional PNG favicon for browsers that do not support SVG favicons."
+msgstr "Додатковий PNG favicon для браузерів, які не підтримують SVG."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:412
+msgid "Overlay Base"
+msgstr "Основа оверлею"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:391
+msgid "Package Name"
+msgstr "Назва пакета"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:397
+msgid "Page Background"
+msgstr "Фон сторінки"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:991
+msgid "Page Container Max Width"
+msgstr "Макс. ширина контейнера сторінки"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:398
+msgid "Panel Background"
+msgstr "Фон панелі"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1738
+msgid "Please select an icon"
+msgstr "Будь ласка, виберіть піктограму"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:715
+msgid ""
+"Please upload the Aurora configuration file named 'aurora'. This will "
+"overwrite the theme configuration at /etc/config/aurora. Press 'Continue' to "
+"apply and reload, or 'Cancel' to abort."
+msgstr "Будь ласка, завантажте файл конфігурації Aurora з назвою 'aurora'. Це перезапише налаштування теми у /etc/config/aurora. Натисніть «Продовжити», щоб застосувати та перезавантажити, або «Скасувати» для скасування."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1410
+msgid "Please wait…"
+msgstr "Будь ласка, зачекайте…"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1140
+msgid "Preparing Fonts"
+msgstr "Підготовка шрифтів"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1137
+msgid "Preparing selected fonts..."
+msgstr "Підготовка вибраних шрифтів..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:858
+msgid "Preset"
+msgstr "Пресет"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:598
+msgid "Preset applied successfully."
+msgstr "Пресет успішно застосовано."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1460
+msgid "Preview"
+msgstr "Попередній перегляд"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:399
+msgid "Primary"
+msgstr "Основний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:400
+msgid "Primary Foreground"
+msgstr "Основний передній план"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:408
+msgid "Progress Bar End"
+msgstr "Кінець індикатора прогресу"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:407
+msgid "Progress Bar Start"
+msgstr "Початок індикатора прогресу"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:140
+msgid "Reload"
+msgstr "Перезавантажити"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:846
+msgid "Reset"
+msgstr "Скидання"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:795
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:797
+msgid "Reset to Defaults"
+msgstr "Скинути до стандартних налаштувань"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:813
+msgid "Resetting..."
+msgstr "Скидання..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:814
+msgid "Restoring..."
+msgstr "Відновлення..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:479
+msgid "Sage Green"
+msgstr "Шавлієвий зелений"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1031
+msgid "Sans-serif Typeface"
+msgstr "Шрифт без засічок"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1007
+msgid ""
+"Sans-serif sets the global UI typeface for all text and headings. Monospace "
+"is used for code blocks, inline code, and variable references."
+msgstr "Sans-serif встановлює глобальний шрифт інтерфейсу для всього тексту та заголовків. Monospace використовується для блоків коду, вбудованого коду та посилань на змінні."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:419
+msgid "Secondary"
+msgstr "Друрядний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:420
+msgid "Secondary Foreground"
+msgstr "Вторинний передній план"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:458
+msgid "Semantic & Status Colors"
+msgstr "Семантичні кольори та статус"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:460
+msgid ""
+"Semantic colors represent different actions and intents, commonly used in "
+"buttons and badges. For example, destructive (Destructive) maps to high‑risk "
+"actions like delete or reset. Status colors represent system feedback "
+"states, commonly used in tooltip messages (Tooltip), alert dialogs (Alert), "
+"status tags (Tag), and legends (Legend). Each status type (Default, Info, "
+"Warning, Success, Error) has two colors: a background color and a foreground/"
+"text color (Foreground)."
+msgstr "Семантичні кольори відображають сутність дій: наприклад, «небезпечна дія» (Destructive) призначена для видалення чи скидання. Кольори статусу відображають стан зворотного зв’язку системи (Повідомлення, Попередження, Успіх, Помилка тощо) та використовуються у підказках, сповіщеннях і тегах. Кожен тип статусу має два кольори: колір фону та колір тексту/переднього плану (Foreground)."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:823
+msgid "Settings reset successfully."
+msgstr "Налаштування успішно скинуто."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1483
+msgid "Site Branding"
+msgstr "Брендинг сайту"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:481
+msgid "Sky Blue"
+msgstr "Небесно-блакитний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:397
+msgid "Status"
+msgstr "Статус"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:433
+msgid "Success"
+msgstr "Успіх"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:434
+msgid "Success Foreground"
+msgstr "Передній план успіху"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:508
+msgid "System Mono"
+msgstr "Системний моноширинний"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1714
+msgid "Target URL"
+msgstr "Цільова URL-адреса"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:409
+msgid "Terminal Background"
+msgstr "Фон термінала"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:410
+msgid "Terminal Foreground"
+msgstr "Передній план термінала"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:444
+msgid ""
+"The theme layout uses three layers: background (Background) → page container "
+"(Page) → panel card (Panel). The Base Colors variables define each layer's "
+"background color (Background) and foreground/text color (Foreground). The "
+"primary color (Primary) is mainly used for focused/active states of inputs, "
+"selects, radios, checkboxes, and dropdowns, and is also used for key buttons "
+"and the page footer."
+msgstr "Макет теми використовує три рівні: загальний фон (Background) → контейнер сторінки (Page) → картка панелі (Panel). Основний колір (Primary) переважно використовується для активних елементів керування, вибору та ключових кнопок."
+
+#: applications/luci-app-aurora-config/root/usr/share/luci/menu.d/luci-app-aurora.json:13
+msgid "Theme Settings"
+msgstr "Налаштування теми"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:893
+msgid "Theme:"
+msgstr "Тема:"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:576
+msgid ""
+"This will switch the theme style to the '%s' preset and overwrite the "
+"configuration in /etc/config/aurora. Do you want to continue?"
+msgstr "Це переключить стиль теми на пресет '%s' та перезапише конфігурацію. Продовжити?"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1693
+msgid "Toolbar Buttons"
+msgstr "Кнопки панелі інструментів"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:411
+msgid "Tooltip Background"
+msgstr "Фон підказок"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1718
+msgid "URL cannot be empty"
+msgstr "URL-адреса не може бути порожньою"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:177
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:192
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:193
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:213
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:217
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:238
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:243
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:244
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:247
+msgid "Unknown"
+msgstr "Невідомо"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:195
+msgid "Up to date"
+msgstr "Оновлено"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:59
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:191
+msgid "Update"
+msgstr "Оновити"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:33
+msgid "Update Package"
+msgstr "Оновити пакет"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:124
+msgid ""
+"Update completed successfully! Please reload the page to see the changes. If "
+"the old version still appears, try again in an incognito/private window or "
+"after clearing your browser cache."
+msgstr "Оновлення завершено успішно! Будь ласка, перезавантажте сторінку. Якщо стара версія все ще відображається, спробуйте відкрити в режимі інкогніто або очистити кеш браузера."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:151
+msgid "Update failed: %s"
+msgstr "Оновлення не вдалося: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:66
+msgid "Updating Package"
+msgstr "Оновлення пакета"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:588
+msgid "Updating theme..."
+msgstr "Оновлення теми..."
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1339
+msgid "Upload failed"
+msgstr "Завантаження не вдалося"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1311
+msgid "Upload failed (HTTP %s)"
+msgstr "Завантаження не вдалося (HTTP %s)"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1328
+msgid "Upload failed: %s"
+msgstr "Завантаження не вдалося: %s"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/version.js:347
+#: applications/luci-app-aurora-config/root/usr/share/luci/menu.d/luci-app-aurora.json:21
+msgid "Version Management"
+msgstr "Керування версіями"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:431
+msgid "Warning"
+msgstr "Попередження"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:432
+msgid "Warning Foreground"
+msgstr "Передній план попередження"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1710
+msgid "e.g., System Settings"
+msgstr "напр., Системні налаштування"
+
+#: applications/luci-app-aurora-config/htdocs/luci-static/resources/view/aurora/theme.js:1145
+msgid "unknown error"
+msgstr "невідома помилка"
