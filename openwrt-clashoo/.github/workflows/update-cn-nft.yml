@@ -1,0 +1,42 @@
+name: Update Clashoo Rule Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * 1'
+
+jobs:
+  update-rule-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Generate CN nftables sets
+        run: |
+          sh scripts/gen-cn-nft.sh
+
+      - name: Generate sing-box rule sets
+        run: |
+          sh scripts/gen-singbox-rulesets.sh
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- clashoo/files/usr/share/clashoo/nftables clashoo/files/usr/share/clashoo/ruleset; then
+            echo "No rule data changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add clashoo/files/usr/share/clashoo/nftables
+          git add clashoo/files/usr/share/clashoo/ruleset
+          git commit -m "chore: refresh clashoo rule data"
+          git push

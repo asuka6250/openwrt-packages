@@ -1,0 +1,366 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: '标记为预发布版本'
+        type: boolean
+        default: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: ${{ matrix.arch }} · SDK ${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - aarch64_cortex-a53
+          - aarch64_cortex-a72
+          - aarch64_generic
+          - arm_cortex-a7_neon-vfpv4
+          - arm_cortex-a9_neon
+          - i386_pentium4
+          - mips_24kc
+          - mipsel_24kc
+          - x86_64
+        sdk:
+          - "24.10"
+          - "25.12"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build packages
+        uses: kenzok8/gh-action-sdk@main
+        env:
+          ARCH: ${{ matrix.arch }}-openwrt-${{ matrix.sdk }}
+          FEEDNAME: clashoo
+          PACKAGES: clashoo luci-app-clashoo
+          NO_REFRESH_CHECK: true
+          INDEX: 1
+          # 用稳定 dllkids key 签名（用户装一次公钥即永久信任）：
+          # KEY_BUILD = usign Ed25519 私钥，给 opkg Packages.gz 签名
+          # PRIVATE_KEY = ECDSA P-256 PEM 私钥，给 apk packages.adb 签名
+          KEY_BUILD: ${{ secrets.OPKG_KEY_BUILD }}
+          PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+
+      - name: Collect packages
+        run: |
+          ARCH="${{ matrix.arch }}"
+          mkdir -p dist/release dist/feed
+
+          # IPK：release 加安全文件名，feed 保留原名
+          for f in bin/packages/${ARCH}/clashoo/*.ipk; do
+            [ -f "$f" ] || continue
+            [[ "$(basename $f)" == Packages* ]] && continue
+            base=$(basename "$f" .ipk)
+            safe="${base//\~/.}"
+            cp -v "$f" "dist/release/${safe}.ipk"
+            cp -v "$f" dist/feed/
+          done
+
+          # APK：release 加架构后缀，feed 保留原名
+          for f in bin/packages/${ARCH}/clashoo/*.apk; do
+            [ -f "$f" ] || continue
+            [[ "$(basename $f)" == Packages* ]] && continue
+            base=$(basename "$f" .apk)
+            safe="${base//\~/.}"
+            cp -v "$f" "dist/release/${safe}-${ARCH}.apk"
+            cp -v "$f" dist/feed/
+          done
+
+          # Feed 索引（仅 feed）：opkg 用 Packages*，apk v2 用 APKINDEX.tar.gz，
+          # apk v3（OpenWrt 25.12+）用 packages.adb。三类都要捎上。
+          for f in bin/packages/${ARCH}/clashoo/Packages* \
+                   bin/packages/${ARCH}/clashoo/APKINDEX* \
+                   bin/packages/${ARCH}/clashoo/packages.adb*; do
+            [ -f "$f" ] || continue
+            cp -v "$f" dist/feed/
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: packages-sdk${{ matrix.sdk }}-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: ignore
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: all-artifacts
+          pattern: packages-*
+
+      - name: Flatten release files
+        run: |
+          mkdir -p dist
+          find all-artifacts -path "*/release/*" -type f -exec cp -v {} dist/ \;
+
+      - name: Determine tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v$(date -u +%Y.%m.%d)" >> $GITHUB_OUTPUT
+            echo "prerelease=${{ github.event.inputs.prerelease }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Release Notes
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          ARCHS="aarch64_cortex-a53 aarch64_cortex-a72 aarch64_generic arm_cortex-a7_neon-vfpv4 arm_cortex-a9_neon i386_pentium4 mips_24kc mipsel_24kc x86_64"
+          PREVIOUS_TAG="$(git tag --sort=-creatordate | grep '^v' | grep -v "^${TAG}$" | head -1 || true)"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            RANGE="${PREVIOUS_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+
+          git log --format='%s%x1f%b%x1e' "$RANGE" > commits.raw
+
+          write_section() {
+            title="$1"
+            pattern="$2"
+            awk -v title="$title" -v pattern="$pattern" '
+              BEGIN {
+                RS = "\036"
+                FS = "\037"
+                count = 0
+              }
+              {
+                subject = $1
+                body = $2
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", subject)
+                if (subject == "" || subject ~ /^Merge /) {
+                  next
+                }
+                if (subject ~ pattern) {
+                  item = subject
+                  sub(/^[a-z]+([(][^)]+[)])?!?:[[:space:]]*/, "", item)
+                  issue = ""
+                  text = subject "\n" body
+                  if (match(text, /(([Ff]ixes|[Cc]loses|[Rr]esolves|[Rr]efs)[[:space:]]+#[0-9]+)/)) {
+                    issue = " (" substr(text, RSTART, RLENGTH) ")"
+                  } else if (match(text, /#[0-9]+/)) {
+                    issue = " (" substr(text, RSTART, RLENGTH) ")"
+                  }
+                  lines[++count] = "- " item issue
+                }
+              }
+              END {
+                if (count > 0) {
+                  print "## " title
+                  print ""
+                  for (i = 1; i <= count; i++) {
+                    print lines[i]
+                  }
+                  print ""
+                }
+              }
+            ' commits.raw
+          }
+
+          {
+            echo "# Clashoo ${TAG}"
+            echo ""
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "_Changes since ${PREVIOUS_TAG} / 自 ${PREVIOUS_TAG} 以来的更新。_"
+            else
+              echo "_Initial release notes / 初始发布说明。_"
+            fi
+            echo ""
+            write_section "New Features / 新功能" '^feat([(][^)]+[)])?!?:'
+            write_section "Improvements / 改进" '^(perf|refactor)([(][^)]+[)])?!?:'
+            write_section "Bug Fixes / 问题修复" '^fix([(][^)]+[)])?!?:'
+            write_section "Build & Release / 构建与发布" '^(ci|build)([(][^)]+[)])?!?:'
+            write_section "Documentation / 文档" '^docs([(][^)]+[)])?!?:'
+            write_section "Maintenance / 维护" '^(chore|test)([(][^)]+[)])?!?:'
+            echo "## Packages / 安装包"
+            echo ""
+            echo "## 📦 SDK 24.10 · 稳定版 (IPK)"
+            echo ""
+            echo "| 架构 | clashoo | luci-app-clashoo |"
+            echo "| :--- | :--- | :--- |"
+            luci_ipk=$(ls dist/luci-app-clashoo_*_all.ipk 2>/dev/null | head -1)
+            luci_ipk_link=$( [ -n "$luci_ipk" ] && echo "[$(basename $luci_ipk)](${BASE}/$(basename $luci_ipk))" || echo "—" )
+            for arch in $ARCHS; do
+              f=$(ls dist/clashoo_*_${arch}.ipk 2>/dev/null | head -1)
+              link=$( [ -n "$f" ] && echo "[$(basename $f)](${BASE}/$(basename $f))" || echo "—" )
+              echo "| \`${arch}\` | ${link} | ${luci_ipk_link} |"
+            done
+
+            echo ""
+            echo "## 📦 SDK 25.12 · 稳定版 (APK)"
+            echo ""
+            echo "| 架构 | clashoo | luci-app-clashoo |"
+            echo "| :--- | :--- | :--- |"
+            for arch in $ARCHS; do
+              f_core=$(ls dist/clashoo-*-${arch}.apk 2>/dev/null | head -1)
+              f_luci=$(ls dist/luci-app-clashoo-*-${arch}.apk 2>/dev/null | head -1)
+              link_core=$( [ -n "$f_core" ] && echo "[$(basename $f_core)](${BASE}/$(basename $f_core))" || echo "—" )
+              link_luci=$( [ -n "$f_luci" ] && echo "[$(basename $f_luci)](${BASE}/$(basename $f_luci))" || echo "—" )
+              echo "| \`${arch}\` | ${link_core} | ${link_luci} |"
+            done
+          } > release_notes.md
+
+          cat release_notes.md
+
+      - name: Replace Existing Manual Release
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            gh release delete "$TAG" -R "$REPO" --yes --cleanup-tag
+          fi
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Release ${{ steps.meta.outputs.tag }}
+          body_path: release_notes.md
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          files: dist/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prune old releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Keep newest 6; exclude mihomo-src (hosts the pinned source tarball).
+          gh release list -R "$REPO" --limit 100 --json tagName,createdAt \
+            --jq 'map(select(.tagName != "mihomo-src")) | sort_by(.createdAt) | reverse | .[6:] | .[].tagName' > old_tags.txt
+          if [ ! -s old_tags.txt ]; then
+            echo "Releases <= 6, nothing to prune."
+            exit 0
+          fi
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            echo "Deleting release & tag: $tag"
+            gh release delete "$tag" -R "$REPO" --yes --cleanup-tag
+          done < old_tags.txt
+
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 3
+
+  upload_feed:
+    name: Upload Feed to B2
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ !cancelled() }}
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+          pattern: packages-*
+
+      - name: Organize feed structure
+        run: |
+          mkdir -p feed
+          for dir in artifacts/packages-sdk*; do
+            [ -d "$dir/feed" ] || continue
+            name=$(basename "$dir")
+            sdk=$(echo "$name" | sed 's/packages-sdk\([^-]*\)-.*/\1/')
+            arch=$(echo "$name" | sed 's/packages-sdk[^-]*-//')
+            # feed 结构与 dllkids 既有 setup.sh 对齐：<sdk>/<arch>/，
+            # apk/opkg 直接在该目录取 packages.adb / Packages.gz，不再嵌 feedname 子目录
+            target="feed/${sdk}/${arch}"
+            mkdir -p "$target"
+            cp -v "$dir/feed/"* "$target/" 2>/dev/null || true
+
+            core=""
+            luci=""
+            i18n=""
+
+            if ls "$target"/clashoo_*.ipk >/dev/null 2>&1; then
+              core=$(basename "$(ls "$target"/clashoo_*.ipk | sort -V | tail -1)")
+              luci=$(basename "$(ls "$target"/luci-app-clashoo_*.ipk 2>/dev/null | head -1)")
+              i18n=$(basename "$(ls "$target"/luci-i18n-clashoo-zh-cn_*.ipk 2>/dev/null | head -1)")
+            elif ls "$target"/clashoo-*.apk >/dev/null 2>&1; then
+              core=$(basename "$(ls "$target"/clashoo-*.apk | sort -V | tail -1)")
+              luci=$(basename "$(ls "$target"/luci-app-clashoo-*.apk 2>/dev/null | head -1)")
+              i18n=$(basename "$(ls "$target"/luci-i18n-clashoo-zh-cn-*.apk 2>/dev/null | head -1)")
+            fi
+
+            if [ -n "$core" ] && [ -n "$luci" ]; then
+              {
+                echo "core=$core"
+                echo "luci=$luci"
+                [ -n "$i18n" ] && echo "i18n=$i18n"
+              } > "$target/manifest-clashoo.txt"
+            fi
+          done
+          find feed -type f | sort
+
+      - name: Upload to Backblaze B2
+        env:
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: |
+          [ -z "$B2_KEY_ID" ] && { echo "No B2 credentials, skipping"; exit 0; }
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<EOF
+          [b2]
+          type = b2
+          account = ${B2_KEY_ID}
+          key = ${B2_APPLICATION_KEY}
+          hard_delete = true
+          EOF
+          # feed/ 为空时跳过，避免空目录把 B2 上已有产物全删
+          find feed -type f | grep -q . || { echo "feed empty, skip sync"; exit 0; }
+          rclone sync feed/ "b2:${B2_BUCKET}/openwrt-feed/clashoo/" \
+            --checksum \
+            --fast-list \
+            --transfers 8 \
+            --checkers 16
+
+      - name: Trigger unified feed aggregation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run aggregate-feed.yml -R "$GITHUB_REPOSITORY" --ref "${GITHUB_REF_NAME:-main}" || \
+            echo "Aggregate trigger failed; scheduled workflow will retry."

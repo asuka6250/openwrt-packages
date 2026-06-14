@@ -1,0 +1,118 @@
+name: Auto Bump Mihomo
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '18 2 * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  get_current_info:
+    runs-on: ubuntu-latest
+    outputs:
+      pkg_source_version: ${{ steps.info.outputs.pkg_source_version }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: info
+        id: info
+        run: |
+          echo "pkg_source_version=$(grep 'PKG_SOURCE_VERSION:=' clashoo/Makefile | cut -d '=' -f 2)" >> $GITHUB_OUTPUT
+
+  get_latest_info:
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.info.outputs.commit_sha }}
+      commit_date: ${{ steps.info.outputs.commit_date }}
+      short_sha: ${{ steps.info.outputs.short_sha }}
+    steps:
+      - name: checkout mihomo
+        uses: actions/checkout@v6
+        with:
+          repository: MetaCubeX/mihomo
+          ref: Alpha
+          path: mihomo
+
+      - name: info
+        id: info
+        run: |
+          sha=$(git -C mihomo rev-parse HEAD)
+          short_sha=$(git -C mihomo rev-parse --short HEAD)
+          commit_date=$(git -C mihomo log -1 --format=%cs | tr '-' '.')
+          echo "commit_sha=${sha}" >> $GITHUB_OUTPUT
+          echo "commit_date=${commit_date}" >> $GITHUB_OUTPUT
+          echo "short_sha=${short_sha}" >> $GITHUB_OUTPUT
+
+  update:
+    needs:
+      - get_current_info
+      - get_latest_info
+    if: needs.get_current_info.outputs.pkg_source_version != needs.get_latest_info.outputs.commit_sha
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build and host pinned source tarball
+        id: pack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.get_latest_info.outputs.commit_sha }}
+          SHORT_SHA: ${{ needs.get_latest_info.outputs.short_sha }}
+        run: |
+          # Regenerate the source tarball once and host it, so every build
+          # downloads the exact same bytes instead of repacking git locally
+          # (local tar/gzip versions produce different hashes — issue #18).
+          git clone --filter=blob:none --no-checkout https://github.com/MetaCubeX/mihomo.git mihomo-src
+          git -C mihomo-src checkout "$SHA"
+          subdir="clashoo-alpha-${SHORT_SHA}"
+          tarball="${subdir}.tar.gz"
+          ts=$(git -C mihomo-src log -1 --format='%ct' HEAD)
+          mkdir -p "pack/${subdir}"
+          git -C mihomo-src archive --format=tar HEAD | tar -x -f - -C "pack/${subdir}"
+          tar --numeric-owner --owner=0 --group=0 --mode=a-s --sort=name \
+            --mtime="@${ts}" -c -C pack "${subdir}" | gzip -nc > "${tarball}"
+          pkg_hash=$(sha256sum "${tarball}" | cut -d ' ' -f 1)
+          echo "pkg_hash=${pkg_hash}" >> $GITHUB_OUTPUT
+          # Upload the canonical tarball to the fixed mihomo-src release.
+          gh release upload mihomo-src "${tarball}" --repo "${{ github.repository }}" --clobber
+
+      - name: Update Makefile
+        run: |
+          sed -i "s/PKG_SHORT_SHA:=.*/PKG_SHORT_SHA:=${{ needs.get_latest_info.outputs.short_sha }}/" clashoo/Makefile
+          sed -i "s/PKG_COMMIT_DATE:=.*/PKG_COMMIT_DATE:=${{ needs.get_latest_info.outputs.commit_date }}/" clashoo/Makefile
+          # New upstream mihomo commit/date creates a new PKG_VERSION, so reset the OpenWrt package release.
+          sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" clashoo/Makefile
+          sed -i "s/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${{ needs.get_latest_info.outputs.commit_sha }}/" clashoo/Makefile
+          sed -i "s/PKG_HASH:=.*/PKG_HASH:=${{ steps.pack.outputs.pkg_hash }}/" clashoo/Makefile
+
+      - name: Commit, push and trigger release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add clashoo/Makefile
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "chore: bump mihomo to alpha-${{ needs.get_latest_info.outputs.short_sha }}"
+          # main 可能在 checkout 之后被其它推送推进，直接 push 会 non-fast-forward 失败。
+          # push 前 rebase 重试若干次（bump 仅改 clashoo/Makefile，rebase 到最新 main 不会冲突）。
+          pushed=0
+          for i in 1 2 3 4 5; do
+            if git push origin HEAD:main; then pushed=1; break; fi
+            echo "push 被拒（第 $i 次），拉取 rebase 后重试…"
+            git pull --rebase origin main || { echo "rebase 失败"; exit 1; }
+            sleep 3
+          done
+          [ "$pushed" = 1 ] || { echo "推送多次仍失败"; exit 1; }
+          # 新内核已推送，触发 release.yml 自动编译并发布
+          gh workflow run release.yml -f prerelease=false
