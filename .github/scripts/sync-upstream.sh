@@ -57,6 +57,8 @@ FULL_REPOS=(
     # ["https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git"]=""
     ["https://github.com/xianren78/luci-app-smartdns.git"]="" 
     ["https://github.com/eamonxg/luci-theme-shadcn.git"]=""
+    ["https://github.com/kenzok8/openwrt-daede.git"]=""
+    [https://github.com/kenzok8/openwrt-clashoo.git]=""
 )
 
 # ---------------------------------------------------
@@ -67,7 +69,7 @@ SPARSE_REPOS=(
     "immortalwrt/packages|openwrt-25.12|net/ua2f"
     "immortalwrt/immortalwrt|openwrt-25.12|package/emortal/cpufreq"
     "immortalwrt/luci|openwrt-25.12|applications/luci-app-ua2f applications/luci-app-arpbind applications/luci-app-cpufreq"
-    "sbwml/openwrt_helloworld||luci-app-ssr-plus dae daed luci-app-dae luci-app-daed lua-neturl dns2tcp"
+    "sbwml/openwrt_helloworld||luci-app-ssr-plus luci-app-dae luci-app-daed lua-neturl dns2tcp"
     "sbwml/openwrt_pkgs||bash-completion"
     "kiddin9/op-packages||lucky luci-app-lucky smartdns luci-theme-material3"
 )
