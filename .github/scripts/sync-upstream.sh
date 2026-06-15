@@ -39,10 +39,10 @@ FULL_REPOS=(
     ["https://github.com/jerrykuku/luci-theme-argon.git"]=""
     ["https://github.com/jerrykuku/luci-app-argon-config.git"]=""
     ["https://github.com/eamonxg/luci-theme-aurora.git"]=""
-    ["https://github.com/Openwrt-Passwall/openwrt-passwall.git"]=""
-    ["https://github.com/Openwrt-Passwall/openwrt-passwall2.git"]=""
-    ["https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git"]=""
-    ["https://github.com/nikkinikki-org/OpenWrt-nikki.git"]=""
+    # ["https://github.com/Openwrt-Passwall/openwrt-passwall.git"]=""
+    # ["https://github.com/Openwrt-Passwall/openwrt-passwall2.git"]=""
+    # ["https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git"]=""
+    # ["https://github.com/nikkinikki-org/OpenWrt-nikki.git"]=""
     ["https://github.com/nikkinikki-org/OpenWrt-momo.git"]=""
     ["https://github.com/sbwml/luci-app-quickfile.git"]=""
     ["https://github.com/sbwml/feeds_packages_net_nginx.git"]=""
@@ -57,7 +57,7 @@ FULL_REPOS=(
     # ["https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git"]=""
     ["https://github.com/xianren78/luci-app-smartdns.git"]="" 
     ["https://github.com/eamonxg/luci-theme-shadcn.git"]=""
-    ["https://github.com/kenzok8/openwrt-daede.git"]=""
+    # ["https://github.com/kenzok8/openwrt-daede.git"]=""
     [https://github.com/kenzok8/openwrt-clashoo.git]=""
 )
 
@@ -72,6 +72,11 @@ SPARSE_REPOS=(
     "sbwml/openwrt_helloworld||luci-app-ssr-plus luci-app-dae luci-app-daed lua-neturl dns2tcp"
     "sbwml/openwrt_pkgs||bash-completion"
     "kiddin9/op-packages||lucky luci-app-lucky smartdns luci-theme-material3"
+    "Openwrt-Passwall/openwrt-passwall||luci-app-passwall"
+    "Openwrt-Passwall/openwrt-passwall2||luci-app-passwall2"
+    "Openwrt-Passwall/openwrt-passwall-packages||chinadns-ng dns2socks geoview hysteria ipt2socks microsocks naiveproxy shadow-tls shadowsocks-rust shadowsocksr-libev simple-obfs sing-box tcping v2ray-geodata v2ray-plugin xray-core xray-plugin"
+    "kenzok8/openwrt-daede||dae daed luci-app-daede"
+    "nikkinikki-org/OpenWrt-nikki||nikki mihomo-alpha mihomo-meta luci-app-nikki"
 )
 
 get_remote_hash_safe() {
