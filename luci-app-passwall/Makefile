@@ -76,13 +76,13 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Haproxy
 config PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria
 	bool "Include Hysteria"
 	select PACKAGE_hysteria
-	default n
+	default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy
 	bool "Include NaiveProxy"
 	depends on !(arc||armeb||loongarch64||mips||mips64||powerpc||TARGET_gemini)
 	select PACKAGE_naiveproxy
-	default n
+	default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Client
 	bool "Include Shadowsocks Rust Client"
@@ -94,7 +94,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Server
 	bool "Include Shadowsocks Rust Server"
 	depends on !i386
 	select PACKAGE_shadowsocks-rust-ssserver
-	default n
+	default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Libev_Client
 	bool "Include ShadowsocksR Libev Client"
@@ -105,13 +105,13 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Libev_Client
 config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Libev_Server
 	bool "Include ShadowsocksR Libev Server"
 	select PACKAGE_shadowsocksr-libev-ssr-server
-	default n
+	default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Shadow_TLS
 	bool "Include Shadow-TLS"
 	select PACKAGE_shadow-tls
 	depends on aarch64||arm||x86_64
-	default n
+	default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Simple_Obfs
 	bool "Include Simple-Obfs (Shadowsocks Plugin)"
@@ -127,7 +127,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_V2ray_Geodata
 	bool "Include V2ray_Geodata"
 	select PACKAGE_v2ray-geoip
 	select PACKAGE_v2ray-geosite
-	default n
+	default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_V2ray_Plugin
 	bool "Include V2ray-Plugin (Shadowsocks Plugin)"
@@ -143,7 +143,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Xray
 config PACKAGE_$(PKG_NAME)_INCLUDE_Xray_Plugin
 	bool "Include Xray-Plugin (Shadowsocks Plugin)"
 	select PACKAGE_xray-plugin
-	default n
+	default y
 
 endmenu
 endef
