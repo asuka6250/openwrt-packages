@@ -1,6 +1,7 @@
 #!/bin/sh
 
 [ -x /etc/init.d/lanspeedd ] || exit 0
+[ "$INTERFACE" = "wan6" ] && exit 0
 
 case "$ACTION" in
 	ifup)
