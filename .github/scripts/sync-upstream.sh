@@ -18,8 +18,13 @@ mkdir -p "$STATE_DIR"
 # Initialize the whitelist
 # ---------------------------------------------------
 WHITELIST_FILE="$TARGET_DIR/.github/scripts/plugin_whitelist.txt"
+USER_WHITELIST_FILE="$TARGET_DIR/.github/scripts/user_whitelist.txt" 
+
 if [ ! -f "$WHITELIST_FILE" ]; then
     touch "$WHITELIST_FILE"
+fi
+if [ ! -f "$USER_WHITELIST_FILE" ]; then # 
+    touch "$USER_WHITELIST_FILE"
 fi
 
 SUMMARY_FILE="$STATE_DIR/sync_summary.txt"
@@ -58,7 +63,7 @@ FULL_REPOS=(
     ["https://github.com/xianren78/luci-app-smartdns.git"]="" 
     ["https://github.com/eamonxg/luci-theme-shadcn.git"]=""
     # ["https://github.com/kenzok8/openwrt-daede.git"]=""
-    [https://github.com/kenzok8/openwrt-clashoo.git]=""
+    ["https://github.com/kenzok8/openwrt-clashoo.git"]=""
 )
 
 # ---------------------------------------------------
@@ -130,6 +135,11 @@ cd "$TARGET_DIR"
 for folder in *; do
     if [ -d "$folder" ] && [[ ! "$folder" =~ ^\. ]] && [ "$folder" != ".github" ] && [ "$folder" != "scripts" ] && [ "$folder" != "packages" ]; then
         
+        if grep -Fxq "$folder" "$USER_WHITELIST_FILE" 2>/dev/null; then
+            echo "👑 Protected by USER whitelist: $folder (Skipping cleanup)"
+            continue
+        fi
+
         if grep -Fxq "$folder" "$WHITELIST_FILE" 2>/dev/null; then
             echo "🛡️  Protected by whitelist: $folder (Skipping cleanup)"
             continue
