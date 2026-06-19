@@ -71,7 +71,7 @@ SPARSE_REPOS=(
     "immortalwrt/luci|openwrt-25.12|applications/luci-app-ua2f applications/luci-app-arpbind applications/luci-app-cpufreq"
     "sbwml/openwrt_helloworld||luci-app-ssr-plus luci-app-dae luci-app-daed lua-neturl dns2tcp"
     "sbwml/openwrt_pkgs||bash-completion"
-    "kiddin9/op-packages||lucky luci-app-lucky luci-theme-material3"
+    "kiddin9/op-packages||lucky luci-app-lucky luci-theme-material3 smartdns"
     "Openwrt-Passwall/openwrt-passwall||luci-app-passwall"
     "Openwrt-Passwall/openwrt-passwall2||luci-app-passwall2"
     "Openwrt-Passwall/openwrt-passwall-packages||chinadns-ng dns2socks geoview hysteria ipt2socks microsocks naiveproxy shadow-tls shadowsocks-rust shadowsocksr-libev simple-obfs sing-box tcping v2ray-geodata v2ray-plugin xray-core xray-plugin"
