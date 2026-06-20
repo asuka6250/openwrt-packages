@@ -11,16 +11,6 @@
 
 @custom-variant dark (&:where([data-darkmode=true], [data-darkmode=true] *));
 
-@theme inline {
-  --color-primary:          var(--primary);
-  --color-background:       var(--background);
-  --color-foreground:       var(--foreground);
-  --color-muted:            var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-border:           var(--border);
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-}
-
 @layer base {
   html {
     @apply font-sans text-sm;
@@ -61,12 +51,24 @@
   animation: slideRightIn 0.6s ease forwards;
 }
 
-.animate-delay-100 { animation-delay: 0.1s; }
-.animate-delay-200 { animation-delay: 0.2s; }
-.animate-delay-300 { animation-delay: 0.3s; }
-.animate-delay-400 { animation-delay: 0.4s; }
-.animate-delay-500 { animation-delay: 0.5s; }
-.animate-delay-600 { animation-delay: 0.6s; }
+.animate-delay-100 {
+  animation-delay: 0.1s;
+}
+.animate-delay-200 {
+  animation-delay: 0.2s;
+}
+.animate-delay-300 {
+  animation-delay: 0.3s;
+}
+.animate-delay-400 {
+  animation-delay: 0.4s;
+}
+.animate-delay-500 {
+  animation-delay: 0.5s;
+}
+.animate-delay-600 {
+  animation-delay: 0.6s;
+}
 
 /* ── Layout ── */
 
@@ -88,13 +90,13 @@
 /* ── Brand block ── */
 
 .login-brand {
-  @apply flex flex-col gap-2 mb-7;
+  @apply mb-7 flex flex-col gap-2;
 }
 
 .login-logo {
-  @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl overflow-hidden;
-  border: 1px solid oklch(from var(--primary) l c h / 0.2);
-  background-color: oklch(from var(--primary) l c h / 0.1);
+  @apply flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl;
+  border: 1px solid var(--primary-a20);
+  background-color: var(--primary-a10);
 
   img {
     @apply h-full w-full;
@@ -116,7 +118,7 @@
 }
 
 .login-divider {
-  @apply border-0 mb-7;
+  @apply mb-7 border-0;
   height: 1px;
   background-color: var(--border);
   clip-path: ellipse(44% 50% at 50% 50%);
@@ -126,8 +128,8 @@
 
 .login-error {
   @apply mb-4 rounded-2xl border px-4 py-3 text-sm;
-  border-color: oklch(from var(--destructive) l c h / 0.3);
-  background-color: oklch(from var(--destructive) l c h / 0.08);
+  border-color: var(--destructive-a30);
+  background-color: var(--destructive-a8);
   color: var(--destructive);
 }
 
@@ -144,12 +146,12 @@
 .login-input-glass {
   @apply relative rounded-2xl border transition-colors;
   border-color: var(--border);
-  background-color: oklch(from var(--foreground) l c h / 0.05);
+  background-color: var(--foreground-a5);
   backdrop-filter: blur(4px);
 
   &:focus-within {
-    border-color: oklch(from var(--primary) l c h / 0.7);
-    background-color: oklch(from var(--primary) l c h / 0.1);
+    border-color: var(--primary-a70);
+    background-color: var(--primary-a10);
   }
 }
 
@@ -162,7 +164,7 @@
 }
 
 .login-input-glass input {
-  @apply w-full bg-transparent py-3.5 pl-9 pr-10 text-sm;
+  @apply w-full bg-transparent py-3.5 pr-10 pl-9 text-sm;
   color: var(--foreground);
 
   &::placeholder {
@@ -201,7 +203,7 @@
 /* ── Footer ── */
 
 .login-footer {
-  @apply absolute bottom-5 left-0 right-0 px-6 text-center text-xs;
+  @apply absolute right-0 bottom-5 left-0 px-6 text-center text-xs;
   color: var(--muted-foreground);
 
   a {
@@ -228,4 +230,3 @@
     linear-gradient(160deg, oklch(18% 0.12 255) 0%, oklch(10% 0.04 270) 100%)
   );
 }
-

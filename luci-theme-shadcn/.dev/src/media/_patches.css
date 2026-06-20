@@ -14,16 +14,22 @@
 #file-manager-container {
   @apply overflow-auto;
 
-  #status-bar { @apply border-0 bg-background; }
+  #status-bar {
+    @apply bg-background border-0;
+  }
 }
 
 /* luci-app-openclash */
 [data-page="admin-services-openclash-config"] {
-  .sub_div img { @apply h-5 w-5; }
+  .sub_div img {
+    @apply h-5 w-5;
+  }
 }
 
 [data-page="admin-services-openclash-settings"] {
-  .cbi-value-field .cbi-input-select { @apply w-full; }
+  .cbi-value-field .cbi-input-select {
+    @apply w-full;
+  }
 }
 
 /* luci-app-statistics */
@@ -35,14 +41,52 @@
 .Dashboard {
   > .section-content {
     .dashboard-bg {
-      &.tr { @apply rounded-none; }
+      &.tr {
+        @apply rounded-none;
+      }
       @apply bg-panel-bg;
-      &:not(.tr) { @apply border border-panel-border shadow-sm; }
+      &:not(.tr) {
+        @apply border-panel-border border shadow-sm;
+      }
     }
 
     .title {
-      img[src*=".svg"] { @apply dark:invert; }
-      h3 { @apply border-0 pb-3 text-foreground; }
+      img[src*=".svg"] {
+        @apply dark:invert;
+      }
+      h3 {
+        @apply text-foreground border-0 pb-3;
+      }
     }
   }
+}
+
+/* Lucide SVGs as <img> ship with black strokes; parent color does not apply */
+.card-header img,
+.login-input-icon img,
+img.shadcn-icon {
+  filter: brightness(0) saturate(100%);
+  opacity: 0.65;
+}
+
+html[data-darkmode="true"] .card-header img,
+html[data-darkmode="true"] .login-input-icon img {
+  filter: brightness(0) saturate(100%) invert(1);
+}
+
+#sidebar img.shadcn-icon {
+  filter: brightness(0) saturate(100%);
+  opacity: 0.65;
+}
+
+html[data-darkmode="true"] #sidebar img.shadcn-icon {
+  filter: brightness(0) saturate(100%) invert(1);
+  opacity: 0.7;
+}
+
+.card-header button:hover img,
+#sidebar .sidebar-nav-item.active img,
+#sidebar .sidebar-accordion-item.active img,
+#sidebar .sidebar-nav-parent:hover img {
+  opacity: 1;
 }

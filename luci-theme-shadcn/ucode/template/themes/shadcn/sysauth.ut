@@ -28,7 +28,7 @@
 			<form method="post" class="login-form">
 				{% if (fuser): %}
 				<div class="login-error animate-element animate-delay-200">
-					{{ _('Invalid username or password') }}
+					{{ _('Invalid username and/or password! Please try again.') }}
 				</div>
 				{% endif %}
 
@@ -63,7 +63,7 @@
 							placeholder="{{ _('Password') }}"
 							autocomplete="current-password"
 						>
-						<button type="button" class="login-pw-toggle" id="pw-toggle" aria-label="{{ _('Toggle password') }}">
+						<button type="button" class="login-pw-toggle" id="pw-toggle" aria-label="{{ _('Reveal/hide password') }}">
 							<img src="{{ media }}/icons/eye.svg" id="pw-toggle-icon" width="16" height="16" alt="">
 						</button>
 					</div>
@@ -72,7 +72,7 @@
 				<input type="hidden" name="luci_magic" value="{{ luci_magic }}">
 
 				<button type="submit" class="login-submit animate-element animate-delay-500">
-					{{ _('Sign In') }}
+					{{ _('Log in') }}
 				</button>
 			</form>
 		</div>
