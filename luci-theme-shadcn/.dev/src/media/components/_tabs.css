@@ -1,7 +1,7 @@
 @layer components {
   /* shadcn Tabs (default) — LuCI tab sections */
   .cbi-tabmenu {
-    @apply mb-2 inline-flex h-9 w-fit max-w-full items-center justify-center gap-0 overflow-x-auto rounded-lg bg-muted p-[3px] text-muted-foreground;
+    @apply mb-2 inline-flex min-h-9 w-fit max-w-full items-center justify-center gap-0 overflow-x-auto rounded-lg bg-muted p-[3px] text-muted-foreground;
 
     li {
       @apply relative m-0 min-w-fit shrink-0 list-none;

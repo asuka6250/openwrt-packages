@@ -12,7 +12,7 @@
     @apply inline-flex items-center gap-1 overflow-visible rounded-full border border-secondary bg-secondary px-1 py-1 text-sm font-medium text-secondary-foreground transition-colors duration-200;
 
     &[style*="--zone-color-rgb"] {
-      @apply bg-[rgb(var(--zone-color-rgb)/.7)]!;
+      @apply bg-[rgb(var(--zone-color-rgb),.7)]!;
     }
 
     .cbi-dropdown & {
