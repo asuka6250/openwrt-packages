@@ -6,4 +6,4 @@ if [ -f "$TARGET_FILE" ]; then
 fi
 
 sed -i 's/ifup|ifupdate)/ifup)/g' luci-app-lanspeed/net/lanspeedd/files/etc/hotplug.d/iface/90-lanspeedd
-sed -i '/\[ -x \/etc\/init.d\/lanspeedd \]/a [ "$INTERFACE" = "wan6" ] && exit 0' luci-app-lanspeed/net/lanspeedd/files/etc/hotplug.d/iface/90-lanspeedd
+# sed -i '/\[ -x \/etc\/init.d\/lanspeedd \]/a [ "$INTERFACE" = "wan6" ] && exit 0' luci-app-lanspeed/net/lanspeedd/files/etc/hotplug.d/iface/90-lanspeedd
