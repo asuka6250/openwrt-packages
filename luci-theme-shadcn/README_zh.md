@@ -2,6 +2,7 @@
 <p align="center">
     <img src="https://raw.githubusercontent.com/eamonxg/assets/master/shadcn/logo/logo-lockup.png" width="360" alt="Shadcn LuCI Theme"/>
 </p>
+<p align="center"><sub><em>Logo 其实就是 shadcn/ui 的标志，我顺手划了一道斜线，让它看起来更像 Wi-Fi 信号一点（眯起眼睛、侧着头看，大概是吧，哈哈）。</em></sub></p>
 <p align="center"><strong>一款基于 shadcn/ui 设计语言构建的现代侧边栏 OpenWrt LuCI 主题。</strong></p>
 <h4 align="center">🗂️ 侧边栏布局 | 🌗 深色/浅色模式 | 📱 移动端抽屉</h4>
 <div align="center">
@@ -40,13 +41,13 @@ OpenWrt 25.12+ 及 Snapshot 版本使用 `apk`；旧版本使用 `opkg`。
 - **opkg** (OpenWrt < 25.12)：
 
   ```sh
-  cd /tmp && uclient-fetch -O luci-theme-shadcn.ipk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn_0.1.0-r20260520_all.ipk && opkg install luci-theme-shadcn.ipk
+  cd /tmp && uclient-fetch -O luci-theme-shadcn.ipk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn_0.2.0-r20260621_all.ipk && opkg install luci-theme-shadcn.ipk
   ```
 
 - **apk** (OpenWrt 25.12+ 及 snapshots)：
 
   ```sh
-  cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.1.0-r20260520.apk && apk add --allow-untrusted luci-theme-shadcn.apk
+  cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.2.0-r20260621.apk && apk add --allow-untrusted luci-theme-shadcn.apk
   ```
 
 ## 许可与致谢
@@ -55,7 +56,7 @@ OpenWrt 25.12+ 及 Snapshot 版本使用 `apk`；旧版本使用 `opkg`。
 
 - [shadcn/ui](https://github.com/shadcn-ui/ui) — 组件美学、设计 token 与交互模式
 - [Lucide](https://github.com/lucide-icons/lucide) — 图标库
-- [Linear](https://linear.app) — 布局与排版灵感
+- [Linear](https://linear.app) — 色彩系统灵感
 - [Vite](https://vite.dev/) 和 [Tailwind CSS](https://tailwindcss.com/)
 - [luci-theme-bootstrap](https://github.com/openwrt/luci/tree/master/themes/luci-theme-bootstrap) — 模板结构与 LuCI 集成参考
 - [Claude Code](https://claude.ai/code)

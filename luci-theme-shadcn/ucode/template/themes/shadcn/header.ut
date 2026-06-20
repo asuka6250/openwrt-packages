@@ -18,6 +18,8 @@
 <html lang="{{ dispatcher.lang }}" data-shadcn-media="{{ media }}">
 	<head>
 		<meta charset="utf-8">
+		<meta name="theme-color" content="#f9fafd" media="(prefers-color-scheme: light)">
+		<meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
 		<title>{{ striptags(((boardinfo && boardinfo.hostname) ? boardinfo.hostname : '?') + ((dispatched && dispatched.title) ? (' | ' + _(dispatched.title)) : '')) }}</title>
 		<script>
 			(function () {

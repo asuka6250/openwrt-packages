@@ -31,4 +31,5 @@
 @import "./components/_form.css";
 @import "./components/_tabs.css";
 @import "./_utilities.css";
+@import "./_shared.css";
 @import "./_patches.css";

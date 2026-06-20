@@ -2,6 +2,7 @@
 <p align="center">
     <img src="https://raw.githubusercontent.com/eamonxg/assets/master/shadcn/logo/logo-lockup.png" width="360" alt="Shadcn LuCI Theme"/>
 </p>
+<p align="center"><sub><em>The logo is really just shadcn/ui's mark — I slipped a diagonal line across it to make it look a bit more like a Wi-Fi signal (squint, tilt your head — yeah, sort of, heh).</em></sub></p>
 <p align="center"><strong>A modern sidebar LuCI theme for OpenWrt, built with shadcn/ui design language.</strong></p>
 <h4 align="center">🗂️ Sidebar Layout | 🌗 Dark / Light Mode | 📱 Mobile Drawer</h4>
 <div align="center">
@@ -40,13 +41,13 @@ OpenWrt 25.12+ and snapshots use `apk`; older versions use `opkg`.
 - **opkg** (OpenWrt < 25.12):
 
   ```sh
-  cd /tmp && uclient-fetch -O luci-theme-shadcn.ipk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn_0.1.0-r20260520_all.ipk && opkg install luci-theme-shadcn.ipk
+  cd /tmp && uclient-fetch -O luci-theme-shadcn.ipk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn_0.2.0-r20260621_all.ipk && opkg install luci-theme-shadcn.ipk
   ```
 
 - **apk** (OpenWrt 25.12+ and snapshots):
 
   ```sh
-  cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.1.0-r20260520.apk && apk add --allow-untrusted luci-theme-shadcn.apk
+  cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.2.0-r20260621.apk && apk add --allow-untrusted luci-theme-shadcn.apk
   ```
 
 ## License & Acknowledgments
@@ -55,7 +56,7 @@ OpenWrt 25.12+ and snapshots use `apk`; older versions use `opkg`.
 
 - [shadcn/ui](https://github.com/shadcn-ui/ui) — component aesthetics, tokens, and interaction patterns
 - [Lucide](https://github.com/lucide-icons/lucide) — icons
-- [Linear](https://linear.app) — layout and typography inspiration
+- [Linear](https://linear.app) — color system inspiration
 - [Vite](https://vite.dev/) and [Tailwind CSS](https://tailwindcss.com/)
 - [luci-theme-bootstrap](https://github.com/openwrt/luci/tree/master/themes/luci-theme-bootstrap) — template structure and LuCI integration patterns
 - [Claude Code](https://claude.ai/code)

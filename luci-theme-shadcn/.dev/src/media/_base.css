@@ -7,7 +7,7 @@
     @apply bg-background text-foreground scrollbar-thumb-rounded-full scrollbar-thumb-foreground-a30 scrollbar-thin scrollbar-track-transparent font-sans text-sm;
 
     body {
-      @apply flex h-screen overflow-hidden;
+      @apply flex h-screen overflow-hidden supports-[height:100dvh]:h-dvh;
 
       &.modal-overlay-active {
         @apply overflow-hidden;

@@ -8,14 +8,13 @@
 @import "tw-animate-css";
 @import "./inter.css";
 @import "./_tokens.css";
+@import "./_shared.css";
 
 @custom-variant dark (&:where([data-darkmode=true], [data-darkmode=true] *));
 
 @layer base {
   html {
-    @apply font-sans text-sm;
-    background-color: var(--background);
-    color: var(--foreground);
+    @apply bg-background text-foreground font-sans text-sm;
   }
 }
 
@@ -79,8 +78,7 @@
 /* ── Form panel (left) ── */
 
 .login-form-panel {
-  @apply relative flex flex-1 flex-col items-center justify-center px-8 pt-12 pb-16;
-  background-color: var(--background);
+  @apply bg-background relative flex flex-1 flex-col items-center justify-center px-8 pt-12 pb-16;
 }
 
 .login-form-wrap {
@@ -94,9 +92,7 @@
 }
 
 .login-logo {
-  @apply flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl;
-  border: 1px solid var(--primary-a20);
-  background-color: var(--primary-a10);
+  @apply border-primary-a20 bg-primary-a10 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border;
 
   img {
     @apply h-full w-full;
@@ -108,29 +104,22 @@
 }
 
 .login-hostname {
-  @apply text-3xl font-semibold tracking-tight;
-  color: var(--foreground);
+  @apply text-foreground text-3xl font-semibold tracking-tight;
 }
 
 .login-subtitle {
-  @apply text-xs font-medium tracking-widest uppercase;
-  color: var(--muted-foreground);
+  @apply text-muted-foreground text-xs font-medium tracking-widest uppercase;
 }
 
 .login-divider {
-  @apply mb-7 border-0;
-  height: 1px;
-  background-color: var(--border);
+  @apply bg-border mb-7 h-px border-0;
   clip-path: ellipse(44% 50% at 50% 50%);
 }
 
 /* ── Form elements ── */
 
 .login-error {
-  @apply mb-4 rounded-2xl border px-4 py-3 text-sm;
-  border-color: var(--destructive-a30);
-  background-color: var(--destructive-a8);
-  color: var(--destructive);
+  @apply border-destructive-a30 bg-destructive-a8 text-destructive mb-4 rounded-2xl border px-4 py-3 text-sm;
 }
 
 .login-field {
@@ -138,20 +127,20 @@
 }
 
 .login-label {
-  @apply mb-1.5 block text-sm font-medium;
-  color: var(--muted-foreground);
+  @apply text-muted-foreground mb-1.5 block text-sm font-medium;
 }
 
 /* Glass input wrapper — matches sign-in.tsx GlassInputWrapper */
 .login-input-glass {
-  @apply relative rounded-2xl border transition-colors;
-  border-color: var(--border);
-  background-color: var(--foreground-a5);
+  @apply border-border bg-foreground-a5 relative rounded-2xl border transition-colors;
   backdrop-filter: blur(4px);
 
   &:focus-within {
-    border-color: var(--primary-a70);
-    background-color: var(--primary-a10);
+    @apply border-primary-a70 bg-primary-a10;
+  }
+
+  input {
+    @apply text-foreground placeholder:text-muted-foreground w-full bg-transparent py-3.5 pr-10 pl-9 text-sm focus:outline-none;
   }
 }
 
@@ -163,23 +152,8 @@
   }
 }
 
-.login-input-glass input {
-  @apply w-full bg-transparent py-3.5 pr-10 pl-9 text-sm;
-  color: var(--foreground);
-
-  &::placeholder {
-    color: var(--muted-foreground);
-  }
-
-  &:focus {
-    @apply outline-none;
-  }
-}
-
 .login-pw-toggle {
-  @apply absolute inset-y-0 right-0 flex cursor-pointer items-center px-3;
-  background: none;
-  border: none;
+  @apply absolute inset-y-0 right-0 flex cursor-pointer items-center border-0 bg-transparent px-3;
 
   img {
     @apply h-4 w-4 opacity-40 transition-opacity;
@@ -191,28 +165,16 @@
 }
 
 .login-submit {
-  @apply mt-2 w-full cursor-pointer rounded-2xl border-0 py-3.5 text-sm font-medium transition-colors;
-  background-color: var(--primary);
-  color: var(--primary-foreground);
-
-  &:hover {
-    background-color: var(--primary-hover);
-  }
+  @apply bg-primary text-primary-foreground hover:bg-primary-hover mt-2 w-full cursor-pointer rounded-2xl border-0 py-3.5 text-sm font-medium transition-colors;
 }
 
 /* ── Footer ── */
 
 .login-footer {
-  @apply absolute right-0 bottom-5 left-0 px-6 text-center text-xs;
-  color: var(--muted-foreground);
+  @apply text-muted-foreground absolute right-0 bottom-5 left-0 px-6 text-center text-xs;
 
   a {
-    color: var(--muted-foreground);
-    @apply underline underline-offset-2 transition-colors;
-
-    &:hover {
-      color: var(--foreground);
-    }
+    @apply text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors;
   }
 }
 

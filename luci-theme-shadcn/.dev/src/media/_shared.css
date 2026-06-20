@@ -1,0 +1,25 @@
+/**
+ * luci-theme-shadcn: rules shared by both build entries
+ * Copyright 2025 eamonxg <eamonxiong@gmail.com>
+ * Licensed to the public under the Apache License 2.0.
+ *
+ * main.css and login.css are separate build entries; anything they both need
+ * lives here so it is written once and imported by each.
+ */
+
+/* Lucide icons loaded via <img>: <img>-embedded SVGs render with black strokes
+   and ignore the parent's `color`, so flatten them to a single tone and invert
+   for dark mode (per-context opacity stays in each stylesheet). */
+.card-header img,
+.login-input-icon img,
+.login-pw-toggle img,
+img.shadcn-icon {
+  filter: brightness(0) saturate(100%);
+}
+
+html[data-darkmode="true"] .card-header img,
+html[data-darkmode="true"] .login-input-icon img,
+html[data-darkmode="true"] .login-pw-toggle img,
+html[data-darkmode="true"] img.shadcn-icon {
+  filter: brightness(0) saturate(100%) invert(1);
+}
