@@ -60,7 +60,6 @@
 
 		<div
 			id="sidebar"
-			style="display:none"
 			data-media="{{ media }}"
 			data-hostname="{{ entityencode(striptags((boardinfo && boardinfo.hostname) ? boardinfo.hostname : 'Shadcn'), true) }}"
 		></div>

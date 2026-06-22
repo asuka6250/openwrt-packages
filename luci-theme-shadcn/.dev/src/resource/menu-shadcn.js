@@ -152,8 +152,6 @@ return baseclass.extend({
     sidebar.appendChild(
       E("div", { class: "sidebar-footer", id: "sidebar-footer", hidden: "" }),
     );
-
-    sidebar.style.removeProperty("display");
   },
 
   render(tree) {
@@ -162,7 +160,6 @@ return baseclass.extend({
 
     this.renderSidebarNav(branch, branchUrl);
     this.renderBreadcrumb(branch, branchUrl);
-    this.restoreActiveAccordion(dp[1] || "");
 
     const tab = document.getElementById("tabmenu");
     if (tab) {
@@ -271,7 +268,7 @@ return baseclass.extend({
         "div",
         {
           class: "sidebar-accordion-item" + (isActive ? " active" : ""),
-          "data-open": "false",
+          "data-open": isActive ? "true" : "false",
           "data-section": section.name,
         },
         [
@@ -284,7 +281,7 @@ return baseclass.extend({
               this._iconFile("chevron-down", 18),
             ]),
           ]),
-          E("div", { class: "sidebar-accordion-sub", style: "max-height:0;" }, [
+          E("div", { class: "sidebar-accordion-sub" }, [
             E(
               "ul",
               { class: "sidebar-sub-list" },
@@ -393,20 +390,6 @@ return baseclass.extend({
       this.renderTabMenu(activeNode, url + "/" + activeNode.name, l);
 
     return ul;
-  },
-
-  restoreActiveAccordion(activeSection) {
-    if (!activeSection) return;
-    const item = document.querySelector(
-      '.sidebar-accordion-item[data-section="' +
-        String(activeSection).replace(/\\/g, "\\\\").replace(/"/g, '\\"') +
-        '"]',
-    );
-    if (!item) return;
-    const sub = item.querySelector(".sidebar-accordion-sub");
-    if (!sub) return;
-    item.setAttribute("data-open", "true");
-    sub.style.maxHeight = sub.scrollHeight + "px";
   },
 
   initUciIndicator() {

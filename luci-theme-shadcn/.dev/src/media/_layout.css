@@ -31,7 +31,7 @@ html[data-sidebar-collapsed="true"] #sidebar {
   }
 
   .sidebar-accordion-sub {
-    @apply md:!max-h-0;
+    @apply md:!hidden;
   }
 }
 
@@ -118,8 +118,21 @@ html[data-sidebar-collapsed="true"] #sidebar {
   }
 }
 
+/* Grid 0fr↔1fr accordion: animates to the content's real height with no JS
+   measurement (no scrollHeight reflow) and no first-paint flash — the active
+   section renders with data-open="true", so grid-template-rows starts at 1fr
+   and a transition never fires on initial style resolution. The inner row needs
+   min-height:0 + overflow:hidden so it can collapse below its content height. */
 .sidebar-accordion-sub {
-  @apply overflow-hidden transition-all duration-200;
+  @apply grid grid-rows-[0fr] transition-[grid-template-rows] duration-200;
+
+  > * {
+    @apply min-h-0 overflow-hidden;
+  }
+}
+
+.sidebar-accordion-item[data-open="true"] > .sidebar-accordion-sub {
+  @apply grid-rows-[1fr];
 }
 
 .sidebar-sub-list {

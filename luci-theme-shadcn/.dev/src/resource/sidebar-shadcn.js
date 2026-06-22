@@ -249,17 +249,11 @@ return baseclass.extend({
   },
 
   _openAccordionItem(item) {
-    const sub = item.querySelector(".sidebar-accordion-sub");
-    if (!sub) return;
     item.setAttribute("data-open", "true");
-    sub.style.maxHeight = sub.scrollHeight + "px";
   },
 
   _closeAccordionItem(item) {
-    const sub = item.querySelector(".sidebar-accordion-sub");
-    if (!sub) return;
     item.setAttribute("data-open", "false");
-    sub.style.maxHeight = "0";
   },
 
   /* ── Mobile drawer ── */
