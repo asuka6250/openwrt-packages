@@ -32,7 +32,7 @@
 
 - **OpenWrt**: Requires OpenWrt 23.05.0 or later (ucode templates + LuCI JavaScript APIs).
 
-## Installation
+## Install a pre-built release
 
 OpenWrt 25.12+ and snapshots use `apk`; older versions use `opkg`.
 
@@ -49,6 +49,46 @@ OpenWrt 25.12+ and snapshots use `apk`; older versions use `opkg`.
   ```sh
   cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.2.0-r20260621.apk && apk add --allow-untrusted luci-theme-shadcn.apk
   ```
+
+## Build from source
+
+Build the package yourself with the OpenWrt build system. Host prerequisites: [Build system setup](https://openwrt.org/docs/guide-developer/toolchain/install-buildsystem). The build writes the package to `bin/packages/<arch>/base/` (e.g. `bin/packages/x86_64/base/luci-theme-shadcn_*_all.ipk`); copy it to your router and install it as above.
+
+### Via the OpenWrt buildroot
+
+```sh
+# Clone OpenWrt — the openwrt-24.10 branch builds an .ipk, the main branch builds an .apk
+git clone https://github.com/openwrt/openwrt.git
+cd openwrt
+git checkout openwrt-24.10       # omit to stay on main (snapshots → .apk)
+
+# Add this package and install feeds (provides luci-base)
+git clone https://github.com/eamonxg/luci-theme-shadcn.git package/luci-theme-shadcn
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+# Select the theme in menuconfig: LuCI → Themes → luci-theme-shadcn
+make menuconfig
+
+# Build host tools + toolchain, then compile the package
+make tools/install -j$(nproc)
+make toolchain/install -j$(nproc)
+make package/luci-theme-shadcn/compile -j$(nproc) V=s
+```
+
+### Via the prebuilt SDK (faster)
+
+The [OpenWrt SDK](https://openwrt.org/docs/guide-developer/toolchain/using_the_sdk) bundles a prebuilt toolchain, so the `tools/install` / `toolchain/install` steps are skipped. Download the SDK for your target from [downloads.openwrt.org](https://downloads.openwrt.org) (a release SDK builds `.ipk`, a snapshot SDK builds `.apk`), extract it, then from the SDK directory:
+
+```sh
+git clone https://github.com/eamonxg/luci-theme-shadcn.git package/luci-theme-shadcn
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+# Select the theme in menuconfig: LuCI → Themes → luci-theme-shadcn
+make menuconfig
+make package/luci-theme-shadcn/compile -j$(nproc) V=s
+```
 
 ## License & Acknowledgments
 
