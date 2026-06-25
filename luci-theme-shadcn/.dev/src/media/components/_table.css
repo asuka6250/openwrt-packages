@@ -36,28 +36,28 @@
         &:not([data-title]) {
           .th,
           .td {
-            @apply first:rounded-tl-lg;
+            @apply md:first:rounded-tl-lg;
           }
         }
         .th,
         .td {
-          @apply last:rounded-tr-lg;
+          @apply md:last:rounded-tr-lg;
         }
       }
 
       &:last-child {
         &[data-title] {
-          @apply before:rounded-bl-lg before:border-b-0;
+          @apply before:border-b-0 md:before:rounded-bl-lg;
         }
         .td {
-          @apply border-b-0 first:rounded-bl-lg last:rounded-br-lg;
+          @apply border-b-0 md:first:rounded-bl-lg md:last:rounded-br-lg;
         }
       }
 
       &.table-titles,
       &.cbi-section-table-titles,
       &.cbi-section-table-descr {
-        @apply hidden;
+        @apply max-md:hidden;
       }
 
       &.cbi-rowstyle-1 {
@@ -133,23 +133,6 @@
       tr,
       .tr {
         @apply border-border flex flex-wrap border-b px-2 py-2;
-        &.table-titles,
-        &.cbi-section-table-titles,
-        &.cbi-section-table-descr {
-          @apply hidden;
-        }
-        &:first-child:not(
-            .table-titles,
-            .cbi-section-table-titles,
-            .cbi-section-table-descr
-          ),
-        &.table-titles + .tr,
-        &.cbi-section-table-titles + .tr {
-          @apply rounded-t-lg;
-        }
-        &:last-child {
-          @apply rounded-b-lg;
-        }
       }
 
       th,

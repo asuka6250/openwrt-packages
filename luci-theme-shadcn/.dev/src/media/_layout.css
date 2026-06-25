@@ -136,7 +136,13 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-sub-list {
-  @apply border-sidebar-border ml-4 list-none border-l py-1 pl-2;
+  @apply border-sidebar-border ml-4 list-none py-1 pl-2;
+}
+
+.sidebar-accordion-item[data-open="true"]
+  > .sidebar-accordion-sub
+  .sidebar-sub-list {
+  @apply border-l;
 }
 
 .sidebar-sub-item {
@@ -375,12 +381,13 @@ span[data-indicator] {
   }
 
   .zone-forwards {
-    @apply flex items-start gap-3 leading-relaxed;
+    @apply flex flex-nowrap items-stretch gap-2 leading-relaxed;
     > span {
-      @apply text-muted-foreground mt-1.5;
+      @apply text-muted-foreground flex shrink-0 basis-8 items-center justify-center self-center;
     }
+    .zone-src,
     .zone-dest {
-      @apply flex flex-col items-start gap-2;
+      @apply flex flex-1 flex-col gap-1.5;
     }
   }
 
