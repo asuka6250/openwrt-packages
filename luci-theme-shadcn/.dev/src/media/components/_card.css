@@ -76,7 +76,15 @@
     }
 
     .ifacebox-body {
-      @apply text-foreground flex w-full flex-1 flex-col items-center justify-around gap-2 rounded-b-lg p-3 text-center;
+      /* Flex column base: items-stretch lets label/value rows span full width
+         (e.g. luci-app-modemdata) while justify-center keeps rows tight together
+         instead of spread. Icon-only cards centre via text-center / mx-auto. The
+         interfaces overview layers its richer layout under .network-status-table. */
+      @apply text-foreground flex w-full flex-1 flex-col items-stretch justify-center gap-1 rounded-b-lg p-3 text-center;
+
+      > img {
+        @apply mx-auto;
+      }
 
       > span {
         @apply space-y-1;
@@ -94,10 +102,7 @@
       }
 
       > div {
-        @apply flex w-full flex-wrap space-y-2;
-        .ifacebadge {
-          @apply flex-1;
-        }
+        @apply block w-full space-y-0;
       }
 
       .cbi-tooltip-container {
@@ -113,6 +118,22 @@
       small {
         @apply block text-xs leading-4;
       }
+    }
+  }
+
+  /*
+    Network interfaces overview — the rich equal-height card layout is scoped here
+    (not on the base) so third-party pages keep the plain, tolerant defaults above.
+  */
+  .network-status-table .ifacebox-body {
+    @apply flex h-full flex-1 flex-col items-center justify-around gap-2;
+
+    > div {
+      @apply flex flex-wrap;
+    }
+
+    .ifacebadge {
+      @apply flex-1;
     }
   }
 }

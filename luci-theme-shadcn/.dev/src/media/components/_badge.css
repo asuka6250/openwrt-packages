@@ -33,21 +33,17 @@
   }
 
   .ifacebadge {
-    @apply border-border bg-label-surface text-foreground inline-flex cursor-default flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-normal transition-colors duration-200;
-
-    .cbi-tooltip & {
-      @apply flex-nowrap;
-    }
+    @apply border-border bg-label-surface text-foreground inline-flex cursor-default flex-nowrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-normal transition-colors duration-200;
 
     .zonebadge > & {
-      @apply flex-nowrap rounded-md px-1.5 py-0;
+      @apply rounded-md px-1.5 py-0;
       img {
         @apply mr-1 w-4;
       }
     }
 
     .cbi-dropdown & {
-      @apply flex-nowrap gap-1 rounded-md px-1.5 py-0.5;
+      @apply gap-1 rounded-md px-1.5 py-0.5;
       img {
         @apply mr-1 w-4;
       }

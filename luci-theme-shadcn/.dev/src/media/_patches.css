@@ -37,6 +37,16 @@
   @apply dark:hue-rotate-150 dark:invert;
 }
 
+/* luci-app-modemdata */
+[data-page="admin-modem-modemdata-modempreview"] {
+  /* The signal badge pins an inline width:92px that's too narrow for its 32px
+     icon + label, clipping the percentage (e.g. "83%" -> "8"). Let it size to
+     its content instead — a modemdata-specific markup quirk, so scoped here. */
+  .ifacebox-body .ifacebadge {
+    @apply w-auto!;
+  }
+}
+
 /* luci-mod-dashboard */
 .Dashboard {
   > .section-content {
