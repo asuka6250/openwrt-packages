@@ -23,3 +23,26 @@ html[data-darkmode="true"] .login-pw-toggle img,
 html[data-darkmode="true"] img.shadcn-icon {
   filter: brightness(0) saturate(100%) invert(1);
 }
+
+/* Per-context opacity tuning for the flattened <img> icons above. These are
+   theme chrome (sidebar + card header), present on every admin page, so they
+   stay globally loaded here rather than in an on-demand per-page patch. */
+.card-header img,
+img.shadcn-icon {
+  opacity: 0.65;
+}
+
+#sidebar img.shadcn-icon {
+  opacity: 0.65;
+}
+
+html[data-darkmode="true"] #sidebar img.shadcn-icon {
+  opacity: 0.7;
+}
+
+.card-header button:hover img,
+#sidebar .sidebar-nav-item.active img,
+#sidebar .sidebar-accordion-item.active img,
+#sidebar .sidebar-nav-parent:hover img {
+  opacity: 1;
+}

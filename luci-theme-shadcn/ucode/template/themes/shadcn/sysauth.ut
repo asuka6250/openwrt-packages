@@ -4,7 +4,7 @@
  Licensed to the public under the Apache License 2.0.
 -#}
 
-{%const boardinfo = ubus.call('system', 'board');-%}
+{%const boardinfo = ubus.call('system', 'board') ?? {};-%}
 {% include('header', { blank_page: true }) %}
 <style>:root{--login-bg-image:url('{{ media }}/images/login-bg.jpeg')}</style>
 
