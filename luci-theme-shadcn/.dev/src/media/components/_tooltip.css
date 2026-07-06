@@ -1,31 +1,29 @@
-@layer components {
-  .cbi-tooltip {
-    @apply border-border-a60 bg-panel-bg text-foreground absolute z-50 max-w-xs scale-95 rounded-lg border px-3 py-2 text-xs break-normal whitespace-normal opacity-0 shadow-lg backdrop-blur-sm transition-all duration-200 ease-out;
+.cbi-tooltip {
+  @apply border-border-a60 bg-panel-bg text-foreground absolute z-50 max-w-xs scale-95 rounded-lg border px-3 py-2 text-xs break-normal whitespace-normal opacity-0 shadow-lg backdrop-blur-sm transition-all duration-200 ease-out;
 
-    &.error {
-      @apply border-destructive-a40 bg-destructive text-destructive-fg;
-    }
-    &.success {
-      @apply border-success-a40 bg-success text-success-fg;
-    }
-    &.info {
-      @apply border-info-a40 bg-info text-info-fg;
-    }
-    &.notice {
-      @apply border-warning-a40 bg-warning text-warning-fg;
-    }
+  &.error {
+    @apply border-destructive-a40 bg-destructive text-destructive-fg;
+  }
+  &.success {
+    @apply border-success-a40 bg-success text-success-fg;
+  }
+  &.info {
+    @apply border-info-a40 bg-info text-info-fg;
+  }
+  &.notice {
+    @apply border-warning-a40 bg-warning text-warning-fg;
+  }
+}
+
+.cbi-tooltip-container,
+[data-tooltip] {
+  @apply relative inline-block cursor-help whitespace-nowrap underline decoration-current decoration-dotted underline-offset-2 transition-all duration-200;
+
+  .cbi-tooltip {
+    @apply invisible scale-95 opacity-0 transition-all duration-200 ease-out;
   }
 
-  .cbi-tooltip-container,
-  [data-tooltip] {
-    @apply relative inline-block cursor-help whitespace-nowrap underline decoration-current decoration-dotted underline-offset-2 transition-all duration-200;
-
-    .cbi-tooltip {
-      @apply invisible scale-95 opacity-0 transition-all duration-200 ease-out;
-    }
-
-    &:hover .cbi-tooltip {
-      @apply visible scale-100 opacity-100;
-    }
+  &:hover .cbi-tooltip {
+    @apply visible scale-100 opacity-100;
   }
 }

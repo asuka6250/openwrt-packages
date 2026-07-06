@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "setup": "node scripts/setup.js",
     "build": "pnpm clean && pnpm gen:tokens && pnpm check:contrast && vite build && pnpm check:colors",
     "check:colors": "node scripts/check-built-css.js",
     "check:contrast": "node scripts/check-token-contrast.js",

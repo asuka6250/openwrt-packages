@@ -12,10 +12,8 @@
 
 @custom-variant dark (&:where([data-darkmode=true], [data-darkmode=true] *));
 
-@layer base {
-  html {
-    @apply bg-background text-foreground font-sans text-sm;
-  }
+html {
+  @apply bg-background text-foreground font-sans text-sm;
 }
 
 /* ── Entry animations ── */
