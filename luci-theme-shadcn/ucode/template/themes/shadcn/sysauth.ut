@@ -44,7 +44,6 @@
 							id="luci_username"
 							placeholder="{{ _('Username') }}"
 							autocomplete="username"
-							autofocus
 							{% if (duser): %}value="{{ entityencode(duser, true) }}"{% else %}value=""{% endif %}
 						>
 					</div>
@@ -62,6 +61,7 @@
 							id="luci_password"
 							placeholder="{{ _('Password') }}"
 							autocomplete="current-password"
+							autofocus
 						>
 						<button type="button" class="login-pw-toggle" id="pw-toggle" aria-label="{{ _('Reveal/hide password') }}">
 							<img src="{{ media }}/icons/eye.svg" id="pw-toggle-icon" width="16" height="16" alt="">
