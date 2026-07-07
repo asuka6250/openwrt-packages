@@ -86,7 +86,7 @@ html {
 /* ── Brand block ── */
 
 .login-brand {
-  @apply mb-7 flex flex-col gap-2;
+  @apply mb-10 flex flex-col gap-2.5;
 }
 
 .login-logo {
@@ -106,12 +106,7 @@ html {
 }
 
 .login-subtitle {
-  @apply text-muted-foreground text-xs font-medium tracking-widest uppercase;
-}
-
-.login-divider {
-  @apply bg-border mb-7 h-px border-0;
-  clip-path: ellipse(44% 50% at 50% 50%);
+  @apply text-muted-foreground text-sm;
 }
 
 /* ── Form elements ── */
@@ -121,11 +116,11 @@ html {
 }
 
 .login-field {
-  @apply mb-4;
+  @apply mb-6;
 }
 
 .login-label {
-  @apply text-muted-foreground mb-1.5 block text-sm font-medium;
+  @apply text-muted-foreground mb-2 block text-sm font-medium;
 }
 
 /* Glass input wrapper — matches sign-in.tsx GlassInputWrapper */
@@ -163,7 +158,7 @@ html {
 }
 
 .login-submit {
-  @apply bg-primary text-primary-foreground hover:bg-primary-hover mt-2 w-full cursor-pointer rounded-2xl border-0 py-3.5 text-sm font-medium transition-colors;
+  @apply bg-primary text-primary-foreground hover:bg-primary-hover mt-4 w-full cursor-pointer rounded-2xl border-0 py-3.5 text-sm font-medium transition-colors;
 }
 
 /* ── Footer ── */

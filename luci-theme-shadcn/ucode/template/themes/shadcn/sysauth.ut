@@ -19,11 +19,9 @@
 
 		<div class="login-form-wrap">
 			<div class="login-brand animate-element animate-delay-100">
-				<span class="login-subtitle">{{ _('Authorization Required') }}</span>
 				<span class="login-hostname">{{ striptags(boardinfo?.hostname ?? 'Router') }}</span>
+				<span class="login-subtitle">{{ _('Please enter your username and password.') }}</span>
 			</div>
-
-			<hr class="login-divider animate-element animate-delay-200">
 
 			<form method="post" class="login-form">
 				{% if (fuser): %}
@@ -32,7 +30,7 @@
 				</div>
 				{% endif %}
 
-				<div class="login-field animate-element animate-delay-300">
+				<div class="login-field animate-element animate-delay-200">
 					<label class="login-label" for="luci_username">{{ _('Username') }}</label>
 					<div class="login-input-glass">
 						<span class="login-input-icon">
@@ -49,7 +47,7 @@
 					</div>
 				</div>
 
-				<div class="login-field animate-element animate-delay-400">
+				<div class="login-field animate-element animate-delay-300">
 					<label class="login-label" for="luci_password">{{ _('Password') }}</label>
 					<div class="login-input-glass">
 						<span class="login-input-icon">
@@ -71,7 +69,7 @@
 
 				<input type="hidden" name="luci_magic" value="{{ luci_magic }}">
 
-				<button type="submit" class="login-submit animate-element animate-delay-500">
+				<button type="submit" class="login-submit animate-element animate-delay-400">
 					{{ _('Log in') }}
 				</button>
 			</form>
