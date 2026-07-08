@@ -6,7 +6,7 @@
   }
 
   &:not(.btn):not(.cbi-button) {
-    @apply border-input bg-background rounded-lg border;
+    @apply border-input bg-background max-w-full min-w-52.5 rounded-lg border md:max-w-100;
 
     > ul > li[placeholder] {
       @apply hidden;
@@ -109,6 +109,10 @@
       > .more {
         @apply flex flex-none shrink-0 px-2.5 py-1.5;
       }
+    }
+
+    &[empty] > .more {
+      @apply flex-1;
     }
 
     &[open] > ul.dropdown > li > form {
