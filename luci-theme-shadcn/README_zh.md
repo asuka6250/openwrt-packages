@@ -41,13 +41,13 @@ OpenWrt 25.12+ 及 Snapshot 版本使用 `apk`；旧版本使用 `opkg`。
 - **opkg** (OpenWrt < 25.12)：
 
   ```sh
-  cd /tmp && uclient-fetch -O luci-theme-shadcn.ipk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn_0.2.0-r20260621_all.ipk && opkg install luci-theme-shadcn.ipk
+  cd /tmp && uclient-fetch -O luci-theme-shadcn.ipk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn_0.3.0-r20260711_all.ipk && opkg install luci-theme-shadcn.ipk
   ```
 
 - **apk** (OpenWrt 25.12+ 及 snapshots)：
 
   ```sh
-  cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.2.0-r20260621.apk && apk add --allow-untrusted luci-theme-shadcn.apk
+  cd /tmp && uclient-fetch -O luci-theme-shadcn.apk https://github.com/eamonxg/luci-theme-shadcn/releases/latest/download/luci-theme-shadcn-0.3.0-r20260711.apk && apk add --allow-untrusted luci-theme-shadcn.apk
   ```
 
 ## 从源码构建
