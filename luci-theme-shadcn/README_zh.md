@@ -2,9 +2,7 @@
 <p align="center">
     <img src="https://raw.githubusercontent.com/eamonxg/assets/master/shadcn/logo/logo-lockup.png" width="360" alt="Shadcn LuCI Theme"/>
 </p>
-<p align="center"><sub><em>Logo 其实就是 shadcn/ui 的标志，我顺手划了一道斜线，让它看起来更像 Wi-Fi 信号一点（眯起眼睛、侧着头看，大概是吧，哈哈）。</em></sub></p>
 <p align="center"><strong>一款基于 shadcn/ui 设计语言构建的现代侧边栏 OpenWrt LuCI 主题。</strong></p>
-<h4 align="center">🗂️ 侧边栏布局 | 🌗 深色/浅色模式 | 📱 移动端抽屉</h4>
 <div align="center">
   <a href="https://openwrt.org"><img alt="OpenWrt" src="https://img.shields.io/badge/OpenWrt-%E2%89%A523.05-00B5E2?logo=openwrt&logoColor=white"></a>
   <a href="https://github.com/eamonxg/luci-theme-shadcn/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/eamonxg/luci-theme-shadcn"></a>
@@ -13,14 +11,15 @@
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/eamonxg/assets/master/shadcn/preview/login.png" alt="登录页" width="100%">
+  <p><sub><em>背景图：挪威海峡。</em></sub></p>
 </div>
 
 ## 特性
 
 - **侧边栏布局**：可折叠侧边栏，支持手风琴式子菜单与移动端抽屉。
-- **深色/浅色模式**：内置切换按钮，偏好通过 `localStorage` 持久化，加载时无闪烁恢复。
-- **shadcn/ui 设计**：语义化色彩 token、`rounded-lg` 组件、`hover:bg-muted` 交互风格。
-- **现代技术栈**：Vite + TailwindCSS v4 构建，Inter 可变字体，Lucide 图标库。
+- **深色/浅色模式**：内置切换按钮，偏好自动保存，加载时无闪烁恢复。
+- **shadcn/ui 设计**：现代简洁的视觉风格，参考了其 Dashboard 布局。
+- **现代技术栈**：界面加载迅速、切换流畅，字体与图标经过精心挑选。
 
 ## 预览
 
@@ -31,6 +30,10 @@
 ## 兼容性
 
 - **OpenWrt**：需要 OpenWrt 23.05.0 或更高版本（依赖 ucode 模板和 LuCI JavaScript APIs）。
+- **浏览器**：基于 **TailwindCSS v4** 构建。兼容以下现代浏览器：
+  - **Chrome/Edge 111+** _(2023 年 3 月发布)_
+  - **Safari 16.4+** _(2023 年 3 月发布)_
+  - **Firefox 128+** _(2024 年 7 月发布)_
 
 ## 安装预编译包
 
@@ -94,7 +97,7 @@ make package/luci-theme-shadcn/compile -j$(nproc) V=s
 
 [Apache 2.0](LICENSE)。致谢：
 
-- [shadcn/ui](https://github.com/shadcn-ui/ui) — 组件美学、设计 token 与交互模式
+- [shadcn/ui](https://github.com/shadcn-ui/ui) — Logo 就是它的标志加了一道斜线，让它看起来更像 Wi-Fi 信号
 - [Lucide](https://github.com/lucide-icons/lucide) — 图标库
 - [Linear](https://linear.app) — 色彩系统灵感
 - [Vite](https://vite.dev/) 和 [Tailwind CSS](https://tailwindcss.com/)

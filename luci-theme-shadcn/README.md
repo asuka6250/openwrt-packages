@@ -2,9 +2,7 @@
 <p align="center">
     <img src="https://raw.githubusercontent.com/eamonxg/assets/master/shadcn/logo/logo-lockup.png" width="360" alt="Shadcn LuCI Theme"/>
 </p>
-<p align="center"><sub><em>The logo is really just shadcn/ui's mark — I slipped a diagonal line across it to make it look a bit more like a Wi-Fi signal (squint, tilt your head — yeah, sort of, heh).</em></sub></p>
 <p align="center"><strong>A modern sidebar LuCI theme for OpenWrt, built with shadcn/ui design language.</strong></p>
-<h4 align="center">🗂️ Sidebar Layout | 🌗 Dark / Light Mode | 📱 Mobile Drawer</h4>
 <div align="center">
   <a href="https://openwrt.org"><img alt="OpenWrt" src="https://img.shields.io/badge/OpenWrt-%E2%89%A523.05-00B5E2?logo=openwrt&logoColor=white"></a>
   <a href="https://github.com/eamonxg/luci-theme-shadcn/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/eamonxg/luci-theme-shadcn"></a>
@@ -13,14 +11,15 @@
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/eamonxg/assets/master/shadcn/preview/login.png" alt="Login Page" width="100%">
+  <p><sub><em>Background: the Norwegian Strait.</em></sub></p>
 </div>
 
 ## Features
 
 - **Sidebar layout**: Collapsible sidebar with accordion sub-menus and mobile drawer.
-- **Dark / Light mode**: Built-in toggle, preference persisted via `localStorage`, flash-free restore on load.
-- **shadcn/ui design**: Semantic color tokens, `rounded-lg` components, `hover:bg-muted` interactions.
-- **Modern stack**: Vite + TailwindCSS v4 build, Inter variable font, Lucide icons.
+- **Dark / Light mode**: Built-in toggle, preference remembered automatically, flash-free restore on load.
+- **shadcn/ui design**: Clean, modern look, following its dashboard layout.
+- **Modern stack**: Fast to load, smooth to navigate, with carefully chosen typography and icons.
 
 ## Preview
 
@@ -31,6 +30,10 @@
 ## Compatibility
 
 - **OpenWrt**: Requires OpenWrt 23.05.0 or later (ucode templates + LuCI JavaScript APIs).
+- **Browsers**: Built with **TailwindCSS v4**. Compatible with the following modern browsers:
+  - **Chrome/Edge 111+** _(released March 2023)_
+  - **Safari 16.4+** _(released March 2023)_
+  - **Firefox 128+** _(released July 2024)_
 
 ## Install a pre-built release
 
@@ -94,7 +97,7 @@ make package/luci-theme-shadcn/compile -j$(nproc) V=s
 
 [Apache 2.0](LICENSE). Thanks to:
 
-- [shadcn/ui](https://github.com/shadcn-ui/ui) — component aesthetics, tokens, and interaction patterns
+- [shadcn/ui](https://github.com/shadcn-ui/ui) — the logo is its mark with a diagonal line added, echoing a Wi-Fi signal
 - [Lucide](https://github.com/lucide-icons/lucide) — icons
 - [Linear](https://linear.app) — color system inspiration
 - [Vite](https://vite.dev/) and [Tailwind CSS](https://tailwindcss.com/)
