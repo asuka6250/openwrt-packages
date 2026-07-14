@@ -766,6 +766,24 @@ function assertStatusRefreshSortingInteraction(src) {
 			fail('statusRefresh.js must let explicit Rust false values override stale old C NSS aliases');
 		}
 	}
+	if (typeof mod.splitClientWarnings !== 'function') {
+		fail('statusRefresh.js must expose client warning classification for validation');
+	} else {
+		const connectionOnlyState = mod.splitClientWarnings([
+			'conntrack_connection_only'
+		], {});
+		const warningState = mod.splitClientWarnings([
+			'conntrack_connection_only',
+			'counter_anomaly',
+			'global_warning'
+		], { global_warning: true });
+		if (JSON.stringify(Array.from(connectionOnlyState.info)) !== JSON.stringify([ 'conntrack_connection_only' ]) ||
+		    connectionOnlyState.warnings.length !== 0 ||
+		    JSON.stringify(Array.from(warningState.info)) !== JSON.stringify([ 'conntrack_connection_only' ]) ||
+		    JSON.stringify(Array.from(warningState.warnings)) !== JSON.stringify([ 'counter_anomaly' ])) {
+			fail('statusRefresh.js must render connection-only rows as information without hiding real client warnings');
+		}
+	}
 
 	function makeRef(label, description) {
 		return {
@@ -1161,6 +1179,12 @@ function assertWarningAliases(src) {
 	}
 	if (!vocab.warningText('nss_prefers_conntrack_sync').includes('当前 NSS 模式选择或回退到了 NSS sync')) {
 		fail('vocab.js must describe NSS sync overriding BPF as an explicit mode choice');
+	}
+	const connectionOnlyText = vocab.warningText('conntrack_connection_only');
+	if (!connectionOnlyText.includes('用于补全当前连接数') ||
+	    !connectionOnlyText.includes('不代表异常') ||
+	    connectionOnlyText.includes('仅连接')) {
+		fail('vocab.js must explain connection-only rows without rendering a separate connection-only label');
 	}
 }
 
@@ -1958,6 +1982,12 @@ function assertStatusRefreshModule(src) {
 	    !src.includes('ev.ppe_offload_active') ||
 	    !src.includes('vocab.normalizeWarningId(w)')) {
 		fail('statusRefresh.js must render new Rust NSS evidence and warning IDs with old C aliases');
+	}
+	if (!src.includes('splitClientWarnings(rawWarnings, globalWarnings)') ||
+	    !src.includes("modeTitle += '\\n' + vocab.warningText('conntrack_connection_only');") ||
+	    src.includes("_('仅连接')") ||
+	    !src.includes("_('%d 告警').format(specificWarnings.length)")) {
+		fail('statusRefresh.js must fold connection-only details into the collector tooltip without rendering another label');
 	}
 	if (!src.includes("covQuality === 'low_traffic'") ||
 	    !src.includes('LAN 流量较低，暂不计算覆盖率') ||
