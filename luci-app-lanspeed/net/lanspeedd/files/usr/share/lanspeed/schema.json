@@ -18,6 +18,9 @@
       "$ref": "#/$defs/health"
     },
     {
+      "$ref": "#/$defs/reload"
+    },
+    {
       "$ref": "#/$defs/interfaces"
     },
     {
@@ -68,6 +71,9 @@
         "bpf_object": {
           "type": "boolean"
         },
+        "bpf_runtime_metrics": {
+          "type": "boolean"
+        },
         "conntrack_fallback": {
           "type": "boolean"
         },
@@ -86,7 +92,31 @@
         "hardware_flow_offload": {
           "type": "boolean"
         },
+        "nss": {
+          "type": "boolean"
+        },
+        "nss_ecm_offload": {
+          "type": "boolean"
+        },
+        "nss_ppe_offload": {
+          "type": "boolean"
+        },
         "nss_ecm_direct": {
+          "type": "boolean"
+        },
+        "nss_bridge_mgr": {
+          "type": "boolean"
+        },
+        "nss_ifb": {
+          "type": "boolean"
+        },
+        "nss_nsm": {
+          "type": "boolean"
+        },
+        "nss_dp": {
+          "type": "boolean"
+        },
+        "nss_mcs": {
           "type": "boolean"
         },
         "fullcone": {
@@ -167,18 +197,59 @@
       },
       "required": [
         "bpf",
+        "bpf_package",
+        "bpf_object",
+        "bpf_runtime_metrics",
         "conntrack_fallback",
-        "live_metrics"
+        "live_metrics",
+        "fw4",
+        "nft",
+        "software_flow_offload",
+        "hardware_flow_offload",
+        "nss",
+        "nss_ecm_offload",
+        "nss_ppe_offload",
+        "nss_ecm_direct",
+        "nss_bridge_mgr",
+        "nss_ifb",
+        "nss_nsm",
+        "nss_dp",
+        "nss_mcs",
+        "fullcone",
+        "nf_conntrack_acct",
+        "flowtable_counter",
+        "tc",
+        "tc_clsact",
+        "existing_tc_filters",
+        "ifb",
+        "sqm",
+        "qosify",
+        "openclash",
+        "openclash_fake_ip",
+        "openclash_tun_mix",
+        "openclash_redirect_dns",
+        "openclash_dns_chain_complete",
+        "openclash_router_self_proxy",
+        "openclash_udp_proxy",
+        "openclash_ipv6",
+        "dae",
+        "homeproxy",
+        "lan_bridge",
+        "vlan",
+        "wlan",
+        "lan_edge",
+        "safe_attach",
+        "map_full"
       ]
     },
     "coverage": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Sliding-window coverage computed by the daemon. Direction semantics: tx = client upload (client→router), rx = client download (router→client).",
+      "description": "Sliding-window coverage computed by the daemon from monotonic interface counters and integrated per-client rates. Direction semantics: tx = client upload (client→router), rx = client download (router→client).",
       "properties": {
         "quality": {
           "type": "string",
-          "enum": ["warmup", "idle", "counter_reset", "ok", "unsupported"]
+          "enum": ["warmup", "idle", "low_traffic", "counter_reset", "ok", "unsupported"]
         },
         "samples": {
           "type": "integer",
@@ -618,6 +689,43 @@
         "evidence"
       ]
     },
+    "reload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "Full",
+            "Degraded",
+            "Unsupported"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "ok",
+        "mode",
+        "warnings",
+        "evidence",
+        "version"
+      ]
+    },
     "interface": {
       "type": "object",
       "additionalProperties": false,
@@ -630,6 +738,7 @@
           "type": "string",
           "enum": [
             "lan",
+            "observe",
             "wan",
             "excluded",
             "unknown"
@@ -669,7 +778,7 @@
         "sample_ms": {
           "type": "integer",
           "minimum": 0,
-          "description": "Monotonic timestamp (ms) of the rx_bytes/tx_bytes sample. Pair with client.sample_ms to compute coverage over a common time window."
+          "description": "Monotonic timestamp (ms) of the rx_bytes/tx_bytes interface sample. Coverage uses this common daemon sampling window together with integrated client rates."
         },
         "source": {
           "type": "string"
@@ -696,6 +805,13 @@
           "items": {
             "$ref": "#/$defs/interface"
           }
+        },
+        "monotonic_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "note": {
+          "type": "string"
         },
         "evidence": {
           "$ref": "#/$defs/evidence"

@@ -99,9 +99,10 @@ var WARNING_LABELS = {
 	nss_ecm_direct_parse_errors: _('解析 NSS ECM state 时遇到异常行，部分 flow 可能被跳过。'),
 	skip_nss_ecm_direct_flow_without_lan_identity: _('部分 NSS ECM flow 没有可匹配的 LAN ARP/neighbor 身份，已跳过以避免误归因。'),
 	nss_ecm_sync_cadence: _('NSS 硬件卸载中：客户端计数同步回 conntrack，精度为秒级节拍，不是逐包实时。'),
-	nss_prefers_conntrack_sync: _('NSS 硬件卸载中：BPF 只能看到慢路径，已优先使用同步回 conntrack 的客户端字节计数。'),
+	nss_prefers_conntrack_sync: _('当前 NSS 模式选择或回退到了 NSS sync，已覆盖可用的 BPF 数据源。'),
 	dae_runtime_prefers_bpf: _('检测到 dae/daed 进程运行，已优先使用 BPF 采集 LAN 边缘客户端速率。'),
 	nss_dae_bpf_fallback_may_be_inaccurate: _('NSS 设备检测到 dae/daed 进程运行，但 BPF 不可用，已回退 NSS 采集；实时速率可能不准。'),
+	dae_process_probe_failed: _('读取 /proc 进程状态失败，已保留上一次 dae/daed 运行态；采集模式可能暂时不是最新状态。'),
 	nss_ifb_detected: _('检测到 NSS IFB（nssifb）：NSS 硬件 QoS 的镜像接口，其计数是物理口 ingress 的镜像，不应 attach BPF，只能作为观察对象。'),
 	nssifb_collect_rejected: _('配置中请求 attach BPF 到 nssifb，daemon 已忽略——nssifb 是 NSS 镜像接口，attach 会重复计数物理口 ingress。请改用"观察"模式。'),
 	nss_ppe_offload_active: _('NSS PPE 正在硬件加速连接（IPQ95xx/53xx 新一代硬件加速），BPF 只能看到慢路径。'),
@@ -112,9 +113,9 @@ var WARNING_LABELS = {
 	nf_conntrack_acct_disabled: _('nf_conntrack_acct 未启用，连接数诊断和 NSS ECM 同步测速不可用。'),
 	flowtable_counter_missing: _('未检测到 flowtable 计数，conntrack 诊断置信度会降低。'),
 	nlbwmon_counter_conflict: _('检测到 nlbwmon 计数冲突，lanspeed 不读取或清零 nlbwmon 计数。'),
-	bpf_optional_package_missing: _('缺少可选 BPF 软件包，无法使用实时 BPF 指标。'),
+	bpf_optional_package_missing: _('缺少必选 BPF 软件包，客户端实时测速不可用。'),
 	bpf_object_missing: _('缺少 BPF 对象文件，无法使用实时 BPF 指标。'),
-	bpf_runtime_loader_unavailable: _('BPF 资产齐备但本次启动没有成功完成 tc 挂载或 map 读取；非 NSS 客户端测速会保持不可用。'),
+	bpf_runtime_loader_unavailable: _('BPF 资产齐备但本次启动没有成功完成 tc 挂载或 map 读取；客户端实时测速会保持不可用或在 NSS 设备上回退。'),
 	unsafe_attach: _('TC 挂载点不安全，因此不会使用实时指标。'),
 	map_full: _('BPF 客户端映射表已满，部分客户端可能被省略。'),
 	map_read_failed: _('读取 BPF 映射表失败，本次客户端指标可能不完整。'),
@@ -148,6 +149,7 @@ var CRITICAL_WARNINGS = {
 	tc_missing: true,
 	lan_edge_missing: true,
 	probe_error: true,
+	dae_process_probe_failed: true,
 	map_read_failed: true,
 	live_metrics_unavailable: true,
 	bpf_runtime_loader_unavailable: true,
@@ -156,11 +158,22 @@ var CRITICAL_WARNINGS = {
 	map_full: true
 };
 
+var WARNING_ALIASES = {
+	nss_daed_prefers_bpf: 'dae_runtime_prefers_bpf',
+	nss_daed_nss_fallback_may_be_inaccurate: 'nss_dae_bpf_fallback_may_be_inaccurate'
+};
+
+function normalizeWarningId(warning) {
+	return WARNING_ALIASES[warning] || warning;
+}
+
 return baseclass.extend({
 	CAPABILITY_LABELS: CAPABILITY_LABELS,
 	CAPABILITY_ORDER:  CAPABILITY_ORDER,
 	WARNING_LABELS:    WARNING_LABELS,
+	WARNING_ALIASES:   WARNING_ALIASES,
 	CRITICAL_WARNINGS: CRITICAL_WARNINGS,
+	normalizeWarningId: normalizeWarningId,
 
 	normalizeConfidence: function(v) {
 		return String(v || 'unsupported').toLowerCase();
@@ -196,10 +209,12 @@ return baseclass.extend({
 	},
 
 	warningText: function(w) {
+		w = normalizeWarningId(w);
 		return WARNING_LABELS[w] || String(w).replace(/_/g, ' ');
 	},
 
 	warningClass: function(w) {
+		w = normalizeWarningId(w);
 		if (CRITICAL_WARNINGS[w] || /hardware|unsafe|conflict|missing|error|failed|full/.test(w))
 			return 'label label-danger';
 		return 'label label-warning';
