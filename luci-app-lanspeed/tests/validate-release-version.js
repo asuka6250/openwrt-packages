@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const childProcess = require('child_process');
 
@@ -9,6 +10,7 @@ const daemonMakefile = fs.readFileSync(path.join(root, 'net/lanspeedd/Makefile')
 const luciMakefile = fs.readFileSync(path.join(root, 'applications/luci-app-lanspeed/Makefile'), 'utf8');
 const versionJs = fs.readFileSync(path.join(root, 'applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/version.js'), 'utf8');
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/build-sdk.yml'), 'utf8');
+const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 const releaseScriptPath = path.join(root, 'scripts/release-version.sh');
 const releaseScript = fs.readFileSync(releaseScriptPath, 'utf8');
 const rustRoot = path.join(root, 'net/lanspeedd/rust');
@@ -95,6 +97,160 @@ function assertThrows(callback, message) {
   assert(threw, message);
 }
 
+function extractYamlBlock(source, key, indent) {
+  const lines = source.split('\n');
+  const marker = `${' '.repeat(indent)}${key}:`;
+  const start = lines.findIndex((line) => line === marker);
+  assert(start !== -1, `workflow must define ${key} at indentation ${indent}`);
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line.trim() === '') {
+      end += 1;
+      continue;
+    }
+    const leadingSpaces = line.match(/^ */)[0].length;
+    if (leadingSpaces <= indent) {
+      break;
+    }
+    end += 1;
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+function extractNamedStep(jobBlock, stepName) {
+  const lines = jobBlock.split('\n');
+  const marker = `      - name: ${stepName}`;
+  const start = lines.findIndex((line) => line === marker);
+  assert(start !== -1, `workflow job must define step ${stepName}`);
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line.trim() === '') {
+      end += 1;
+      continue;
+    }
+    const leadingSpaces = line.match(/^ */)[0].length;
+    if (leadingSpaces <= 6) {
+      break;
+    }
+    end += 1;
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+function readJobNeeds(jobBlock, jobName) {
+  const lines = jobBlock.split('\n');
+  const needsLines = lines.filter((line) => /^    needs(?::|: )/.test(line));
+  assert(needsLines.length === 1, `${jobName} job must define needs exactly once`);
+  const scalar = needsLines[0].match(/^    needs: ([a-z0-9_-]+)$/);
+  if (scalar) {
+    return [scalar[1]];
+  }
+  assert(needsLines[0] === '    needs:', `${jobName} job needs must be a scalar or list`);
+  const start = lines.indexOf(needsLines[0]);
+  const needs = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const match = lines[index].match(/^      - ([a-z0-9_-]+)$/);
+    if (!match) {
+      break;
+    }
+    needs.push(match[1]);
+  }
+  return needs;
+}
+
+function assertExactList(actual, expected, message) {
+  assert(JSON.stringify(actual) === JSON.stringify(expected), message);
+}
+
+function runGit(cwd, args) {
+  return childProcess.execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trim();
+}
+
+function writeVersionFixture(fixtureRoot, release) {
+  const daemonDir = path.join(fixtureRoot, 'net/lanspeedd');
+  const luciDir = path.join(fixtureRoot, 'applications/luci-app-lanspeed');
+  const scriptsDir = path.join(fixtureRoot, 'scripts');
+  fs.mkdirSync(daemonDir, { recursive: true });
+  fs.mkdirSync(luciDir, { recursive: true });
+  fs.mkdirSync(scriptsDir, { recursive: true });
+  const makefile = `PKG_VERSION:=1.0.0\nPKG_RELEASE:=${release}\n`;
+  fs.writeFileSync(path.join(daemonDir, 'Makefile'), makefile);
+  fs.writeFileSync(path.join(luciDir, 'Makefile'), makefile);
+  fs.writeFileSync(path.join(scriptsDir, 'release-version.sh'), `#!/bin/sh
+set -eu
+daemon_version="$(sed -n 's/^PKG_VERSION:=//p' net/lanspeedd/Makefile)"
+daemon_release="$(sed -n 's/^PKG_RELEASE:=//p' net/lanspeedd/Makefile)"
+luci_version="$(sed -n 's/^PKG_VERSION:=//p' applications/luci-app-lanspeed/Makefile)"
+luci_release="$(sed -n 's/^PKG_RELEASE:=//p' applications/luci-app-lanspeed/Makefile)"
+[ "$daemon_version" = "$luci_version" ]
+[ "$daemon_release" = "$luci_release" ]
+printf '%s\\n' "\${daemon_version}-r\${daemon_release}"
+`);
+}
+
+function runForcePushBeforeFetchSelfTest() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lanspeed-before-fetch-'));
+  try {
+    const source = path.join(fixtureRoot, 'source');
+    const origin = path.join(fixtureRoot, 'origin.git');
+    const checkout = path.join(fixtureRoot, 'checkout');
+    const beforeDir = path.join(fixtureRoot, 'before');
+    fs.mkdirSync(source);
+    runGit(source, ['init', '-q', '-b', 'main']);
+    runGit(source, ['config', 'user.name', 'Lanspeed Test']);
+    runGit(source, ['config', 'user.email', 'lanspeed@example.invalid']);
+    writeVersionFixture(source, 2);
+    runGit(source, ['add', '.']);
+    runGit(source, ['commit', '-q', '-m', 'fixture r2']);
+    const beforeSha = runGit(source, ['rev-parse', 'HEAD']);
+
+    runGit(fixtureRoot, ['clone', '-q', '--bare', source, origin]);
+    runGit(origin, ['config', 'uploadpack.allowAnySHA1InWant', 'true']);
+    writeVersionFixture(source, 3);
+    runGit(source, ['add', '.']);
+    runGit(source, ['commit', '-q', '--amend', '--no-edit']);
+    runGit(origin, ['fetch', '-q', '--no-tags', `file://${source}`, 'HEAD']);
+    const replacementSha = runGit(origin, ['rev-parse', 'FETCH_HEAD']);
+    runGit(origin, ['update-ref', 'refs/heads/main', replacementSha]);
+
+    runGit(fixtureRoot, ['clone', '-q', '--depth=1', '--branch', 'main', `file://${origin}`, checkout]);
+    const beforeMissing = childProcess.spawnSync('git', ['cat-file', '-e', `${beforeSha}^{commit}`], {
+      cwd: checkout,
+      stdio: 'ignore'
+    });
+    assert(beforeMissing.status !== 0, 'force-push fixture must begin without the old before object');
+
+    runGit(checkout, ['fetch', '-q', '--no-tags', '--depth=1', 'origin', beforeSha]);
+    runGit(checkout, ['cat-file', '-e', `${beforeSha}^{commit}`]);
+    fs.mkdirSync(beforeDir);
+    const archivePath = path.join(fixtureRoot, 'before.tar');
+    runGit(checkout, [
+      'archive', '--format=tar', `--output=${archivePath}`, beforeSha, '--',
+      'scripts/release-version.sh', 'net/lanspeedd/Makefile',
+      'applications/luci-app-lanspeed/Makefile'
+    ]);
+    childProcess.execFileSync('tar', ['-xf', archivePath, '-C', beforeDir]);
+    const beforeVersion = childProcess.execFileSync('sh', ['scripts/release-version.sh'], {
+      cwd: beforeDir,
+      encoding: 'utf8'
+    }).trim();
+    const currentVersion = childProcess.execFileSync('sh', ['scripts/release-version.sh'], {
+      cwd: checkout,
+      encoding: 'utf8'
+    }).trim();
+    assert(beforeVersion === '1.0.0-r2', 'raw before fetch must recover the old complete version');
+    assert(currentVersion === '1.0.0-r3', 'force-push fixture HEAD must retain the new complete version');
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 try {
   const daemonVersion = readMakeVar(daemonMakefile, 'PKG_VERSION', 'net/lanspeedd/Makefile');
   const daemonRelease = readMakeVar(daemonMakefile, 'PKG_RELEASE', 'net/lanspeedd/Makefile');
@@ -117,7 +273,10 @@ try {
     'metadata', '--format-version=1', '--locked', '--offline'
   ], { cwd: rustRoot, encoding: 'utf8' }));
   runWorkspaceMetadataSelfTest(daemonVersion);
+  runForcePushBeforeFetchSelfTest();
 
+  assert(daemonVersion === '1.0.0', 'daemon PKG_VERSION must remain exactly 1.0.0 for this release');
+  assert(luciVersion === '1.0.0', 'LuCI PKG_VERSION must remain exactly 1.0.0 for this release');
   assert(daemonVersion === luciVersion, 'daemon and LuCI PKG_VERSION must match for releases');
   assert(daemonRelease === luciRelease, 'daemon and LuCI PKG_RELEASE must match for releases');
   assert(workspaceVersion, 'Cargo workspace must define package.version');
@@ -175,166 +334,267 @@ try {
     encoding: 'utf8'
   }).trim();
   assert(releaseVersion === fullVersion, 'scripts/release-version.sh output must match daemon package version and release');
-  const jobsIndex = workflow.indexOf('jobs:\n');
-  assert(jobsIndex !== -1, 'workflow must define jobs');
-  const jobsBody = workflow.slice(jobsIndex + 'jobs:\n'.length);
-  const jobNames = [...jobsBody.matchAll(/^  ([A-Za-z0-9_-]+):\n/gm)].map((match) => match[1]);
-  assert(jobNames.join(',') === 'detect,release', 'workflow must define exactly the detect and release jobs');
-  const detectMatch = jobsBody.match(/^  detect:\n[\s\S]*?(?=^  release:\n)/m);
-  const releaseMatch = jobsBody.match(/^  release:\n[\s\S]*$/m);
-  assert(detectMatch, 'workflow must define the detect job before release');
-  assert(releaseMatch, 'workflow must define the release job');
-  const detectJob = detectMatch[0];
-  const releaseJob = releaseMatch[0];
-
-  assert(/on:\n  push:\n    branches:\n      - main\n    paths:\n      - 'net\/lanspeedd\/Makefile'\n      - 'applications\/luci-app-lanspeed\/Makefile'\n\npermissions:/.test(workflow), 'workflow push trigger must target main and only the two package Makefiles');
-  assert(!/\n\s+tags:/.test(workflow), 'workflow must not run from tag pushes');
-  assert(!/\npull_request:|\n  pull_request:/.test(workflow), 'workflow must not run from pull requests');
-  assert(!/\nworkflow_dispatch:|\n  workflow_dispatch:/.test(workflow), 'workflow must not expose a manual build trigger');
-  assert(!/inputs\./.test(workflow), 'workflow must not depend on manual workflow inputs');
-  assert(!/^concurrency:/m.test(workflow), 'workflow must not use GitHub concurrency because it cancels older pending version releases');
-
-  assert(detectJob.includes('changed: ${{ steps.version.outputs.changed }}'), 'detect job must expose whether package versions changed');
-  assert(detectJob.includes('code_version: ${{ steps.version.outputs.code_version }}'), 'detect job must expose the code version');
-  assert(/uses: actions\/checkout@v4\n        with:\n          fetch-depth: 0/.test(detectJob), 'detect checkout must fetch complete history');
-  assert(detectJob.includes('id: version'), 'detect version step must have the version id');
-  assert(detectJob.includes('set -euo pipefail'), 'detect job must fail when version history extraction fails');
-  assert(detectJob.includes('code_version="$(sh ./scripts/release-version.sh)"'), 'detect job must read the code version through sh scripts/release-version.sh');
-  assert(detectJob.includes('before="${{ github.event.before }}"'), 'detect job must read the push before commit');
-  assert(detectJob.includes('0000000000000000000000000000000000000000'), 'detect job must treat an all-zero before commit as changed');
-  assert(detectJob.includes('before_dir="$(mktemp -d)"'), 'detect job must extract the previous version into a temporary directory');
-  assert(detectJob.includes('git archive "$before" -- scripts/release-version.sh net/lanspeedd/Makefile applications/luci-app-lanspeed/Makefile | tar -x -C "$before_dir"'), 'detect job must archive the prior release script and both package Makefiles');
-  assert(detectJob.includes('before_version="$(sh "$before_dir/scripts/release-version.sh")"'), 'detect job must run the same release version script against the prior commit');
-  assert(detectJob.includes('if [ "$before_version" != "$code_version" ]; then'), 'detect job must compare complete before and after code versions');
-  assert(!detectJob.includes('git diff'), 'detect job must compare complete versions instead of diffing assignment lines');
-  assert(!detectJob.includes('git archive "$before" -- scripts/release-version.sh net/lanspeedd/Makefile applications/luci-app-lanspeed/Makefile | tar -x -C "$before_dir" || true'), 'detect job must not hide version archive failures');
-  assert(detectJob.includes("if ! printf '%s\\n' \"$code_version\" | grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+-r[0-9]+$'; then"), 'detect job must reject code versions outside the numeric version-release format');
-  assertBefore(detectJob, "grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+-r[0-9]+$'", "printf 'changed=%s\\n'", 'detect job must validate code_version before publishing outputs');
-  assert(detectJob.includes("printf 'changed=%s\\n' \"$changed\" >> \"$GITHUB_OUTPUT\""), 'detect job must write the changed output');
-  assert(detectJob.includes("printf 'code_version=%s\\n' \"$code_version\" >> \"$GITHUB_OUTPUT\""), 'detect job must write the code_version output');
-
-  assert(releaseJob.includes('needs: detect'), 'release job must depend on detect');
-  assert(releaseJob.includes("if: needs.detect.outputs.changed == 'true'"), 'release job must run only when package versions changed');
-  assert(/uses: actions\/checkout@v4\n        with:\n          fetch-depth: 0/.test(releaseJob), 'release checkout must fetch tags and complete history');
-  assert(releaseJob.includes('uses: actions/setup-node@v4'), 'release job must set up Node.js');
-  assert(releaseJob.includes('node-version: 20'), 'release job must use Node.js 20');
-  assert(releaseJob.includes('Install build prerequisites'), 'release job must install build prerequisites');
-  assert(releaseJob.includes('sudo apt-get update'), 'release job must refresh apt metadata before unit validations');
-  assert(releaseJob.includes('sudo apt-get install -y build-essential clang flex g++ gawk gcc-multilib gettext git libncurses5-dev libssl-dev python3 rsync unzip wget xz-utils zlib1g-dev zstd'), 'release job must install the complete SDK build prerequisites before unit validations');
-  assert(releaseJob.includes('rustup toolchain install 1.96.0 --profile minimal --component rust-src'), 'release job must install the verified Rust 1.96.0 toolchain with rust-src');
-  assert(releaseJob.includes('rustup default 1.96.0'), 'release job must select the verified Rust 1.96.0 toolchain');
-  assert(!releaseJob.includes('rustup update stable'), 'release job must not use an unpinned stable Rust toolchain with the offline vendor tree');
-  assert(releaseJob.includes('bpf-linker-0.10.3-x86_64-unknown-linux-musl.tar.gz'), 'release job must use a versioned local bpf-linker 0.10.3 archive');
-  assert(releaseJob.includes('https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz'), 'release job must download bpf-linker 0.10.3 from the official URL');
-  assert(releaseJob.includes('0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c'), 'release job must pin the bpf-linker 0.10.3 archive SHA256');
-  assert(releaseJob.includes("printf '%s  %s\\n' \"0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c\" \"$archive\" | sha256sum -c -"), 'release job must verify the exact bpf-linker archive checksum before extraction');
-  assert(releaseJob.includes('tar -xzf "$archive" -C "$tool_dir"'), 'release job must extract the verified bpf-linker archive');
-  assertBefore(releaseJob, "printf '%s  %s\\n' \"0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c\" \"$archive\" | sha256sum -c -", 'tar -xzf "$archive" -C "$tool_dir"', 'bpf-linker checksum verification must run before extraction');
-  assert(releaseJob.includes('find "$tool_dir" -type f -name bpf-linker -perm -u+x -print -quit'), 'release job must locate the extracted executable bpf-linker');
-  assert(releaseJob.includes('$(dirname "$bpf_linker")') && releaseJob.includes('>> "$GITHUB_PATH"'), 'release job must add the bpf-linker executable directory to GITHUB_PATH');
-  assert(releaseJob.includes('run: ./tests/run.sh unit'), 'release job must run unit validations before publishing');
-  assert(releaseJob.includes('CODE_VERSION: ${{ needs.detect.outputs.code_version }}'), 'asset collection must pass the detected version through the step environment');
-  assert(releaseJob.includes('code_version="$CODE_VERSION"'), 'asset collection must read the detected version from its environment');
-  assert(!releaseJob.includes('code_version="${{ needs.detect.outputs.code_version }}"'), 'asset collection must not interpolate the detected version into shell source');
-  assert(releaseJob.includes('RELEASE_TAG: v${{ needs.detect.outputs.code_version }}'), 'tag creation must pass the detected version through the step environment');
-  assert(!releaseJob.includes('release_tag="v${{ needs.detect.outputs.code_version }}"'), 'release job must not interpolate the detected version into shell source');
-  assert(releaseJob.includes('if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then\n            printf \'%s\\n\' "error: release tag ${RELEASE_TAG} already exists" >&2\n            exit 1\n          fi'), 'release job must fail when the local release tag already exists');
-  assert(releaseJob.includes('git tag "$RELEASE_TAG" "$GITHUB_SHA"'), 'release job must create a lightweight tag at the pushed commit');
-  assert(releaseJob.includes('git push origin "refs/tags/$RELEASE_TAG"'), 'release job must push the new release tag without force');
-  assert(!releaseJob.includes('git tag -a') && !releaseJob.includes('git tag -s'), 'release job must create a lightweight tag');
-  assert(!releaseJob.includes('git push --force'), 'release job must never force-push a release tag');
-  assertBefore(releaseJob, 'uses: actions/checkout@v4', 'uses: actions/setup-node@v4', 'release checkout must run before Node.js setup');
-  assertBefore(releaseJob, 'uses: actions/setup-node@v4', 'Install build prerequisites', 'Node.js setup must run before prerequisite installation');
-  assertBefore(releaseJob, 'Install build prerequisites', 'rustup toolchain install 1.96.0 --profile minimal --component rust-src', 'build prerequisites must be installed before preparing Rust');
-  assertBefore(releaseJob, 'rustup default 1.96.0', 'bpf-linker-0.10.3-x86_64-unknown-linux-musl.tar.gz', 'Rust 1.96.0 and rust-src must be ready before installing bpf-linker');
-  assertBefore(releaseJob, '>> "$GITHUB_PATH"', 'run: ./tests/run.sh unit', 'bpf-linker must be on PATH before unit validations');
-  const completeCheckoutCount = (workflow.match(/uses: actions\/checkout@v4\n        with:\n          fetch-depth: 0/g) || []).length;
-  assert(completeCheckoutCount === 2, 'both workflow jobs must use checkout with fetch-depth 0');
+  assert(/on:\n  push:\n    branches:\n      - main\n    paths:\n      - net\/lanspeedd\/Makefile\n      - applications\/luci-app-lanspeed\/Makefile\n  workflow_dispatch:/.test(workflow),
+    'workflow must run for main pushes changing either package Makefile and expose workflow_dispatch');
+  assert(!/tags:/.test(workflow), 'workflow must not run from tag pushes');
+  assert(!/pull_request:/.test(workflow), 'workflow must not run from pull requests');
+  const jobsBlock = extractYamlBlock(workflow, 'jobs', 0);
+  const jobNames = [...jobsBlock.matchAll(/^  ([a-z0-9_-]+):$/gm)].map((match) => match[1]);
+  assertExactList(jobNames, ['detect', 'validate', 'build', 'publish'],
+    'workflow jobs must be exactly detect, validate, build, and publish in order');
+  const detectJob = extractYamlBlock(workflow, 'detect', 2);
+  const validateJob = extractYamlBlock(workflow, 'validate', 2);
+  const buildJob = extractYamlBlock(workflow, 'build', 2);
+  const publishJob = extractYamlBlock(workflow, 'publish', 2);
+  assertExactList(readJobNeeds(validateJob, 'validate'), ['detect'], 'validate job must need only detect');
+  assertExactList(readJobNeeds(buildJob, 'build'), ['detect', 'validate'], 'build job must need detect then validate');
+  assertExactList(readJobNeeds(publishJob, 'publish'), ['detect', 'build'], 'publish job must need detect then build');
+  assert(/^    if: needs\.detect\.outputs\.changed == 'true'$/m.test(validateJob), 'validate job must use the changed gate');
+  assert(/^    if: needs\.detect\.outputs\.changed == 'true'$/m.test(buildJob), 'build job must use the changed gate');
+  assert(/^    if: needs\.detect\.outputs\.changed == 'true'$/m.test(publishJob), 'publish job must use the changed gate');
+  assert((workflow.match(/^permissions:$/gm) || []).length === 1 &&
+    workflow.includes('permissions:\n  contents: read\n\njobs:'), 'workflow must grant global contents read only');
+  assert((workflow.match(/^    permissions:$/gm) || []).length === 1,
+    'only one job may override workflow permissions');
+  assert(!/^    permissions:$/m.test(detectJob), 'detect job must use global read permissions');
+  assert(!/^    permissions:$/m.test(validateJob), 'validate job must use global read permissions');
+  assert(!/^    permissions:$/m.test(buildJob), 'build job must use global read permissions');
+  assert(extractYamlBlock(publishJob, 'permissions', 4).trimEnd() === '    permissions:\n      contents: write',
+    'publish job alone must grant contents write');
+  assert((workflow.match(/^\s+contents: read$/gm) || []).length === 1, 'workflow must have exactly one contents read grant');
+  assert((workflow.match(/^\s+contents: write$/gm) || []).length === 1, 'workflow must have exactly one contents write grant');
+  assert((workflow.match(/uses: actions\/checkout@v7/g) || []).length === 4, 'each job must use actions/checkout v7 exactly once');
+  assert((validateJob.match(/uses: actions\/setup-node@v7/g) || []).length === 1, 'validate job must use actions/setup-node v7 once');
+  assert((buildJob.match(/uses: actions\/upload-artifact@v7\.0\.1/g) || []).length === 1,
+    'build job must use actions/upload-artifact v7.0.1 once');
+  assert((publishJob.match(/uses: actions\/download-artifact@v8\.0\.1/g) || []).length === 2,
+    'publish job must download both architecture artifacts with actions/download-artifact v8.0.1');
+  assert((publishJob.match(/uses: softprops\/action-gh-release@v3\.0\.2/g) || []).length === 1,
+    'publish job must pin action-gh-release v3.0.2 once');
+  const detectStep = extractNamedStep(detectJob, 'Detect version change and release state');
+  assert(detectStep.includes('code_version="$(sh ./scripts/release-version.sh)"'), 'workflow must read the code version through sh scripts/release-version.sh');
+  assert(detectStep.includes("grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+-r[0-9]+$'"), 'detect job must validate the complete code version format');
+  assert(detectStep.includes('EVENT_NAME: ${{ github.event_name }}'), 'detect job must receive the event name');
+  assert(detectStep.includes('BEFORE_SHA: ${{ github.event.before }}'), 'detect job must receive github.event.before for push comparisons');
+  assert(detectStep.includes('before="${GITHUB_SHA}^1"'), 'workflow_dispatch must compare HEAD^1 with HEAD');
+  assert(detectStep.includes('before="$BEFORE_SHA"'), 'push detection must compare github.event.before with HEAD');
+  assert(detectStep.includes('0000000000000000000000000000000000000000'), 'detect job must handle a zero push base SHA');
+  const beforeObjectCheck = '            if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then';
+  const dispatchMissingGuard = '              if [ "$EVENT_NAME" != push ]; then';
+  const beforeFetch = '              git fetch --no-tags --depth=1 origin "$before"';
+  const postFetchCheck = '            git cat-file -e "${before}^{commit}"';
+  const beforeArchive = '            git archive "$before" -- scripts/release-version.sh net/lanspeedd/Makefile applications/luci-app-lanspeed/Makefile | tar -x -C "$before_dir"';
+  assert(detectStep.includes(beforeObjectCheck), 'nonzero before must be checked for a commit object before archive');
+  assert(detectStep.includes(dispatchMissingGuard), 'a missing dispatch parent must fail instead of fetching');
+  assert(detectStep.includes('error: comparison commit ${before} is unavailable for ${EVENT_NAME}'),
+    'missing non-push comparison commits must emit a clear error');
+  assert((detectStep.match(/git fetch --no-tags --depth=1 origin "\$before"/g) || []).length === 1,
+    'detect job must fetch a missing push before SHA exactly once');
+  assert(detectStep.includes(beforeFetch), 'detect job must fetch the raw missing before SHA');
+  assert((detectStep.split('git cat-file -e "${before}^{commit}"').length - 1) === 2,
+    'detect job must verify the before object before and after a possible fetch');
+  assert(detectStep.includes(postFetchCheck), 'detect job must verify the fetched before commit');
+  assertBefore(detectStep, beforeObjectCheck, dispatchMissingGuard, 'before object check must precede the event guard');
+  assertBefore(detectStep, dispatchMissingGuard, beforeFetch, 'dispatch failure guard must precede push-only fetch');
+  assertBefore(detectStep, beforeFetch, postFetchCheck, 'raw before fetch must precede post-fetch verification');
+  assertBefore(detectStep, postFetchCheck, beforeArchive, 'before commit verification must precede archive');
+  assert(detectStep.includes(beforeArchive),
+    'detect job must read the complete previous version from an archived base commit');
+  assert(detectStep.includes('before_version="$(sh "$before_dir/scripts/release-version.sh")"'), 'detect job must calculate the previous complete version');
+  assert(detectStep.includes('release_tag="v${code_version}"'), 'detect job must derive the v-prefixed release tag');
+  assert(!detectStep.includes('&& tag_exists=true'), 'detect job must not treat every git ls-remote failure as a missing tag');
+  assert(detectStep.includes('tag_query_status=0'), 'detect job must capture the git ls-remote status');
+  assert(detectStep.includes('git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null || tag_query_status=$?'),
+    'detect job must preserve the git ls-remote exit status');
+  assert(detectStep.includes('case "$tag_query_status" in'), 'detect job must branch on the git ls-remote exit status');
+  assert(detectStep.includes('0) tag_exists=true ;;'), 'git ls-remote status 0 must mean the tag exists');
+  assert(detectStep.includes('2) tag_exists=false ;;'), 'git ls-remote status 2 must mean the tag is absent');
+  assert(detectStep.includes('*)'), 'unexpected git ls-remote statuses must use a catch-all branch');
+  assert(detectStep.includes('error: failed to query remote tag ${release_tag}: git ls-remote exit ${tag_query_status}'),
+    'unexpected git ls-remote statuses must emit a diagnostic');
+  assert(detectStep.includes('exit "$tag_query_status"'), 'unexpected git ls-remote failures must fail closed');
+  assert(detectStep.includes('gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100"'), 'detect job must inspect all GitHub Releases');
+  const completeReleaseAssets = [
+    'lanspeedd-\\($version).apk',
+    'lanspeedd-bpf-\\($version).apk',
+    'luci-app-lanspeed-\\($version).apk',
+    'lanspeedd-\\($version)-aarch64.apk',
+    'lanspeedd-bpf-\\($version)-aarch64.apk',
+    'luci-app-lanspeed-\\($version)-aarch64.apk'
+  ];
+  assert(detectStep.includes('expected_assets_json="$(jq -nc --arg version "$code_version"'),
+    'detect job must build the exact expected asset set from the complete code version');
+  completeReleaseAssets.forEach((asset) => {
+    assert(detectStep.includes(`"${asset}"`), `detect job must require complete Release asset ${asset}`);
+  });
+  assert(detectStep.includes('--argjson expected "$expected_assets_json"'),
+    'detect job must pass the exact expected asset set into the Release validator');
+  assert(detectStep.includes('select(([.assets[].name] | sort) == $expected)'),
+    'detect job must reject missing, extra, or duplicate Release asset names');
+  assert(detectStep.includes('select(all(.assets[]; .state == "uploaded"))'),
+    'detect job must require every Release asset to be uploaded');
+  assert(detectStep.includes('select(all(.assets[]; ((.digest // "") | test("^sha256:[0-9a-f]{64}$"))))'),
+    'detect job must require every Release asset to have a lowercase SHA256 digest');
+  assert(detectStep.includes('complete_count='), 'detect job must count only complete Releases');
+  assert(detectStep.includes('[ "$tag_exists" = false ] && [ "$release_count" -eq 0 ]'), 'missing tag and Release state must use the version change gate');
+  assert(detectStep.includes('[ "$tag_exists" = true ] && [ "$release_count" -eq 1 ] && [ "$complete_count" -eq 1 ]'),
+    'only one tag plus one complete published non-prerelease Release may skip rebuilding');
+  assert(!detectStep.includes('ready_count='), 'published flags alone must not mark a partial Release complete');
+  assert(detectStep.includes('error: incomplete or inconsistent release state for ${release_tag}'),
+    'partial, missing, extra, digest-less, draft, prerelease, or duplicate release state must fail clearly');
+  assert((workflow.match(/if: needs\.detect\.outputs\.changed == 'true'/g) || []).length === 3,
+    'validate, build, and publish must all run only for changed == true');
+  assert(workflow.includes('Acquire::Retries=3'), 'APT network operations must retry transient failures');
+  assert(workflow.includes('RUSTUP_MAX_RETRIES=3'), 'Rust toolchain downloads must retry transient failures');
+  assert(workflow.includes('rustup toolchain install 1.96.0 --profile minimal --component rust-src'), 'validation must install Rust 1.96.0 with rust-src');
+  assert(workflow.includes('https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz'),
+    'validation must download the official bpf-linker 0.10.3 archive');
+  assert(workflow.includes('0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c'),
+    'validation must pin the official bpf-linker 0.10.3 archive checksum');
+  assert(workflow.includes('printf \'%s  %s\\n\' "$bpf_linker_sha256" "$bpf_linker_archive" | sha256sum -c -'),
+    'validation must verify bpf-linker before extraction');
+  assert(!workflow.includes('cargo install bpf-linker'), 'workflow must not compile an unpinned bpf-linker dependency graph');
+  assert(workflow.includes("test \"$(bpf-linker --version)\" = 'bpf-linker 0.10.3'"), 'validation must verify the installed bpf-linker version');
+  assert(workflow.includes('./tests/run.sh unit'), 'validate job must run the complete unit suite');
   assert(!workflow.includes('ipk_version='), 'Rust release workflow must not prepare unsupported IPK version names');
-  assert(workflow.includes('name: ${{ needs.detect.outputs.code_version }}'), 'GitHub Release name must match the detected code version');
-  assert(workflow.includes('tag_name: v${{ needs.detect.outputs.code_version }}'), 'GitHub Release tag must match the detected code version');
-  assert(workflow.includes('target_commitish: ${{ github.sha }}'), 'GitHub Release tag must target the pushed commit');
-  assert(workflow.includes('generate_release_notes: true'), 'GitHub Release must generate release notes');
-  assert(workflow.includes('fail_on_unmatched_files: true'), 'GitHub Release must fail when an asset path is unmatched');
-  assert(workflow.includes('overwrite_files: false'), 'GitHub Release must not overwrite existing assets');
-  assert(!workflow.includes('overwrite_files: true'), 'GitHub Release must never overwrite existing assets');
-  assert(!workflow.includes('Remove previous release assets'), 'workflow must not remove assets from an existing release');
-  assert(!workflow.includes('gh release delete-asset'), 'workflow must not delete assets from an existing release');
   assert(!/^      [A-Z_]+:\s*\$\{\{\s*env\./m.test(workflow), 'workflow job env must not reference the env context');
-  assert(workflow.includes('$APK_SDK_URL'), 'workflow APK SDK download must read the SDK URL as a runner environment variable');
-  assert(workflow.includes('$APK_AARCH64_SDK_URL'), 'workflow APK aarch64 SDK download must read the SDK URL as a runner environment variable');
-  assert(!/actions\/upload-artifact/.test(workflow), 'workflow must not upload Actions artifacts');
-  assert(!/actions\/download-artifact/.test(workflow), 'workflow must not download Actions artifacts');
-  assert(workflow.includes('uses: softprops/action-gh-release@v2.6.2'), 'workflow must publish package files through GitHub Releases');
-  assert(workflow.includes('APK_SDK_URL:'), 'workflow must define a dedicated APK SDK URL');
-  assert(workflow.includes('APK_AARCH64_SDK_URL:'), 'workflow must define a dedicated APK aarch64 SDK URL');
-  assert(workflow.includes('https://downloads.immortalwrt.org/releases/25.12.0-rc2/targets/x86/64/immortalwrt-sdk-25.12.0-rc2-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst'), 'workflow must use the official APK x86_64 SDK URL');
-  assert(workflow.includes('fb665aabb627d3b3a7d98cd426ee90febdb84ceffa6ce4c18fbda934c46053d5'), 'workflow must pin the official APK x86_64 SDK checksum');
-  assert(!workflow.includes('IPK_SDK_URL:'), 'workflow must not advertise an unsupported OpenWrt 23.05 SDK');
-  assert(!workflow.includes('IPK_AARCH64_SDK_URL:'), 'workflow must not advertise unsupported aarch64 IPK builds');
-  assert(workflow.includes('https://downloads.immortalwrt.org/releases/25.12.0-rc2/targets/armsr/armv8/immortalwrt-sdk-25.12.0-rc2-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst'), 'workflow must use the official APK aarch64 SDK URL');
-  assert(workflow.includes('8fd6e4177ad99b567035cbc2825dd060773556249831fad5560cb1ef9eb1e290'), 'workflow must pin the official APK aarch64 SDK checksum');
-  assert(!workflow.includes('23.05.6'), 'workflow must not schedule the unsupported 23.05 release line');
-  assert(!workflow.includes('IPK_BASE_FEED_REF:'), 'workflow must not retain an unused IPK feed pin');
-  assert(workflow.includes('Download public SDKs'), 'workflow must download the supported APK SDKs');
-  assert(workflow.includes('"$APK_SDK_SHA256" "$RUNNER_TEMP/sdk-apk-base/sdk.tar.zst" | sha256sum -c -'), 'workflow must verify the APK x86_64 SDK checksum');
-  assert(workflow.includes('"$APK_AARCH64_SDK_SHA256" "$RUNNER_TEMP/sdk-apk-aarch64-base/sdk.tar.zst" | sha256sum -c -'), 'workflow must verify the APK aarch64 SDK checksum');
-  assert(workflow.includes('sdk-apk-base'), 'workflow must keep a separate APK SDK for base builds');
-  assert(workflow.includes('sdk-apk-bpf'), 'workflow must keep a separate APK SDK for BPF builds');
-  assert(workflow.includes('sdk-apk-aarch64-base'), 'workflow must keep a separate APK aarch64 SDK for base builds');
-  assert(workflow.includes('sdk-apk-aarch64-bpf'), 'workflow must keep a separate APK aarch64 SDK for BPF builds');
-  assert(!workflow.includes('sdk-ipk-'), 'workflow must not create unsupported IPK SDK copies');
-  assert(workflow.includes('run_build apk-base'), 'workflow must build APK base packages');
-  assert(workflow.includes('run_build apk-bpf'), 'workflow must build APK BPF packages');
-  assert(workflow.includes('run_build apk-aarch64-base'), 'workflow must build APK aarch64 base packages');
-  assert(workflow.includes('run_build apk-aarch64-bpf'), 'workflow must build APK aarch64 BPF packages');
-  assert(workflow.includes(') > "$log_file" 2>&1 &'), 'workflow must launch SDK builds in parallel');
-  assert(workflow.includes('if wait "$pid"; then'), 'workflow must wait for every parallel SDK build');
-  assert(!workflow.includes('run_build ipk-'), 'workflow must not run unsupported IPK builds');
-  assert(workflow.includes('run_build apk-base "$RUNNER_TEMP/sdk-apk-base" 0 25.12 lanspeedd'), 'APK base builds must use the 25.12 SDK release guard and daemon-only target');
-  assert(workflow.includes('run_build apk-bpf "$RUNNER_TEMP/sdk-apk-bpf" 1 25.12 all'), 'APK BPF builds must use the 25.12 SDK release guard and full target');
-  assert(workflow.includes('run_build apk-aarch64-base "$RUNNER_TEMP/sdk-apk-aarch64-base" 0 25.12 lanspeedd'), 'APK aarch64 base builds must use the 25.12 SDK release guard and daemon-only target');
-  assert(workflow.includes('run_build apk-aarch64-bpf "$RUNNER_TEMP/sdk-apk-aarch64-bpf" 1 25.12 all'), 'APK aarch64 BPF builds must use the 25.12 SDK release guard and full target');
+  assert(!/inputs\./.test(workflow), 'workflow must not depend on manual workflow inputs');
+  assert(/^      fail-fast: false$/m.test(buildJob), 'build matrix must keep fail-fast disabled');
+  const matrixIds = [...buildJob.matchAll(/^          - id: ([a-z0-9_]+)$/gm)].map((match) => match[1]);
+  assertExactList(matrixIds, ['x86_64', 'aarch64'], 'build matrix include must contain exactly x86_64 and aarch64');
+  assert(buildJob.includes('sdk_url: https://downloads.immortalwrt.org/releases/25.12.1/targets/x86/64/immortalwrt-sdk-25.12.1-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst'),
+    'x86_64 matrix entry must use the exact ImmortalWrt 25.12.1 SDK URL');
+  assert(buildJob.includes('sdk_sha256: 02ad8cfc775001ccae8e9282d19696de54e3ab3963f005737ad61f8698263edd'),
+    'x86_64 matrix entry must pin the exact SDK checksum');
+  assert(buildJob.includes("suffix: ''"), 'x86_64 matrix entry must not add an asset suffix');
+  assert(buildJob.includes('artifact: lanspeed-apk-x86_64'), 'x86_64 matrix entry must use its unique artifact name');
+  assert(buildJob.includes('sdk_url: https://downloads.immortalwrt.org/releases/25.12.1/targets/armsr/armv8/immortalwrt-sdk-25.12.1-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst'),
+    'aarch64 matrix entry must use the exact ImmortalWrt 25.12.1 SDK URL');
+  assert(buildJob.includes('sdk_sha256: 1ac4a0940328ebbb71c5e2e44bd798d9acc06b99dc417178fe9868e5e91a0ef5'),
+    'aarch64 matrix entry must pin the exact SDK checksum');
+  assert(buildJob.includes('suffix: -aarch64'), 'aarch64 matrix entry must add the release asset suffix');
+  assert(buildJob.includes('artifact: lanspeed-apk-aarch64'), 'aarch64 matrix entry must use its unique artifact name');
+  const curlLines = workflow.split('\n').map((line) => line.trim()).filter((line) => line.startsWith('curl '));
+  assert(curlLines.length === 2, 'workflow must contain exactly the bpf-linker and SDK curl downloads');
+  curlLines.forEach((line) => {
+    assert(/(?:^|\s)--fail(?:\s|$)/.test(line), `curl download must include --fail: ${line}`);
+    assert(/(?:^|\s)--location(?:\s|$)/.test(line), `curl download must include --location: ${line}`);
+    assert(/(?:^|\s)--retry\s+3(?:\s|$)/.test(line), `curl download must include --retry 3: ${line}`);
+    assert(/(?:^|\s)--retry-all-errors(?:\s|$)/.test(line), `curl download must include --retry-all-errors: ${line}`);
+  });
+  const sdkDownloadStep = extractNamedStep(buildJob, 'Download and verify SDK');
+  const sdkChecksumMarker = 'printf \'%s  %s\\n\' "$SDK_SHA256" "$sdk_archive" | sha256sum -c -';
+  const sdkTarMarker = 'tar --zstd -xf "$sdk_archive" -C "$base_sdk" --strip-components=1';
+  assertBefore(sdkDownloadStep, sdkChecksumMarker, sdkTarMarker,
+    'the exact SDK checksum verification must precede the SDK extraction');
+  assert(!sdkDownloadStep.includes('sdk_source='), 'matrix build must not retain a third full SDK source tree');
+  assert(sdkDownloadStep.includes('base_sdk="$RUNNER_TEMP/sdk-base-${{ matrix.id }}"'), 'matrix build must use a dedicated base SDK directory');
+  assert(sdkDownloadStep.includes('bpf_sdk="$RUNNER_TEMP/sdk-bpf-${{ matrix.id }}"'), 'matrix build must use a dedicated BPF SDK directory');
+  assert(sdkDownloadStep.includes('mkdir -p "$base_sdk" "$bpf_sdk"'), 'matrix build must create only base and BPF SDK trees');
+  assert(sdkDownloadStep.includes(sdkTarMarker), 'matrix build must extract the SDK directly into the base tree');
+  assert(sdkDownloadStep.includes('rm -f "$sdk_archive"'), 'matrix build must delete the verified SDK archive after extraction');
+  assert((sdkDownloadStep.match(/cp -a /g) || []).length === 1 &&
+    sdkDownloadStep.includes('cp -a "$base_sdk/." "$bpf_sdk/"'),
+  'matrix build must copy the extracted base SDK exactly once into the BPF tree');
+  const concurrentBuildStep = extractNamedStep(buildJob, 'Build base and BPF packages concurrently');
+  const baseLaunch = `          (
+            set -o pipefail
+            ENABLE_BPF=0 SDK_RELEASE=25.12 SDK_DIR="$base_sdk" ./scripts/build-sdk.sh lanspeedd 2>&1 | sed -u 's/^/[base] /'
+          ) &
+          base_pid=$!`;
+  const bpfLaunch = `          (
+            set -o pipefail
+            ENABLE_BPF=1 SDK_RELEASE=25.12 SDK_DIR="$bpf_sdk" ./scripts/build-sdk.sh all 2>&1 | sed -u 's/^/[bpf] /'
+          ) &
+          bpf_pid=$!`;
+  const baseWait = `          if ! wait "$base_pid"; then
+            printf '%s\\n' 'error: base SDK build failed' >&2
+            status=1
+          fi`;
+  const bpfWait = `          if ! wait "$bpf_pid"; then
+            printf '%s\\n' 'error: BPF SDK build failed' >&2
+            status=1
+          fi`;
+  assert(concurrentBuildStep.includes(baseLaunch), 'base build must use its own pipefail background pipeline and PID');
+  assert(concurrentBuildStep.includes(bpfLaunch), 'BPF build must use its own pipefail background pipeline and PID');
+  assert((concurrentBuildStep.match(/set -o pipefail/g) || []).length === 2,
+    'the two build pipelines must each enable pipefail');
+  assert((concurrentBuildStep.match(/^\s+\) &$/gm) || []).length === 2,
+    'both build pipelines must start in the background');
+  assert(concurrentBuildStep.includes(baseWait), 'base build PID must be waited and aggregate failures');
+  assert(concurrentBuildStep.includes(bpfWait), 'BPF build PID must be waited and aggregate failures');
+  assert((concurrentBuildStep.match(/status=1/g) || []).length === 2,
+    'either build failure must set the aggregate status');
+  assertBefore(concurrentBuildStep, 'status=0', baseWait, 'aggregate status must be initialized before waiting for base');
+  assertBefore(concurrentBuildStep, baseWait, bpfWait, 'base and BPF PIDs must both be waited');
+  assertBefore(concurrentBuildStep, bpfWait, 'exit "$status"', 'workflow must exit with aggregate build status after both waits');
   assert(!/-name '\*\.apk'/.test(workflow), 'workflow must not collect every APK from the SDK output');
   assert(!/-name '\*\.ipk'/.test(workflow), 'workflow must not collect every IPK from the SDK output');
-  const exactAssetCommands = [
-    'collect_one "$RUNNER_TEMP/sdk-apk-base" "lanspeedd-${code_version}.apk"',
-    'collect_one "$RUNNER_TEMP/sdk-apk-bpf" "lanspeedd-bpf-${code_version}.apk"',
-    'collect_one "$RUNNER_TEMP/sdk-apk-bpf" "luci-app-lanspeed-${code_version}.apk"',
-    'collect_one "$RUNNER_TEMP/sdk-apk-aarch64-base" "lanspeedd-${code_version}.apk" "lanspeedd-${code_version}-aarch64.apk"',
-    'collect_one "$RUNNER_TEMP/sdk-apk-aarch64-bpf" "lanspeedd-bpf-${code_version}.apk" "lanspeedd-bpf-${code_version}-aarch64.apk"',
-    'collect_one "$RUNNER_TEMP/sdk-apk-aarch64-bpf" "luci-app-lanspeed-${code_version}.apk" "luci-app-lanspeed-${code_version}-aarch64.apk"'
-  ];
-  exactAssetCommands.forEach((command) => {
-    assert(releaseJob.includes(command), `workflow must retain exact release asset command: ${command}`);
-  });
-  assert(releaseJob.includes('match_count=0'), 'each release asset collection must count matching source files');
-  assert(releaseJob.includes('match_count=$((match_count + 1))'), 'each matching source file must increment the match count');
-  assert(releaseJob.includes('if [ "$match_count" -ne 1 ]; then'), 'release asset collection must reject zero or multiple source matches');
-  assert(releaseJob.includes('if [ -e "$release_dir/$output_name" ]; then'), 'release asset collection must reject duplicate destination names');
-  assert(releaseJob.includes('asset_count=$(wc -l < "$file_list")'), 'release asset collection must count the final file list');
-  assert(releaseJob.includes("unique_asset_count=$(sed 's#.*/##' \"$file_list\" | sort -u | wc -l)"), 'release asset collection must count unique basenames');
-  assert(releaseJob.includes('if [ "$asset_count" -ne 6 ] || [ "$unique_asset_count" -ne 6 ]; then'), 'release asset collection must require exactly six unique APK basenames');
+  assert(workflow.includes("lanspeedd-${code_version}.apk"), 'workflow must collect only the matching lanspeedd APK package');
+  assert(workflow.includes("lanspeedd-bpf-${code_version}.apk"), 'workflow must collect only the matching lanspeedd-bpf APK package');
+  assert(workflow.includes("luci-app-lanspeed-${code_version}.apk"), 'workflow must collect only the matching LuCI APK package');
   assert(!workflow.includes('.ipk"'), 'workflow must not collect unsupported IPK assets');
-  assert(workflow.includes('"lanspeedd-${code_version}-aarch64.apk"'), 'workflow must add an aarch64 suffix to APK daemon release assets');
-  assert(workflow.includes('"lanspeedd-bpf-${code_version}-aarch64.apk"'), 'workflow must add an aarch64 suffix to APK BPF release assets');
-  assert(workflow.includes('"luci-app-lanspeed-${code_version}-aarch64.apk"'), 'workflow must add an aarch64 suffix to APK LuCI release assets');
   assert(!workflow.includes('ramips'), 'workflow must not add non-aarch64 ramips SDK targets');
   assert(!workflow.includes('ath79'), 'workflow must not add non-aarch64 ath79 SDK targets');
   assert(!workflow.includes('ipq40xx'), 'workflow must not add non-aarch64 ipq40xx SDK targets');
   assert(!workflow.includes('qualcommax'), 'workflow must not split aarch64 into Qualcomm SDK targets');
   assert(!workflow.includes('mediatek'), 'workflow must not split aarch64 into MediaTek SDK targets');
   assert(!workflow.includes('rockchip'), 'workflow must not split aarch64 into Rockchip SDK targets');
-  assertBefore(workflow, 'file_list="$RUNNER_TEMP/release/files.txt"', 'collect_one "$RUNNER_TEMP/sdk-apk-base" "lanspeedd-${code_version}.apk"', 'workflow must create the release file list before collecting files');
-  assertBefore(workflow, 'collect_one "$RUNNER_TEMP/sdk-apk-base" "lanspeedd-${code_version}.apk"', 'collect_one "$RUNNER_TEMP/sdk-apk-bpf" "lanspeedd-bpf-${code_version}.apk"', 'APK base package must be listed before APK BPF package');
-  assertBefore(workflow, 'collect_one "$RUNNER_TEMP/sdk-apk-bpf" "lanspeedd-bpf-${code_version}.apk"', 'collect_one "$RUNNER_TEMP/sdk-apk-bpf" "luci-app-lanspeed-${code_version}.apk"', 'APK BPF package must be listed before its mandatory-BPF LuCI package');
-  const collectedAssets = releaseJob.match(/^\s+collect_one /gm) || [];
-  assert(collectedAssets.length === 6, 'workflow must collect exactly six release APK assets');
-  assert(!workflow.includes('find "$release_dir" -type f | sort > "$file_list"'), 'workflow must not reorder release files by temporary paths');
-  assertBefore(releaseJob, 'if [ "$asset_count" -ne 6 ] || [ "$unique_asset_count" -ne 6 ]; then', 'RELEASE_TAG: v${{ needs.detect.outputs.code_version }}', 'release tag creation must wait until six unique assets are validated');
-  assertBefore(releaseJob, 'if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then', 'git tag "$RELEASE_TAG" "$GITHUB_SHA"', 'local tag existence must be checked before creating the release tag');
-  assertBefore(releaseJob, 'git tag "$RELEASE_TAG" "$GITHUB_SHA"', 'git push origin "refs/tags/$RELEASE_TAG"', 'release tag must be created locally before it is pushed');
-  assertBefore(releaseJob, 'git push origin "refs/tags/$RELEASE_TAG"', 'Publish GitHub Release', 'release tag push must complete before publishing the GitHub Release');
+  assert(workflow.includes('collect_one "$base_sdk" "lanspeedd-${code_version}.apk" "lanspeedd-${code_version}${suffix}.apk"'),
+    'matrix artifact must collect exactly the base daemon package');
+  assert(workflow.includes('collect_one "$bpf_sdk" "lanspeedd-bpf-${code_version}.apk" "lanspeedd-bpf-${code_version}${suffix}.apk"'),
+    'matrix artifact must collect exactly the BPF daemon package');
+  assert(workflow.includes('collect_one "$bpf_sdk" "luci-app-lanspeed-${code_version}.apk" "luci-app-lanspeed-${code_version}${suffix}.apk"'),
+    'matrix artifact must collect the LuCI package from the mandatory-BPF tree');
+  assert(workflow.includes('name: ${{ matrix.artifact }}'), 'matrix upload must use the architecture-specific artifact name');
+  assert(workflow.includes('retention-days: 1'), 'matrix artifacts must be retained for one day');
+  assert(workflow.includes('compression-level: 0'), 'matrix APK artifacts must disable redundant compression');
+  assert(workflow.includes('if-no-files-found: error'), 'matrix upload must fail if any artifact collection failed');
+  assert(workflow.includes('name: lanspeed-apk-x86_64'), 'publish job must download the x86_64 artifact separately');
+  assert(workflow.includes('name: lanspeed-apk-aarch64'), 'publish job must download the aarch64 artifact separately');
+  const expectedAssets = [
+    'lanspeedd-${CODE_VERSION}.apk',
+    'lanspeedd-bpf-${CODE_VERSION}.apk',
+    'luci-app-lanspeed-${CODE_VERSION}.apk',
+    'lanspeedd-${CODE_VERSION}-aarch64.apk',
+    'lanspeedd-bpf-${CODE_VERSION}-aarch64.apk',
+    'luci-app-lanspeed-${CODE_VERSION}-aarch64.apk'
+  ];
+  expectedAssets.forEach((asset) => {
+    assert(workflow.includes(asset), `publish job must require exact release asset ${asset}`);
+  });
+  assert(workflow.includes('find "$release_dir" -maxdepth 1 -type f -printf \'%f\\n\' | sort > "$actual_files"'),
+    'publish job must enumerate only the six downloaded release files');
+  assert(workflow.includes('diff -u "$expected_files" "$actual_files"'), 'publish job must reject missing or extra release files');
+  assertBefore(workflow, 'diff -u "$expected_files" "$actual_files"', 'git tag "$release_tag" "$GITHUB_SHA"',
+    'publish job must validate all six files before creating the tag');
+  assert(workflow.includes('git tag "$release_tag" "$GITHUB_SHA"'), 'publish job must create a lightweight tag at GITHUB_SHA');
+  assert(workflow.includes('git push origin "refs/tags/${release_tag}"'), 'publish job must push only the new release tag');
+  assert(!workflow.includes('git tag -a'), 'publish job must not create an annotated tag');
+  assert(!workflow.includes('--force'), 'workflow must never force a tag or release operation');
+  assert(workflow.includes('name: ${{ needs.detect.outputs.code_version }}'), 'GitHub Release name must match the complete code version');
+  assert(workflow.includes('tag_name: v${{ needs.detect.outputs.code_version }}'), 'GitHub Release must use the detected v-prefixed tag');
+  assert(workflow.includes('draft: false'), 'GitHub Release must be published, not drafted');
+  assert(workflow.includes('prerelease: false'), 'GitHub Release must not be marked prerelease');
+  assert(workflow.includes('fail_on_unmatched_files: true'), 'GitHub Release must fail on missing files');
+  assert(workflow.includes('overwrite_files: false'), 'GitHub Release must never overwrite existing assets');
+  assert(!workflow.includes('gh release delete-asset'), 'workflow must never delete existing release assets');
+
+  assert(readme.includes('`main` 分支'), 'README must describe the main-branch automatic release trigger');
+  assert(readme.includes('`net/lanspeedd/Makefile`') &&
+    readme.includes('`applications/luci-app-lanspeed/Makefile`'),
+  'README must name both version-bearing Makefiles');
+  assert(readme.includes('完整版本发生变化'), 'README must explain that the complete version change triggers the workflow');
+  assert(readme.includes('自动创建对应的 `v*` tag 和 GitHub Release'), 'README must state that the workflow creates the tag and Release');
+  assert(readme.includes('`workflow_dispatch` 重试'), 'README must document the manual retry trigger');
+  assert(readme.includes('清理任何不完整的 tag/Release 状态'), 'README must require cleanup of partial remote state before retry');
+  assert(readme.includes('不得预先创建 `v*` tag'), 'README must forbid maintainers from pre-creating release tags');
+  assert(!readme.includes('GitHub Actions 在 `v*` tag 发布时'), 'README must not retain the obsolete tag-trigger description');
+  assert(readme.includes('`1.0.0-r3`'), 'README full-version example must remain r3');
+  assert(!/1\.0\.0-r[45]/.test(readme), 'README must not advance the release beyond r3');
+
+  assert(daemonRelease === '3', 'daemon PKG_RELEASE must be exactly 3 for the automatic release workflow');
+  assert(luciRelease === '3', 'LuCI PKG_RELEASE must be exactly 3 for the automatic release workflow');
 
   console.log('validate-release-version: PASS');
 } catch (error) {
