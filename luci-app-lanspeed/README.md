@@ -54,7 +54,7 @@ make -j"$(nproc)" package/luci-app-lanspeed/compile
 - **配置页面**：LuCI 内置“实时状态”和“LAN Speed 配置”两个页签，速率采集、连接数采集、活跃客户端阈值和接口配置可分开调整，并由页面底部的统一按钮一次保存、提交和重载；NSS 设备会显示 NSS 专属说明。
 - **接口配置**：采集 / 观察 / 关闭 三态切换，默认采集 `br-lan`、观察 `wan`；自动忽略 `dae*`、`miireg*`、`tun*`、`erspan*`、`gretap*`、`gre*`、`ip6gre*`、`ip6tnl*`、`sit*`、`bonding_masters*`，拒绝 nssifb 采集并可观察 WAN / ifb 计数。
 - **告警体系**：OpenClash / dae/daed / SQM/qosify/ifb / flow offload / fullcone NAT 等场景自动识别并提示。
-- **版本显示**：LuCI 状态页显示完整版本，例如 `1.0.0-r2`。
+- **版本显示**：LuCI 状态页显示完整版本，例如 `1.0.0-r4`。
 
 ## 采集策略
 
