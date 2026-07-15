@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const childProcess = require('child_process');
+const os = require('os');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
@@ -11,6 +13,24 @@ const buildDriver = fs.readFileSync(
 );
 const cargoConfig = fs.readFileSync(path.join(root, 'net/lanspeedd/rust/.cargo/config.toml'), 'utf8');
 const luciMakefile = fs.readFileSync(path.join(root, 'applications/luci-app-lanspeed/Makefile'), 'utf8');
+const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+const qaDevicePath = path.join(root, 'tests/qa-device.sh');
+const qaDevice = fs.readFileSync(qaDevicePath, 'utf8');
+
+const clientDetailResources = [
+  'clientConnections.js',
+  'clientDetailShell.js',
+  'clientDetailStyle.js',
+  'clientDetailStyleBase.js',
+  'clientDetailStyleBootstrap.js',
+  'clientDetailStyleArgon.js',
+  'clientDetailStyleAurora.js',
+  'clientDetailStyleResponsive.js',
+  'clientDetailRefresh.js',
+  'clientDetailView.js'
+];
+const clientConnectionsConntrackSemantics =
+  'TCP 仅统计 ESTABLISHED + ASSURED，UDP 仅统计 ASSURED';
 
 function assert(condition, message) {
   if (!condition) {
@@ -26,7 +46,443 @@ function assertNoMatch(source, pattern, message) {
   assert(!pattern.test(source), message);
 }
 
+function countLiteral(source, value) {
+  return source.split(value).length - 1;
+}
+
+function hasExactClientConnectionsSemantics(source) {
+  const paragraph = /^`client_connections`[^\n]*$/m.exec(source);
+  return Boolean(paragraph && paragraph[0].includes(clientConnectionsConntrackSemantics));
+}
+
+function validateReadmeSemanticsSelfTest() {
+  const valid = `\`client_connections\` 返回当前连接；${clientConnectionsConntrackSemantics}。`;
+  assert(hasExactClientConnectionsSemantics(valid),
+    'README semantics validator self-test must accept the complete conntrack contract');
+  const missingTcpAssured = valid.replace('ESTABLISHED + ASSURED', 'ESTABLISHED');
+  assert(missingTcpAssured !== valid,
+    'README semantics validator mutation must remove TCP ASSURED');
+  assert(!hasExactClientConnectionsSemantics(missingTcpAssured),
+    'README semantics validator must reject a mutation that removes TCP ASSURED');
+}
+
+function writeExecutable(file, source) {
+  fs.writeFileSync(file, source, { mode: 0o755 });
+}
+
+function readIfPresent(file) {
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+}
+
+function nonEmptyLines(source) {
+  return source.trim().split('\n').filter(Boolean);
+}
+
+function writeQaScenarioTools(fakeBin, jshnFixture, includeJsonfilter) {
+  fs.mkdirSync(fakeBin);
+
+  writeExecutable(path.join(fakeBin, 'sshpass'), `#!/bin/sh
+printf '%s|%s|%s\\n' "$1" "$2" "$3" >> "$QA_SSHPASS_LOG"
+[ "$1" = '-e' ] || exit 96
+shift
+exec "$@"
+`);
+  writeExecutable(path.join(fakeBin, 'ssh'), `#!/bin/sh
+for remote_command do :; done
+case "$remote_command" in
+  *'clients_json=$(ubus call lanspeed clients)'*)
+    replacement=". '$QA_JSHN_FIXTURE'"
+    remote_command=$(printf '%s\\n' "$remote_command" | /usr/bin/sed "s#\\. /usr/share/libubox/jshn.sh#$replacement#")
+    PATH="$QA_FAKE_BIN" /bin/sh -c "$remote_command"
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`);
+  writeExecutable(path.join(fakeBin, 'ubus'), `#!/bin/sh
+printf '%s|%s|%s|%s\\n' "\${1:-}" "\${2:-}" "\${3:-}" "\${4:-}" >> "$QA_UBUS_LOG"
+case "\${3:-}" in
+  clients)
+    printf '%s\\n' "$QA_CLIENTS_JSON"
+    exit "\${QA_CLIENTS_STATUS:-0}"
+    ;;
+  client_connections)
+    printf '%s\\n' '{}'
+    exit "\${QA_DETAIL_STATUS:-0}"
+    ;;
+  *)
+    printf '%s\\n' '{}'
+    ;;
+esac
+`);
+  if (includeJsonfilter) {
+    writeExecutable(path.join(fakeBin, 'jsonfilter'), `#!/bin/sh
+/bin/cat >/dev/null
+printf '%s\\n' 'jsonfilter' >> "$QA_JSONFILTER_LOG"
+if [ "\${QA_JSONFILTER_STATUS:-0}" -eq 0 ] && [ -n "\${QA_IDENTITY:-}" ]; then
+  printf '%s\\n' "$QA_IDENTITY"
+fi
+exit "\${QA_JSONFILTER_STATUS:-0}"
+`);
+  }
+
+  writeExecutable(jshnFixture, `#!/bin/sh
+printf '%s\\n' 'source' >> "$QA_JSHN_LOG"
+if [ "\${QA_JSHN_SOURCE_STATUS:-0}" -ne 0 ]; then
+  return "$QA_JSHN_SOURCE_STATUS"
+fi
+
+json_init() {
+  printf '%s\\n' 'json_init' >> "$QA_JSHN_LOG"
+  if [ "\${QA_JSON_INIT_STATUS:-0}" -ne 0 ]; then
+    return "$QA_JSON_INIT_STATUS"
+  fi
+  QA_JSHN_IDENTITY=
+}
+
+json_add_string() {
+  printf 'json_add_string|%s|%s\\n' "$1" "$2" >> "$QA_JSHN_LOG"
+  if [ "\${QA_JSON_ADD_STATUS:-0}" -ne 0 ]; then
+    return "$QA_JSON_ADD_STATUS"
+  fi
+  QA_JSHN_IDENTITY=$2
+}
+
+json_dump() {
+  printf '%s\\n' 'json_dump' >> "$QA_JSHN_LOG"
+  if [ "\${QA_JSON_DUMP_STATUS:-0}" -ne 0 ]; then
+    return "$QA_JSON_DUMP_STATUS"
+  fi
+  [ "$QA_JSHN_IDENTITY" = "$QA_EXPECTED_IDENTITY" ] || return 34
+  printf '%s\\n' "$QA_EXPECTED_PAYLOAD"
+}
+`);
+}
+
+function runQaDeviceScenario(tempRoot, scenario) {
+  const scenarioRoot = path.join(tempRoot, 'scenarios', scenario.id);
+  const fakeBin = path.join(scenarioRoot, 'bin');
+  const output = path.join(scenarioRoot, 'output');
+  const sshpassLog = path.join(scenarioRoot, 'sshpass.log');
+  const ubusLog = path.join(scenarioRoot, 'ubus.log');
+  const jsonfilterLog = path.join(scenarioRoot, 'jsonfilter.log');
+  const jshnLog = path.join(scenarioRoot, 'jshn.log');
+  const jshnFixture = path.join(scenarioRoot, 'jshn.sh');
+  const secret = `scenario-secret-${scenario.id}`;
+  const identity = scenario.identity || '';
+  const expectedPayload = scenario.expectedPayload || JSON.stringify({ identity_key: identity });
+  const clientsJson = scenario.clientsJson !== undefined
+    ? scenario.clientsJson
+    : JSON.stringify({ clients: identity ? [{ identity_key: identity }] : [] });
+
+  fs.mkdirSync(scenarioRoot, { recursive: true });
+  writeQaScenarioTools(fakeBin, jshnFixture, scenario.includeJsonfilter !== false);
+
+  const stdout = childProcess.execFileSync('sh', [qaDevicePath, 'collect'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${fakeBin}:${process.env.PATH}`,
+      TARGET: 'root@192.0.2.1',
+      DRY_RUN: '0',
+      OUT_DIR: output,
+      SSHPASS: secret,
+      QA_FAKE_BIN: fakeBin,
+      QA_SSHPASS_LOG: sshpassLog,
+      QA_UBUS_LOG: ubusLog,
+      QA_JSONFILTER_LOG: jsonfilterLog,
+      QA_JSHN_LOG: jshnLog,
+      QA_JSHN_FIXTURE: jshnFixture,
+      QA_CLIENTS_JSON: clientsJson,
+      QA_CLIENTS_STATUS: String(scenario.clientsStatus || 0),
+      QA_JSONFILTER_STATUS: String(scenario.jsonfilterStatus || 0),
+      QA_IDENTITY: identity,
+      QA_JSHN_SOURCE_STATUS: String(scenario.jshnSourceStatus || 0),
+      QA_JSON_INIT_STATUS: String(scenario.jsonInitStatus || 0),
+      QA_JSON_ADD_STATUS: String(scenario.jsonAddStatus || 0),
+      QA_JSON_DUMP_STATUS: String(scenario.jsonDumpStatus || 0),
+      QA_EXPECTED_IDENTITY: identity,
+      QA_EXPECTED_PAYLOAD: expectedPayload,
+      QA_DETAIL_STATUS: String(scenario.detailStatus || 0)
+    }
+  });
+
+  const evidence = fs.readFileSync(path.join(output, 'task-16-device-dry-run.txt'), 'utf8');
+  const ubusLines = nonEmptyLines(readIfPresent(ubusLog));
+  const clientCalls = ubusLines.filter((line) => line.startsWith('call|lanspeed|clients|'));
+  const detailCalls = ubusLines.filter((line) => line.startsWith('call|lanspeed|client_connections|'));
+  const commandExits = [...evidence.matchAll(/^command_exit=(\d+)$/gm)].map((match) => Number(match[1]));
+  const jsonfilterCalls = nonEmptyLines(readIfPresent(jsonfilterLog));
+  const jshnCalls = nonEmptyLines(readIfPresent(jshnLog));
+  const sshpassCalls = nonEmptyLines(readIfPresent(sshpassLog));
+  const artifacts = [
+    stdout,
+    evidence,
+    readIfPresent(ubusLog),
+    readIfPresent(jsonfilterLog),
+    readIfPresent(jshnLog),
+    readIfPresent(sshpassLog)
+  ].join('\n');
+
+  assert(clientCalls.length === 1, `${scenario.id}: clients must be called exactly once`);
+  assert(
+    detailCalls.length === scenario.expectedDetailCalls,
+    `${scenario.id}: expected ${scenario.expectedDetailCalls} client_connections calls, got ${detailCalls.length}`
+  );
+  assert(
+    jsonfilterCalls.length === scenario.expectedJsonfilterCalls,
+    `${scenario.id}: expected ${scenario.expectedJsonfilterCalls} jsonfilter calls, got ${jsonfilterCalls.length}`
+  );
+  assert(
+    JSON.stringify(commandExits) === JSON.stringify(scenario.expectedCommandExits),
+    `${scenario.id}: expected command_exit ${JSON.stringify(scenario.expectedCommandExits)}, got ${JSON.stringify(commandExits)}`
+  );
+  assert(
+    JSON.stringify(jshnCalls) === JSON.stringify(scenario.expectedJshnCalls),
+    `${scenario.id}: unexpected jshn call sequence ${JSON.stringify(jshnCalls)}`
+  );
+  assert(
+    evidence.includes('client_connections skipped: no client identity_key') === Boolean(scenario.expectedSkip),
+    `${scenario.id}: skip evidence did not match expectation`
+  );
+  if (scenario.expectedDetailCalls === 1) {
+    assert(
+      detailCalls[0] === `call|lanspeed|client_connections|${expectedPayload}`,
+      `${scenario.id}: detail payload must be the exact json_dump output`
+    );
+  }
+  assert(sshpassCalls.length > 0, `${scenario.id}: non-empty SSHPASS must invoke sshpass`);
+  assert(
+    sshpassCalls.every((line) => line === '-e|ssh|root@192.0.2.1'),
+    `${scenario.id}: every remote call must use sshpass -e ssh before the target`
+  );
+  assert(!artifacts.includes(secret), `${scenario.id}: SSHPASS must not leak into output or logs`);
+}
+
+function validateQaDeviceContract() {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lanspeed-qa-contract-'));
+  const fakeBin = path.join(tempRoot, 'dry-bin');
+  const dryOutput = path.join(tempRoot, 'dry-output');
+  const forbiddenLog = path.join(tempRoot, 'dry-forbidden.log');
+  fs.mkdirSync(fakeBin);
+
+  try {
+    for (const command of ['ssh', 'sshpass', 'ubus']) {
+      writeExecutable(path.join(fakeBin, command), `#!/bin/sh\nprintf '%s\\n' '${command}' >> "$QA_FORBIDDEN_LOG"\nexit 97\n`);
+    }
+
+    const dryPlaceholder = 'dry-run-placeholder';
+    childProcess.execFileSync('sh', [qaDevicePath, 'collect'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        TARGET: 'root@192.0.2.1',
+        DRY_RUN: '1',
+        OUT_DIR: dryOutput,
+        SSHPASS: dryPlaceholder,
+        QA_FORBIDDEN_LOG: forbiddenLog
+      }
+    });
+
+    assert(readIfPresent(forbiddenLog) === '', 'DRY_RUN=1 must not execute ssh, sshpass, or ubus');
+    const dryEvidencePath = path.join(dryOutput, 'task-16-device-dry-run.txt');
+    assert(fs.existsSync(dryEvidencePath), 'qa-device dry-run must write task-16-device-dry-run.txt');
+    const dryEvidence = fs.readFileSync(dryEvidencePath, 'utf8');
+    assert(!dryEvidence.includes(dryPlaceholder), 'qa-device dry-run evidence must never expose SSHPASS');
+    assert(
+      dryEvidence.includes('coverage=ubus 八个方法: status, clients, overview, health, reload, interfaces, sysdevices, client_connections'),
+      'qa-device evidence header must state all eight ubus methods'
+    );
+    for (const method of [
+      'status',
+      'clients',
+      'overview',
+      'health',
+      'reload',
+      'interfaces',
+      'sysdevices',
+      'client_connections'
+    ]) {
+      assert(
+        dryEvidence.includes(`ubus call lanspeed ${method}`),
+        `qa-device dry-run evidence must include the ${method} command template`
+      );
+    }
+    assert(
+      countLiteral(dryEvidence, 'ubus call lanspeed clients') === 1,
+      'qa-device dry-run must capture the clients response exactly once'
+    );
+    assert(
+      dryEvidence.includes("jsonfilter -e '@.clients[0].identity_key'"),
+      'qa-device dry-run must extract the first client identity_key with jsonfilter'
+    );
+    assert(
+      dryEvidence.includes('json_add_string identity_key "$identity_key"') &&
+        dryEvidence.includes('client_payload=$(json_dump)'),
+      'qa-device dry-run must show jshn payload construction for client_connections'
+    );
+    assert(
+      /safety=.*reload.*(?:不修改|不会修改|不改).*UCI.*(?:网络|防火墙|代理)/.test(dryEvidence),
+      'qa-device safety header must explain reload without claiming that collect is entirely read-only'
+    );
+
+    assertMatch(
+      qaDevice,
+      /if \[ -n "\$\{SSHPASS:-\}" \]; then\s+sshpass -e ssh \$SSH_OPTS "\$TARGET" "\$remote_command"\s+else\s+ssh \$SSH_OPTS "\$TARGET" "\$remote_command"\s+fi/,
+      'qa-device remote_shell must use sshpass -e only when SSHPASS is non-empty and preserve plain ssh otherwise'
+    );
+    assert(
+      countLiteral(qaDevice, 'remote_shell "$command" < /dev/null') === 2,
+      'qa-device collect and iperf loops must detach remote ssh stdin so every planned command runs'
+    );
+    assert(
+      countLiteral(qaDevice, 'for dev in $(uci -q get lanspeed.main.ifname)') === 3,
+      'qa-device tc evidence must follow the configured LAN collection interfaces'
+    );
+    assertNoMatch(
+      qaDevice,
+      /tc (?:filter|qdisc) show dev br-lan/,
+      'qa-device must not hard-code br-lan for real-device tc evidence'
+    );
+    assertNoMatch(qaDevice, /sshpass\s+-p/, 'qa-device must never pass a password on the sshpass command line');
+    assertNoMatch(qaDevice, /\beval\b/, 'qa-device must not eval remote commands or JSON payloads');
+    assertNoMatch(qaDevice, /\{["']identity_key["']\s*:/, 'qa-device must not build client_connections JSON with a raw string literal');
+    assert(qaDevice.includes('. /usr/share/libubox/jshn.sh'), 'qa-device must load the remote jshn helper');
+    assert(qaDevice.includes('json_init'), 'qa-device must initialize the remote jshn payload');
+    assert(qaDevice.includes('json_add_string identity_key "$identity_key"'), 'qa-device must add identity_key through jshn');
+    assert(qaDevice.includes('client_payload=$(json_dump)'), 'qa-device must serialize the detail payload through jshn');
+
+    const plainIdentity = '30:c5:99:a7:bb:2d@eth1';
+    const specialIdentity = 'client"quoted\\path@br-lan';
+    const successfulJshnCalls = (identity) => [
+      'source',
+      'json_init',
+      `json_add_string|identity_key|${identity}`,
+      'json_dump'
+    ];
+    const scenarios = [
+      {
+        id: 'clients-ubus-failure-41',
+        clientsStatus: 41,
+        identity: plainIdentity,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 0,
+        expectedCommandExits: [41],
+        expectedJshnCalls: []
+      },
+      {
+        id: 'empty-clients-jsonfilter-no-match-1',
+        clientsJson: '{"clients":[]}',
+        jsonfilterStatus: 1,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [],
+        expectedJshnCalls: [],
+        expectedSkip: true
+      },
+      {
+        id: 'empty-output-jsonfilter-success-0',
+        clientsJson: '{"clients":[]}',
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [],
+        expectedJshnCalls: [],
+        expectedSkip: true
+      },
+      {
+        id: 'malformed-clients-jsonfilter-126',
+        clientsJson: '{malformed',
+        jsonfilterStatus: 126,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [126],
+        expectedJshnCalls: []
+      },
+      {
+        id: 'jsonfilter-tool-failure-41',
+        jsonfilterStatus: 41,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [41],
+        expectedJshnCalls: []
+      },
+      {
+        id: 'jsonfilter-tool-missing-127',
+        includeJsonfilter: false,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 0,
+        expectedCommandExits: [127],
+        expectedJshnCalls: []
+      },
+      {
+        id: 'jshn-source-failure-30',
+        identity: plainIdentity,
+        jshnSourceStatus: 30,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [30],
+        expectedJshnCalls: ['source']
+      },
+      {
+        id: 'json-init-failure-31',
+        identity: plainIdentity,
+        jsonInitStatus: 31,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [31],
+        expectedJshnCalls: ['source', 'json_init']
+      },
+      {
+        id: 'json-add-string-failure-32',
+        identity: plainIdentity,
+        jsonAddStatus: 32,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [32],
+        expectedJshnCalls: ['source', 'json_init', `json_add_string|identity_key|${plainIdentity}`]
+      },
+      {
+        id: 'json-dump-failure-33',
+        identity: plainIdentity,
+        jsonDumpStatus: 33,
+        expectedDetailCalls: 0,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [33],
+        expectedJshnCalls: successfulJshnCalls(plainIdentity)
+      },
+      {
+        id: 'quoted-backslash-identity-success',
+        identity: specialIdentity,
+        expectedPayload: JSON.stringify({ identity_key: specialIdentity }),
+        expectedDetailCalls: 1,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [],
+        expectedJshnCalls: successfulJshnCalls(specialIdentity)
+      },
+      {
+        id: 'detail-ubus-failure-42',
+        identity: plainIdentity,
+        detailStatus: 42,
+        expectedDetailCalls: 1,
+        expectedJsonfilterCalls: 1,
+        expectedCommandExits: [42],
+        expectedJshnCalls: successfulJshnCalls(plainIdentity)
+      }
+    ];
+
+    scenarios.forEach((scenario) => runQaDeviceScenario(tempRoot, scenario));
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
 try {
+  validateReadmeSemanticsSelfTest();
+  validateQaDeviceContract();
   const compileMatch = /^define Build\/Compile\n([\s\S]*?)^endef$/m.exec(pkgMakefile);
   assert(compileMatch, 'net/lanspeedd/Makefile must define Build/Compile');
   const compileBody = compileMatch[1];
@@ -103,6 +559,11 @@ try {
   assert(buildDriver.includes('"--locked"') && buildDriver.includes('"--offline"'), 'build driver must use locked offline Cargo');
   assert(cargoConfig.includes('replace-with = "vendored-sources"'), 'Cargo must use vendored sources');
   assert(cargoConfig.includes('offline = true'), 'Cargo config must forbid network dependency resolution');
+  assertMatch(
+    cargoConfig,
+    /\[target\.bpfel-unknown-none\][\s\S]*linker = "bpf-linker"[\s\S]*rustflags = \["-C", "debuginfo=2", "-C", "link-arg=--btf"\]/,
+    'the Cargo config copied into PKG_BUILD_DIR must make production eBPF objects retain BTF'
+  );
   assertMatch(
     pkgMakefile,
     /\$\(INSTALL_BIN\) \$\(PKG_BUILD_DIR\)\/target\/\$\(RUSTC_TARGET_ARCH\)\/release\/lanspeedd \$\(1\)\/usr\/sbin\/lanspeedd/,
@@ -190,6 +651,58 @@ try {
       `luci-app-lanspeed/Makefile must install resources/lanspeed/${name}`
     );
   });
+
+  const resourceInstall = /\t\$\(INSTALL_DATA\) \\\n([\s\S]*?)\n\t\t\$\(1\)\/www\/luci-static\/resources\/lanspeed\/\n/.exec(luciMakefile);
+  assert(resourceInstall, 'LuCI package must keep an explicit INSTALL_DATA block for resources/lanspeed');
+  assertNoMatch(
+    resourceInstall[1],
+    /[?*\[]/,
+    'LuCI resources/lanspeed INSTALL_DATA block must not use wildcard or glob entries'
+  );
+  const installedClientDetailResources = [...resourceInstall[1].matchAll(
+    /\.\/htdocs\/luci-static\/resources\/lanspeed\/(client(?:Connections|Detail)[^\s\\/]*\.js)/g
+  )].map((match) => match[1]);
+  assert(
+    installedClientDetailResources.length === clientDetailResources.length &&
+      clientDetailResources.every((name) => installedClientDetailResources.includes(name)),
+    'LuCI package must install exactly the ten client connection detail resources by explicit filename'
+  );
+  clientDetailResources.forEach((name) => {
+    const installPath = `./htdocs/luci-static/resources/lanspeed/${name}`;
+    assert(
+      countLiteral(resourceInstall[1], installPath) === 1,
+      `LuCI package must install ${name} exactly once into resources/lanspeed`
+    );
+  });
+
+  const documentedMethods = [
+    'status',
+    'clients',
+    'overview',
+    'health',
+    'reload',
+    'interfaces',
+    'sysdevices',
+    'client_connections'
+  ];
+  documentedMethods.forEach((method) => {
+    assert(
+      readme.includes(`ubus call lanspeed ${method}`),
+      `README must document the lanspeed ${method} ubus method`
+    );
+  });
+  assert(
+    readme.includes("ubus call lanspeed client_connections \\\n  '{\"identity_key\":\"30:c5:99:a7:bb:2d@eth1\"}'"),
+    'README must provide the copyable client_connections identity_key command'
+  );
+  assert(
+    hasExactClientConnectionsSemantics(readme),
+    'README client_connections paragraph must state: TCP only ESTABLISHED + ASSURED, UDP only ASSURED'
+  );
+  assert(
+    /(?:详情页|连接详情)/.test(readme),
+    'README must explain the client detail page entry'
+  );
 
   console.log('validate-lanspeed-packaging: PASS');
 } catch (error) {

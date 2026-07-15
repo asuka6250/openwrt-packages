@@ -28,12 +28,30 @@ fn custom_aya_and_vendor_resolution_do_not_depend_on_the_current_directory() {
     let root_config = fs::read_to_string(repository.join(".cargo/config.toml")).unwrap();
     assert!(root_config.contains("directory = \"net/lanspeedd/rust/vendor\""));
     assert!(root_config.contains("offline = true"));
-    assert!(root_config.contains("[target.bpfel-unknown-none]"));
+    assert!(
+        !root_config.contains("[target.bpfel-unknown-none]"),
+        "the repository config must not duplicate workspace BPF rustflags because Cargo merges parent and child arrays"
+    );
     assert!(root_config.contains("[target.x86_64-unknown-linux-musl]"));
 
     let nested_config = fs::read_to_string(workspace.join(".cargo/config.toml")).unwrap();
     assert!(nested_config.contains("directory = \"vendor\""));
-    assert!(!nested_config.contains("[target."));
+    assert!(nested_config.contains("[target.bpfel-unknown-none]"));
+    let packaged_bpf_config = nested_config
+        .split("[target.bpfel-unknown-none]")
+        .nth(1)
+        .unwrap()
+        .split("[target.")
+        .next()
+        .unwrap();
+    assert!(packaged_bpf_config.contains("linker = \"bpf-linker\""));
+    let packaged_bpf_rustflags = packaged_bpf_config
+        .lines()
+        .find(|line| line.trim_start().starts_with("rustflags ="))
+        .unwrap();
+    assert!(packaged_bpf_rustflags.contains("\"debuginfo=2\""));
+    assert!(packaged_bpf_rustflags.contains("\"link-arg=--btf\""));
+    assert!(!nested_config.contains("[target.x86_64-unknown-linux-musl]"));
 }
 
 #[test]

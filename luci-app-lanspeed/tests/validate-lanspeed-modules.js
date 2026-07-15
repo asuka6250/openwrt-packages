@@ -44,6 +44,16 @@ const luciMakefile = fs.readFileSync(path.join(root, 'applications/luci-app-lans
 const EXPECTED_MODULES = [
 	'vocab.js',
 	'format.js',
+	'clientConnections.js',
+	'clientDetailRefresh.js',
+	'clientDetailShell.js',
+	'clientDetailView.js',
+	'clientDetailStyle.js',
+	'clientDetailStyleBase.js',
+	'clientDetailStyleAurora.js',
+	'clientDetailStyleArgon.js',
+	'clientDetailStyleBootstrap.js',
+	'clientDetailStyleResponsive.js',
 	'rpc.js',
 	'ifaceConfig.js',
 	'nssPanel.js',
@@ -77,12 +87,9 @@ const EXPECTED_MODULES = [
 ];
 
 const EXPECTED_VIEW_REQUIRES = [
-	'lanspeed.format',
-	'lanspeed.rpc',
-	'lanspeed.statusIp',
-	'lanspeed.statusShell',
-	'lanspeed.statusRefresh',
-	'lanspeed.statusStyleCompatLive'
+	'lanspeed.clientConnections',
+	'lanspeed.clientDetailView',
+	'lanspeed.statusView'
 ];
 
 const EXPECTED_CONFIG_VIEW_REQUIRES = [
@@ -101,6 +108,14 @@ const STATUS_STYLE_PARTS = [
 	'statusStyleResponsive.js'
 ];
 
+const CLIENT_DETAIL_STYLE_PARTS = [
+	'clientDetailStyleBase.js',
+	'clientDetailStyleAurora.js',
+	'clientDetailStyleArgon.js',
+	'clientDetailStyleBootstrap.js',
+	'clientDetailStyleResponsive.js'
+];
+
 const CONFIG_STYLE_PARTS = [
 	'configStyleBase.js',
 	'configStyleAurora.js',
@@ -110,7 +125,7 @@ const CONFIG_STYLE_PARTS = [
 	'configStyleResponsive.js'
 ];
 
-const EXPECTED_STATUS_STYLE_SHA256 = 'f445282ce283e20e629d0c629731a10f05d4a3cec721f27cd1863657e0ded788';
+const EXPECTED_STATUS_STYLE_SHA256 = 'fccac6625c6988a867c7a9fc8a3438deee75500fddb0f2bb2e74a2221b5ece3d';
 const EXPECTED_CONFIG_STYLE_SHA256 = 'd16d845e2babf4b638bcc4e78ccfa44729e80b432fed9ead19dd51da9a3bb4d8';
 
 function readMakeVar(source, name, fileLabel) {
@@ -125,6 +140,38 @@ function readMakeVar(source, name, fileLabel) {
 const MODULE_REQUIRES = {
 	'vocab.js':       [ 'baseclass' ],
 	'format.js':      [ 'baseclass' ],
+	'clientConnections.js': [ 'baseclass', 'lanspeed.format' ],
+	'clientDetailRefresh.js': [
+		'baseclass',
+		'lanspeed.format',
+		'lanspeed.clientConnections'
+	],
+	'clientDetailShell.js': [
+		'baseclass',
+		'lanspeed.theme',
+		'lanspeed.clientDetailStyle'
+	],
+	'clientDetailView.js': [
+		'baseclass',
+		'lanspeed.format',
+		'lanspeed.rpc',
+		'lanspeed.clientDetailShell',
+		'lanspeed.clientDetailRefresh'
+	],
+	'clientDetailStyle.js': [
+		'baseclass',
+		'lanspeed.statusStyle',
+		'lanspeed.clientDetailStyleBase',
+		'lanspeed.clientDetailStyleAurora',
+		'lanspeed.clientDetailStyleArgon',
+		'lanspeed.clientDetailStyleBootstrap',
+		'lanspeed.clientDetailStyleResponsive'
+	],
+	'clientDetailStyleBase.js': [ 'baseclass' ],
+	'clientDetailStyleAurora.js': [ 'baseclass' ],
+	'clientDetailStyleArgon.js': [ 'baseclass' ],
+	'clientDetailStyleBootstrap.js': [ 'baseclass' ],
+	'clientDetailStyleResponsive.js': [ 'baseclass' ],
 	'rpc.js':         [ 'baseclass', 'rpc' ],
 	'ifaceConfig.js': [ 'baseclass', 'lanspeed.format', 'lanspeed.rpc' ],
 	'nssPanel.js':    [ 'baseclass', 'lanspeed.vocab', 'lanspeed.format' ],
@@ -149,12 +196,9 @@ const MODULE_REQUIRES = {
 	'statusStyleCompatLive3.js': [ 'baseclass', 'lanspeed.statusStyleArgon' ],
 	'statusViewLive.js': [
 		'baseclass',
-		'lanspeed.format',
-		'lanspeed.rpc',
-		'lanspeed.statusIp',
-		'lanspeed.statusShell',
-		'lanspeed.statusRefresh',
-		'lanspeed.statusStyleCompatLive'
+		'lanspeed.clientConnections',
+		'lanspeed.clientDetailView',
+		'lanspeed.statusView'
 	],
 	'statusViewLive2.js': [
 		'baseclass',
@@ -179,6 +223,7 @@ const MODULE_REQUIRES = {
 		'baseclass',
 		'lanspeed.vocab',
 		'lanspeed.format',
+		'lanspeed.clientConnections',
 		'lanspeed.version',
 		'lanspeed.nssPanel',
 		'lanspeed.statusIp',
@@ -207,6 +252,16 @@ const MODULE_REQUIRES = {
 const RPC_FREE_MODULES = [
 	'vocab.js',
 	'format.js',
+	'clientConnections.js',
+	'clientDetailRefresh.js',
+	'clientDetailShell.js',
+	'clientDetailView.js',
+	'clientDetailStyle.js',
+	'clientDetailStyleBase.js',
+	'clientDetailStyleAurora.js',
+	'clientDetailStyleArgon.js',
+	'clientDetailStyleBootstrap.js',
+	'clientDetailStyleResponsive.js',
 	'nssPanel.js',
 	'statusStyle.js',
 	'statusStyleBase.js',
@@ -357,6 +412,236 @@ function assertStyleAggregation() {
 		fail('modular config CSS must match the reviewed stylesheet snapshot');
 }
 
+function assertConnectionStyleOwnership() {
+	const statusBaseCss = loadStyleLeaf('statusStyleBase.js').CSS;
+	const clientDetailBaseCss = loadStyleLeaf('clientDetailStyleBase.js').CSS;
+	const selectedProtocolRule = '.lanspeed-connection-protocol[aria-pressed="true"]{' +
+		'font-weight:600;box-shadow:inset 0 0 0 2px currentColor}';
+	const sharedLinkRules = [
+		'.lanspeed-connection-link{display:inline-flex;min-width:0;color:inherit;' +
+			'text-decoration:none!important}',
+		'.lanspeed-connection-link:hover{opacity:.78;text-decoration:none!important}',
+		'.lanspeed-connection-link:focus-visible{outline:2px solid currentColor;outline-offset:3px;' +
+			'text-decoration:none!important}'
+	];
+
+	if (!clientDetailBaseCss.includes(selectedProtocolRule)) {
+		fail('clientDetailStyleBase.js must visibly mark the aria-pressed connection protocol');
+	}
+	sharedLinkRules.forEach(function(rule) {
+		if (!statusBaseCss.includes(rule))
+			fail('statusStyleBase.js must own the shared connection detail link rules');
+	});
+	[ 'text-decoration:underline', 'text-underline-offset' ].forEach(function(forbiddenRule) {
+		if (statusBaseCss.includes(forbiddenRule))
+			fail('statusStyleBase.js must not underline the shared connection detail links');
+	});
+	if (clientDetailBaseCss.includes('.lanspeed-connection-link')) {
+		fail('clientDetailStyleBase.js must not duplicate the shared connection detail link rules');
+	}
+}
+
+function moduleRequireNames(src) {
+	const names = [];
+	const re = /^\s*['"]require\s+([^\s'"]+)(?:\s+as\s+\w+)?['"]\s*;/gm;
+	let match;
+	while ((match = re.exec(src)) !== null)
+		names.push(match[1]);
+	return names;
+}
+
+function cssSelectorList(css) {
+	const selectors = [];
+	const re = /([^{}]+)\{/g;
+	let match;
+	while ((match = re.exec(css)) !== null) {
+		const prelude = match[1].trim();
+		if (!prelude || prelude.charAt(0) === '@') continue;
+		prelude.split(',').forEach(function(selector) {
+			selector = selector.trim();
+			if (selector) selectors.push(selector);
+		});
+	}
+	return selectors;
+}
+
+function assertClientDetailSelectorScope(name, css, theme) {
+	const selectors = cssSelectorList(css);
+	if (!selectors.length) {
+		fail(`${name} must export non-empty connection-detail CSS`);
+		return;
+	}
+	selectors.forEach(function(selector) {
+		if (!selector.includes('.lanspeed-connection-') &&
+		    !selector.includes('.lanspeed-connections-card')) {
+			fail(`${name} selector must stay connection-detail scoped: ${selector}`);
+		}
+		if (theme && !selector.startsWith(`.lanspeed-theme-${theme}`)) {
+			fail(`${name} selector must stay under .lanspeed-theme-${theme}: ${selector}`);
+		}
+	});
+}
+
+function assertClientDetailStyleLeaf(name, src) {
+	if (JSON.stringify(moduleRequireNames(src)) !== JSON.stringify([ 'baseclass' ])) {
+		fail(`${name} must require only baseclass`);
+	}
+	const leaf = loadStyleLeaf(name);
+	if (!leaf || typeof leaf.CSS !== 'string' || !leaf.CSS.trim()) {
+		fail(`${name} must export a non-empty CSS string`);
+		return;
+	}
+	const css = leaf.CSS;
+	const paletteCss = css.replace(
+		/var\(--border,rgba\(128,128,128,\.18\)\)/g,
+		'var(--border)'
+	);
+	if (/#[0-9a-f]{3,8}\b|\b(?:rgb|hsl)a?\s*\(/i.test(paletteCss)) {
+		fail(`${name} must inherit status theme colors instead of hard-coding a separate palette`);
+	}
+	let theme = '';
+	if (name === 'clientDetailStyleAurora.js') theme = 'aurora';
+	if (name === 'clientDetailStyleArgon.js') theme = 'argon';
+	if (name === 'clientDetailStyleBootstrap.js') theme = 'bootstrap';
+	assertClientDetailSelectorScope(name, css, theme);
+
+	const themeClasses = [
+		'lanspeed-theme-aurora',
+		'lanspeed-theme-argon',
+		'lanspeed-theme-bootstrap'
+	];
+	if (!theme && themeClasses.some(function(className) { return css.includes(className); })) {
+		fail(`${name} must remain theme-neutral`);
+	}
+	if (theme && themeClasses.some(function(className) {
+		return className !== `lanspeed-theme-${theme}` && css.includes(className);
+	})) {
+		fail(`${name} must not mix selectors from another theme`);
+	}
+
+	if (name === 'clientDetailStyleBase.js') {
+		[
+			'.lanspeed-connection-identity',
+			'.lanspeed-connection-summary',
+			'.lanspeed-connection-toolbar',
+			'.lanspeed-connection-detail-row',
+			'.lanspeed-connection-endpoint',
+			'.lanspeed-connection-empty'
+		].forEach(function(token) {
+			if (!css.includes(token))
+				fail(`${name} must provide the detail-only ${token} layout hook`);
+		});
+	}
+	if (name === 'clientDetailStyleAurora.js' &&
+	    (!css.includes('padding:1rem 1.25rem .85rem') ||
+	     !css.includes('var(--label-surface'))) {
+		fail(`${name} must align detail padding and label surfaces with the Aurora status page`);
+	}
+	if (name === 'clientDetailStyleAurora.js' &&
+	    !css.includes('@media (max-width:480px){.lanspeed-theme-aurora .lanspeed-connection-toolbar{padding-right:2rem}}')) {
+		fail(`${name} must reserve a 2rem phone safe area for Aurora's floating toolbar`);
+	}
+	if (name === 'clientDetailStyleArgon.js') {
+		if (!css.includes('font-size:1rem') || !css.includes('padding:.65rem .75rem'))
+			fail(`${name} must retain the Argon status typography and table density`);
+		if (!css.includes('@media (max-width:480px){') ||
+		    !css.includes('.lanspeed-theme-argon .lanspeed-connection-refresh{width:100%!important}')) {
+			fail(`${name} must override Argon's width:auto!important so the phone refresh action fills its toolbar`);
+		}
+	}
+	if (name === 'clientDetailStyleBootstrap.js') {
+		/* lsTheme.applyRoot() adds both classes to the same root; there is no
+		 * descendant .lanspeed-connection-detail node for a spaced selector. */
+		const rootClasses = new Set([
+			'lanspeed-theme-bootstrap',
+			'lanspeed-connection-detail'
+		]);
+		const expectedRootSelector = '.lanspeed-theme-bootstrap.lanspeed-connection-detail';
+		const rootRule = css.match(/([^{}]+)\{gap:\.85em\}/);
+		const rootSelector = rootRule && rootRule[1].trim();
+		const selectorClasses = rootSelector && !/\s/.test(rootSelector)
+			? rootSelector.split('.').filter(Boolean)
+			: [];
+		const matchesSameRoot = selectorClasses.length === rootClasses.size &&
+			selectorClasses.every(function(className) {
+				return rootClasses.has(className);
+			});
+		if (!matchesSameRoot ||
+		    rootSelector !== expectedRootSelector ||
+		    css.includes('.lanspeed-theme-bootstrap .lanspeed-connection-detail{gap:.85em}') ||
+		    !css.includes('padding:.4em .55em')) {
+			fail(`${name} must match the Bootstrap and detail classes on the same root while keeping the table compact`);
+		}
+	}
+	if (name === 'clientDetailStyleResponsive.js') {
+		const media = Array.from(css.matchAll(/@media\s*\(([^)]+)\)/g), function(match) {
+			return match[1].replace(/\s+/g, '');
+		});
+		const narrowStart = css.indexOf('@media (max-width:700px){');
+		const phoneStart = css.indexOf('@media (max-width:480px){');
+		const narrowCss = narrowStart >= 0 && phoneStart > narrowStart
+			? css.slice(narrowStart, phoneStart)
+			: '';
+		const forcedRows = narrowCss.indexOf(
+			'.lanspeed-connections-card .lanspeed-table tbody>tr{display:grid;'
+		);
+		const hiddenRows = narrowCss.indexOf(
+			'.lanspeed-connections-card .lanspeed-table tbody>tr[hidden]{display:none!important}'
+		);
+		if (JSON.stringify(media) !== JSON.stringify([ 'max-width:700px', 'max-width:480px' ]) ||
+		    !css.includes('content:attr(data-label)') ||
+		    !css.includes('overflow-wrap:anywhere') ||
+		    !css.includes('.lanspeed-connection-refresh{width:100%')) {
+			fail(`${name} must provide only the 700px card-table and 480px full-width toolbar breakpoints`);
+		}
+		if (forcedRows < 0 || hiddenRows <= forcedRows) {
+			fail(`${name} must restore display:none!important for hidden group/detail rows after the forced mobile row display`);
+		}
+		if (!narrowCss.includes('border-bottom:1px solid var(--border,rgba(128,128,128,.18))') ||
+		    narrowCss.includes('var(--border,currentColor)')) {
+			fail(`${name} must reuse the translucent status table divider fallback on mobile`);
+		}
+	}
+}
+
+function assertClientDetailStyleComposer(src) {
+	const expectedRequires = [
+		'baseclass',
+		'lanspeed.statusStyle',
+		'lanspeed.clientDetailStyleBase',
+		'lanspeed.clientDetailStyleAurora',
+		'lanspeed.clientDetailStyleArgon',
+		'lanspeed.clientDetailStyleBootstrap',
+		'lanspeed.clientDetailStyleResponsive'
+	];
+	if (JSON.stringify(moduleRequireNames(src)) !== JSON.stringify(expectedRequires)) {
+		fail('clientDetailStyle.js must require status and detail style leaves in cascade order');
+	}
+	const cleaned = stripComments(src);
+	if (/@media|\.lanspeed-connection-|\.lanspeed-connections-card|['"][^'"\n]*\{/.test(cleaned)) {
+		fail('clientDetailStyle.js must only compose CSS and must not define its own rules');
+	}
+	if (!CLIENT_DETAIL_STYLE_PARTS.every(function(name) {
+		return fs.existsSync(path.join(modDir, name));
+	})) return;
+
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	const statusStyle = { CSS: 'status' };
+	const Base = { CSS: 'base' };
+	const Aurora = { CSS: 'aurora' };
+	const Argon = { CSS: 'argon' };
+	const Bootstrap = { CSS: 'bootstrap' };
+	const Responsive = { CSS: 'responsive' };
+	const detail = vm.compileFunction(src, [
+		'baseclass', 'statusStyle', 'Base', 'Aurora', 'Argon', 'Bootstrap', 'Responsive'
+	], { filename: 'resources/lanspeed/clientDetailStyle.js' })(
+		fakeBaseclass, statusStyle, Base, Aurora, Argon, Bootstrap, Responsive
+	);
+	if (!detail || detail.CSS !== 'status\nbase\naurora\nargon\nbootstrap\nresponsive') {
+		fail('clientDetailStyle.js must compose status, Base, Aurora, Argon, Bootstrap and Responsive CSS in exact order');
+	}
+}
+
 function stripComments(src) {
 	/* Good enough for our structural checks: drop block comments and
 	 * single-line // comments so subsequent regex never matches tokens
@@ -413,6 +698,295 @@ function loadFormatModule(src) {
 	})(fakeBaseclass);
 }
 
+function loadClientConnectionsModule(src) {
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	return vm.compileFunction(src, [ 'baseclass', 'fmt' ], {
+		filename: 'resources/lanspeed/clientConnections.js'
+	})(fakeBaseclass, loadFormatModule(readModuleByName('format.js')));
+}
+
+function loadStatusViewRouter(src, fakeWindow, clientDetailView, statusView) {
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	return vm.compileFunction(src, [
+		'baseclass', 'clientConnections', 'clientDetailView', 'statusView', 'window'
+	], { filename: 'resources/lanspeed/statusViewLive.js' })(
+		fakeBaseclass,
+		loadClientConnectionsModule(readModuleByName('clientConnections.js')),
+		clientDetailView,
+		statusView,
+		fakeWindow
+	);
+}
+
+function assertStatusViewRouterBehavior(src) {
+	const fakeWindow = { location: { search: '' } };
+	const calls = {
+		status: 0, clients: 0, interfaces: 0, uci: 0,
+		overviewRender: 0, detailLoad: [], detailRender: 0
+	};
+	const statusView = {
+		load: function() {
+			calls.status++; calls.clients++; calls.interfaces++; calls.uci++;
+			return Promise.resolve({ kind: 'overview-data' });
+		},
+		render: function(data) {
+			calls.overviewRender++;
+			return { kind: 'overview-root', data: data };
+		}
+	};
+	const clientDetailView = {
+		load: function(identityKey) {
+			calls.detailLoad.push(identityKey);
+			return Promise.resolve({ identityKey: identityKey, response: { available: true } });
+		},
+		render: function(data) {
+			calls.detailRender++;
+			return { kind: 'detail-root', data: data };
+		}
+	};
+
+	asyncChecks.push(Promise.resolve().then(async function() {
+		const router = loadStatusViewRouter(src, fakeWindow, clientDetailView, statusView);
+		fakeWindow.location.search = '';
+		const overview = await router.load();
+		fakeWindow.location.search = '?client=30%3Ac5%3A0a%40eth1';
+		const overviewRoot = router.render(overview);
+		if (!overview || overview.route !== 'overview' ||
+		    calls.status !== 1 || calls.clients !== 1 || calls.interfaces !== 1 || calls.uci !== 1 ||
+		    calls.detailLoad.length !== 0 || overviewRoot.kind !== 'overview-root' ||
+		    calls.overviewRender !== 1 || calls.detailRender !== 0) {
+			fail('statusViewLive.js overview route must preserve the existing four-call load and render from its load-time marker');
+		}
+
+		fakeWindow.location.search = '?client=30%3Ac5%3A0a%40eth1';
+		const detail = await router.load();
+		fakeWindow.location.search = '';
+		const detailRoot = router.render(detail);
+		if (!detail || detail.route !== 'detail' ||
+		    JSON.stringify(calls.detailLoad) !== JSON.stringify([ '30:c5:0a@eth1' ]) ||
+		    calls.status !== 1 || calls.clients !== 1 || calls.interfaces !== 1 || calls.uci !== 1 ||
+		    detailRoot.kind !== 'detail-root' || calls.detailRender !== 1 || calls.overviewRender !== 1) {
+			fail('statusViewLive.js detail route must decode identity, avoid overview RPC work, and render from its load-time marker');
+		}
+
+		fakeWindow.location.search = '?client=';
+		const empty = await router.load();
+		if (!empty || empty.route !== 'overview')
+			fail('statusViewLive.js must treat a missing or empty client identity as the overview route');
+	}).catch(function(err) {
+		fail('statusViewLive.js router behavior could not execute: ' + (err && err.message || err));
+	}));
+}
+
+function assertClientConnectionsSource(src) {
+	const cleaned = stripComments(src);
+	const requires = [];
+	const requireRe = /^\s*['"]require\s+([^\s'"]+)(?:\s+as\s+\w+)?['"]\s*;/gm;
+	let match;
+	while ((match = requireRe.exec(cleaned)) !== null)
+		requires.push(match[1]);
+	if (JSON.stringify(requires) !== JSON.stringify([ 'baseclass', 'lanspeed.format' ])) {
+		fail('clientConnections.js must require only baseclass and lanspeed.format');
+	}
+	if (/\b(?:document|window|Node|HTMLElement|setTimeout|setInterval|requestAnimationFrame|rpc)\b|\bE\s*\(|\.(?:innerHTML|textContent|appendChild|createElement)\b/.test(cleaned)) {
+		fail('clientConnections.js must remain free of DOM, RPC, and timer APIs');
+	}
+	if (/\bCSS\b|@media|['"]\s*[.#][A-Za-z][^'"]*\{/.test(cleaned)) {
+		fail('clientConnections.js must not embed CSS strings');
+	}
+}
+
+function assertClientConnectionsModule(src) {
+	assertClientConnectionsSource(src);
+	const clientConnections = loadClientConnectionsModule(src);
+	const methods = [
+		'detailHref',
+		'formatEndpoint',
+		'groupsForResponse',
+		'identityFromSearch',
+		'portSummary',
+		'stateLabel'
+	];
+	if (!clientConnections) {
+		fail('clientConnections.js must return its pure connection-detail helpers');
+		return;
+	}
+	if (JSON.stringify(Object.keys(clientConnections).sort()) !== JSON.stringify(methods) ||
+	    methods.some(function(name) { return typeof clientConnections[name] !== 'function'; })) {
+		fail('clientConnections.js must expose exactly its six pure connection-detail helpers');
+		return;
+	}
+	const mod = clientConnections;
+
+	if (mod.identityFromSearch('?client=aa%3Abb%40lan') !== 'aa:bb@lan' ||
+	    mod.identityFromSearch('?x=1&client=02%3A00%3A00%3A00%3A00%3A01%40lan&z=2') !==
+		'02:00:00:00:00:01@lan' ||
+	    mod.identityFromSearch('?client=') !== '' ||
+	    mod.identityFromSearch('?x=1') !== '') {
+		fail('clientConnections.js must safely read and decode the client query parameter');
+	}
+	try {
+		if (mod.identityFromSearch('?client=%E0%A4%A') !== '')
+			fail('clientConnections.js must return an empty identity for malformed percent encoding');
+	} catch (err) {
+		fail('clientConnections.js must not throw for malformed percent encoding');
+	}
+
+	if (mod.detailHref('/admin/status/lanspeed/overview', 'aa:bb@lan') !==
+		'/admin/status/lanspeed/overview?client=aa%3Abb%40lan' ||
+	    mod.detailHref('/admin/status/lanspeed/overview?tab=clients#connections', 'aa:bb@lan') !==
+		'/admin/status/lanspeed/overview?tab=clients&client=aa%3Abb%40lan#connections') {
+		fail('clientConnections.js must append an encoded client query without dropping existing query or hash text');
+	}
+
+	if (mod.formatEndpoint('240e::1', 443) !== '[240e::1]:443' ||
+	    mod.formatEndpoint('[240e::1]', 0) !== '[240e::1]:0' ||
+	    mod.formatEndpoint('1.1.1.1', 53) !== '1.1.1.1:53' ||
+	    mod.formatEndpoint('1.1.1.1') !== '1.1.1.1') {
+		fail('clientConnections.js must format IPv4/IPv6 endpoints and preserve port zero');
+	}
+
+	const response = {
+		connections: [
+			{
+				client_ip: '192.0.2.10', client_port: 50001,
+				remote_ip: '1.1.1.1', remote_port: 443,
+				protocol: 'tcp', state: 'established'
+			},
+			{
+				client_ip: '192.0.2.10', client_port: 50002,
+				remote_ip: '8.8.8.8', remote_port: 53,
+				protocol: 'udp', state: 'assured'
+			},
+			{
+				client_ip: '192.0.2.11', client_port: 50003,
+				remote_ip: '1.1.1.1', remote_port: 80,
+				protocol: 'udp', state: 'assured'
+			},
+			{
+				client_ip: '192.0.2.12', client_port: 50004,
+				remote_ip: '1.1.1.1', remote_port: 443,
+				protocol: 'tcp', state: 'established'
+			},
+			{
+				client_ip: '192.0.2.13', client_port: 50005,
+				remote_ip: '9.9.9.9', remote_port: 853,
+				protocol: 'tcp', state: 'established'
+			},
+			{
+				client_ip: '2001:DB8::10', client_port: 50006,
+				remote_ip: '2001:DB8::BEEF', remote_port: 123,
+				protocol: 'udp', state: 'assured'
+			}
+		]
+	};
+	const originalResponse = JSON.stringify(response);
+	const groups = mod.groupsForResponse(response, 'all', '');
+	if (!Array.isArray(groups) || groups.length !== 4 ||
+	    Object.prototype.toString.call(groups[0]) !== '[object Object]' ||
+	    !Array.isArray(groups[0].ports) || !Array.isArray(groups[0].connections)) {
+		fail('clientConnections.js must return ordinary group objects and arrays');
+		return;
+	}
+	if (groups[0].remoteIp !== '1.1.1.1' ||
+	    JSON.stringify(Array.from(groups[0].ports)) !== JSON.stringify([ 80, 443 ]) ||
+	    groups[0].portLabel !== '80, 443' ||
+	    groups[0].protocolLabel !== 'TCP/UDP' ||
+	    groups[0].stateLabel !== '混合' ||
+	    groups[0].count !== 3 ||
+	    JSON.stringify(Array.from(groups[0].connections, function(conn) { return conn.client_port; })) !==
+		JSON.stringify([ 50001, 50003, 50004 ])) {
+		fail('clientConnections.js must aggregate duplicate destinations without reordering their connections');
+	}
+	if (groups[1].remoteIp !== '8.8.8.8' || groups[1].protocolLabel !== 'UDP' ||
+	    groups[1].stateLabel !== '活跃' || groups[2].remoteIp !== '9.9.9.9' ||
+	    groups[2].protocolLabel !== 'TCP' || groups[2].stateLabel !== '已建立') {
+		fail('clientConnections.js must preserve first-seen group order and label uniform protocol/state groups');
+	}
+
+	const tcpGroups = mod.groupsForResponse(response, 'tcp', '');
+	if (JSON.stringify(Array.from(tcpGroups, function(group) { return group.remoteIp; })) !==
+		JSON.stringify([ '1.1.1.1', '9.9.9.9' ]) ||
+	    tcpGroups[0].count !== 2 ||
+	    JSON.stringify(Array.from(tcpGroups[0].ports)) !== JSON.stringify([ 443 ]) ||
+	    tcpGroups[0].protocolLabel !== 'TCP' || tcpGroups[0].stateLabel !== '已建立') {
+		fail('clientConnections.js must filter TCP before building group counts and summaries');
+	}
+	const udpGroups = mod.groupsForResponse(response, 'udp', '');
+	if (JSON.stringify(Array.from(udpGroups, function(group) { return group.remoteIp; })) !==
+		JSON.stringify([ '8.8.8.8', '1.1.1.1', '2001:DB8::BEEF' ]) ||
+	    udpGroups[1].count !== 1 || udpGroups[1].portLabel !== '80' ||
+	    udpGroups[1].protocolLabel !== 'UDP' || udpGroups[1].stateLabel !== '活跃') {
+		fail('clientConnections.js must filter UDP before preserving first-seen group order');
+	}
+	const unknownGroups = mod.groupsForResponse(response, 'unexpected', '');
+	if (JSON.stringify(unknownGroups) !== JSON.stringify(groups)) {
+		fail('clientConnections.js must normalize unknown protocol filters to the complete all result');
+	}
+
+	const tcpSearchedGroups = mod.groupsForResponse(response, 'tcp', '1.1.1.1');
+	if (tcpSearchedGroups.length !== 1 || tcpSearchedGroups[0].remoteIp !== '1.1.1.1' ||
+	    tcpSearchedGroups[0].count !== 2 ||
+	    JSON.stringify(Array.from(tcpSearchedGroups[0].ports)) !== JSON.stringify([ 443 ]) ||
+	    tcpSearchedGroups[0].portLabel !== '443' ||
+	    JSON.stringify(Array.from(tcpSearchedGroups[0].connections, function(conn) { return conn.client_port; })) !==
+		JSON.stringify([ 50001, 50004 ]) ||
+	    tcpSearchedGroups[0].protocolLabel !== 'TCP' ||
+	    tcpSearchedGroups[0].stateLabel !== '已建立') {
+		fail('clientConnections.js must keep TCP filtering active while applying a non-empty search');
+	}
+	const udpSearchedGroups = mod.groupsForResponse(response, 'udp', '1.1.1.1');
+	if (udpSearchedGroups.length !== 1 || udpSearchedGroups[0].remoteIp !== '1.1.1.1' ||
+	    udpSearchedGroups[0].count !== 1 ||
+	    JSON.stringify(Array.from(udpSearchedGroups[0].ports)) !== JSON.stringify([ 80 ]) ||
+	    udpSearchedGroups[0].portLabel !== '80' ||
+	    JSON.stringify(Array.from(udpSearchedGroups[0].connections, function(conn) { return conn.client_port; })) !==
+		JSON.stringify([ 50003 ]) ||
+	    udpSearchedGroups[0].protocolLabel !== 'UDP' ||
+	    udpSearchedGroups[0].stateLabel !== '活跃') {
+		fail('clientConnections.js must keep UDP filtering active while applying a non-empty search');
+	}
+
+	const remoteSearch = mod.groupsForResponse(response, 'all', '1.1.1.1');
+	const clientSearch = mod.groupsForResponse(response, 'all', '192.0.2.11');
+	const remotePortSearch = mod.groupsForResponse(response, 'all', '853');
+	const clientPortSearch = mod.groupsForResponse(response, 'all', '50002');
+	const caseSearch = mod.groupsForResponse(response, 'all', '  db8::beef  ');
+	const narrowedSearch = mod.groupsForResponse(response, 'all', '443');
+	if (remoteSearch.length !== 1 || remoteSearch[0].count !== 3 ||
+	    clientSearch.length !== 1 || clientSearch[0].count !== 1 ||
+	    clientSearch[0].portLabel !== '80' || clientSearch[0].protocolLabel !== 'UDP' ||
+	    remotePortSearch.length !== 1 || remotePortSearch[0].remoteIp !== '9.9.9.9' ||
+	    clientPortSearch.length !== 1 || clientPortSearch[0].remoteIp !== '8.8.8.8' ||
+	    caseSearch.length !== 1 || caseSearch[0].remoteIp !== '2001:DB8::BEEF' ||
+	    narrowedSearch.length !== 1 || narrowedSearch[0].count !== 2 ||
+	    narrowedSearch[0].portLabel !== '443' || narrowedSearch[0].protocolLabel !== 'TCP') {
+		fail('clientConnections.js search must cover every endpoint field before recomputing group summaries');
+	}
+
+	const ports = [ 53, 80, 443, 853, 5353 ];
+	const originalPorts = JSON.stringify(ports);
+	if (mod.portSummary(ports.slice(0, 3)) !== '53, 80, 443' ||
+	    mod.portSummary(ports) !== '53, 80, 443，另有 2 个' ||
+	    mod.portSummary([]) !== '-' ||
+	    mod.stateLabel([ { state: 'established' }, { state: 'established' } ]) !== '已建立' ||
+	    mod.stateLabel([ { state: 'assured' } ]) !== '活跃' ||
+	    mod.stateLabel([ { state: 'established' }, { state: 'assured' } ]) !== '混合') {
+		fail('clientConnections.js must provide bounded port summaries and Chinese state labels');
+	}
+	if (JSON.stringify(response) !== originalResponse || JSON.stringify(ports) !== originalPorts) {
+		fail('clientConnections.js helpers must not mutate response, connections, or port inputs');
+	}
+
+	const emptyResponses = [ undefined, {}, { connections: null }, { connections: {} } ];
+	if (emptyResponses.some(function(emptyResponse) {
+		const emptyGroups = mod.groupsForResponse(emptyResponse, 'all', '');
+		return !Array.isArray(emptyGroups) || emptyGroups.length !== 0;
+	})) {
+		fail('clientConnections.js must return an empty array for missing, null, or non-array connections');
+	}
+}
+
 function loadIfaceConfigModule(src, lsRpc) {
 	const fakeBaseclass = { extend: function(value) { return value; } };
 	const fakeFormat = {
@@ -453,21 +1027,33 @@ function loadNssPanelModule(src) {
 	})(fakeBaseclass, {}, {}, fakeElement, function(value) { return value; });
 }
 
-function loadStatusRefreshModule(src) {
+function fakeTranslate(value) {
+	return {
+		format: function() {
+			const args = Array.from(arguments);
+			let index = 0;
+			return String(value).replace(/%[sd]/g, function() {
+				return index < args.length ? String(args[index++]) : '';
+			});
+		},
+		toString: function() { return String(value); }
+	};
+}
+
+function loadStatusRefreshModule(src, fakeWindow) {
 	const fakeBaseclass = { extend: function(value) { return value; } };
 	return vm.compileFunction(src,
-		[ 'baseclass', 'vocab', 'fmt', 'lsVersion', 'nssPanel', 'statusIp',
-		  'statusCollector', '_' ],
+		[ 'baseclass', 'vocab', 'fmt', 'clientConnections', 'lsVersion',
+		  'nssPanel', 'statusIp', 'statusCollector', 'E', '_', 'window' ],
 		{ filename: 'resources/lanspeed/statusRefresh.js' })(
-			fakeBaseclass, {}, {}, { FULL_VERSION: 'test' }, {}, {}, {},
-			function(value) {
-				return {
-					format: function(arg) { return value.replace('%s', arg); },
-					toString: function() { return value; }
-				};
-			}
+			fakeBaseclass, {}, {},
+			loadClientConnectionsModule(readModuleByName('clientConnections.js')),
+			{ FULL_VERSION: 'test' }, {}, {}, {}, fakeElement, fakeTranslate,
+			fakeWindow || { location: { pathname: '/admin/status/lanspeed/overview' } }
 		);
 }
+
+const fakeDocument = { activeElement: null };
 
 function fakeElement(tag, attrs, children) {
 	const node = {
@@ -475,16 +1061,99 @@ function fakeElement(tag, attrs, children) {
 		attrs: Object.assign({}, attrs || {}),
 		children: [],
 		listeners: {},
+		parentNode: null,
+		style: {},
+		focus: function() { fakeDocument.activeElement = this; },
 		addEventListener: function(type, handler) { this.listeners[type] = handler; },
-		setAttribute: function(name, value) { this.attrs[name] = value; }
+		setAttribute: function(name, value) {
+			this.attrs[name] = String(value);
+			if (name === 'class') this._className = String(value);
+			if (name === 'hidden') this._hidden = true;
+			if (name === 'disabled') this._disabled = true;
+			if (name === 'value') this._value = String(value);
+		},
+		getAttribute: function(name) {
+			return Object.prototype.hasOwnProperty.call(this.attrs, name)
+				? this.attrs[name] : null;
+		},
+		removeAttribute: function(name) {
+			delete this.attrs[name];
+			if (name === 'hidden') this._hidden = false;
+			if (name === 'disabled') this._disabled = false;
+		},
+		appendChild: function(child) {
+			if (child === null || child === undefined || child === '') return child;
+			if (typeof child === 'object') child.parentNode = this;
+			this.children.push(child);
+			return child;
+		},
+		removeChild: function(child) {
+			const index = this.children.indexOf(child);
+			if (index !== -1) this.children.splice(index, 1);
+			if (fakeDocument.activeElement === child)
+				fakeDocument.activeElement = null;
+			if (child && typeof child === 'object') child.parentNode = null;
+			return child;
+		}
 	};
+	node._className = String(node.attrs.class || '');
+	node._hidden = Object.prototype.hasOwnProperty.call(node.attrs, 'hidden');
+	node._disabled = Object.prototype.hasOwnProperty.call(node.attrs, 'disabled');
+	node._value = Object.prototype.hasOwnProperty.call(node.attrs, 'value')
+		? String(node.attrs.value) : '';
 	const append = function(child) {
 		if (Array.isArray(child)) child.forEach(append);
-		else if (child !== null && child !== undefined && child !== '') node.children.push(child);
+		else if (child && typeof child === 'object' && !child.tagName &&
+		         typeof child.toString === 'function') node.appendChild(String(child));
+		else node.appendChild(child);
 	};
 	append(children);
+	Object.defineProperty(node, 'firstChild', {
+		get: function() { return this.children.length ? this.children[0] : null; }
+	});
 	Object.defineProperty(node, 'lastChild', {
 		get: function() { return this.children[this.children.length - 1]; }
+	});
+	Object.defineProperty(node, 'textContent', {
+		get: function() { return this.children.map(fakeElementText).join(''); },
+		set: function(value) {
+			this.children.forEach(function(child) {
+				if (child && typeof child === 'object') child.parentNode = null;
+			});
+			this.children = [];
+			if (value !== null && value !== undefined && String(value) !== '')
+				this.appendChild(String(value));
+		}
+	});
+	Object.defineProperty(node, 'className', {
+		get: function() { return this._className; },
+		set: function(value) {
+			this._className = String(value);
+			this.attrs.class = this._className;
+		}
+	});
+	Object.defineProperty(node, 'hidden', {
+		get: function() { return this._hidden; },
+		set: function(value) {
+			this._hidden = Boolean(value);
+			if (this._hidden) this.attrs.hidden = 'hidden';
+			else delete this.attrs.hidden;
+		}
+	});
+	Object.defineProperty(node, 'disabled', {
+		get: function() { return this._disabled; },
+		set: function(value) {
+			this._disabled = Boolean(value);
+			if (this._disabled) this.attrs.disabled = 'disabled';
+			else delete this.attrs.disabled;
+		}
+	});
+	Object.defineProperty(node, 'value', {
+		get: function() { return this._value; },
+		set: function(value) {
+			this._value = value === null || value === undefined ? '' : String(value);
+			this.attrs.value = this._value;
+		}
 	});
 	return node;
 }
@@ -498,6 +1167,842 @@ function findFakeElement(node, className) {
 		if (found) return found;
 	}
 	return null;
+}
+
+function walkFakeElements(node, visit) {
+	if (!node || typeof node !== 'object') return;
+	visit(node);
+	(node.children || []).forEach(function(child) {
+		walkFakeElements(child, visit);
+	});
+}
+
+function findFakeElementsByClass(node, className) {
+	const matches = [];
+	walkFakeElements(node, function(child) {
+		const classes = String(child.attrs && child.attrs.class || '').split(/\s+/);
+		if (classes.includes(className)) matches.push(child);
+	});
+	return matches;
+}
+
+function findFakeElementsByTag(node, tagName) {
+	const matches = [];
+	walkFakeElements(node, function(child) {
+		if (child.tagName === tagName) matches.push(child);
+	});
+	return matches;
+}
+
+function fakeElementText(node) {
+	if (node === null || node === undefined) return '';
+	if (typeof node !== 'object') return String(node);
+	return (node.children || []).map(fakeElementText).join('');
+}
+
+function makeDeferred() {
+	let resolve, reject;
+	const promise = new Promise(function(onResolve, onReject) {
+		resolve = onResolve;
+		reject = onReject;
+	});
+	return { promise: promise, resolve: resolve, reject: reject };
+}
+
+function loadClientDetailViewModule(src, fmt, lsRpc, shell, refresh, fakeWindow, fakeDate) {
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	return vm.compileFunction(src, [
+		'baseclass', 'fmt', 'lsRpc', 'clientDetailShell',
+		'clientDetailRefresh', 'window', 'Date'
+	], { filename: 'resources/lanspeed/clientDetailView.js' })(
+		fakeBaseclass, fmt, lsRpc, shell, refresh, fakeWindow, fakeDate || Date
+	);
+}
+
+function assertClientDetailViewSource(src) {
+	if (JSON.stringify(moduleRequireNames(src)) !== JSON.stringify([
+		'baseclass', 'lanspeed.format', 'lanspeed.rpc',
+		'lanspeed.clientDetailShell', 'lanspeed.clientDetailRefresh'
+	])) {
+		fail('clientDetailView.js must require only format, shared RPC, detail shell and detail refresh in dependency order');
+	}
+	const cleaned = stripComments(src);
+	if (/\brpc\s*\.\s*declare\b|innerHTML|\bCSS\b|groupsForResponse|formatEndpoint|lanspeed-connection-|E\s*\(/.test(cleaned)) {
+		fail('clientDetailView.js must own lifecycle only, without RPC declarations, DOM rows, CSS, or connection grouping logic');
+	}
+	if (!src.includes('lsRpc.clientConnections(identityKey)') ||
+	    /lsRpc\.(?:status|clients|interfaces|uciGet|overview)\s*\(/.test(cleaned)) {
+		fail('clientDetailView.js load/reload must call only the shared clientConnections RPC');
+	}
+}
+
+function assertClientDetailViewLifecycle(src) {
+	const fixture = JSON.parse(fs.readFileSync(
+		path.join(root, 'tests/fixtures/lanspeed-client-connections.json'), 'utf8'
+	));
+	const success = JSON.parse(JSON.stringify(fixture));
+	success.sample_ms = 23456;
+	const goodB = JSON.parse(JSON.stringify(fixture));
+	goodB.connections[0].remote_ip = '2.2.2.2';
+	goodB.connections = [ goodB.connections[0] ];
+	goodB.total_connections = 1;
+	goodB.returned_connections = 1;
+	const unavailable = Object.assign({}, fixture, {
+		available: false,
+		sample_ms: null,
+		total_connections: 0,
+		returned_connections: 0,
+		connections: [],
+		warnings: [ 'conntrack_unavailable' ]
+	});
+	const successDeferred = makeDeferred();
+	const rejectDeferred = makeDeferred();
+	const unavailableRejectDeferred = makeDeferred();
+	const responses = [
+		Promise.resolve(fixture),
+		successDeferred.promise,
+		rejectDeferred.promise,
+		Promise.resolve(unavailable),
+		unavailableRejectDeferred.promise,
+		Promise.resolve(goodB)
+	];
+	let rpcCount = 0;
+	const lsRpc = {
+		clientConnections: function(identityKey) {
+			rpcCount++;
+			if (identityKey !== '30:c5:0a@eth1')
+				fail('clientDetailView.js must pass the decoded identity unchanged to every RPC');
+			return responses.shift();
+		},
+		status: function() { throw new Error('unexpected status RPC'); },
+		clients: function() { throw new Error('unexpected clients RPC'); },
+		interfaces: function() { throw new Error('unexpected interfaces RPC'); },
+		uciGet: function() { throw new Error('unexpected uci RPC'); }
+	};
+	const timers = new Map();
+	const listeners = {};
+	const events = [];
+	let timerId = 0;
+	let now = new Date(2026, 0, 2, 3, 4, 5).getTime();
+	const fakeDate = { now: function() { return now; } };
+	const fakeWindow = {
+		location: {
+			pathname: '/cgi-bin/luci/admin/status/lanspeed/overview',
+			search: '?client=old',
+			assigned: null,
+			assign: function(value) { this.assigned = value; }
+		},
+		setTimeout: function(handler, interval) {
+			const id = ++timerId;
+			timers.set(id, { handler: handler, interval: interval });
+			events.push('timer:' + interval);
+			return id;
+		},
+		clearTimeout: function(id) { timers.delete(id); },
+		addEventListener: function(type, handler) { listeners[type] = handler; }
+	};
+	let shellState = null;
+	const shell = {
+		buildShell: function(viewState) {
+			shellState = viewState;
+			return { root: fakeElement('div', {}), refs: { refresh: fakeElement('button', {}) } };
+		}
+	};
+	const renders = [];
+	const refresh = {
+		render: function(viewState) {
+			renders.push({
+				state: viewState,
+				loading: viewState.loading,
+				response: viewState.response,
+				error: viewState.error
+			});
+			events.push('render:' + String(viewState.loading));
+		}
+	};
+	const fmt = {
+		MIN_REFRESH_MS: 1000,
+		DEFAULT_PREFS: { refreshMs: 3000 },
+		loadPrefs: function() { return { refreshMs: 250, paused: true }; }
+	};
+
+	asyncChecks.push(Promise.resolve().then(async function() {
+		const view = loadClientDetailViewModule(src, fmt, lsRpc, shell, refresh, fakeWindow, fakeDate);
+		const loaded = await view.load('30:c5:0a@eth1');
+		if (!loaded || loaded.identityKey !== '30:c5:0a@eth1' ||
+		    loaded.response !== fixture || loaded.updatedAt !== now ||
+		    loaded.error !== null || rpcCount !== 1) {
+			fail('clientDetailView.js load must make exactly one clientConnections RPC and stamp a successful initial response with the browser receive time');
+		}
+		const rootNode = view.render(loaded);
+		const state = shellState;
+		const requiredFields = [
+			'identityKey', 'response', 'lastGood', 'updatedAt', 'protocol', 'filter', 'expanded',
+			'prefs', 'timer', 'loading', 'reload', 'schedule', 'stopTimer',
+			'setProtocol', 'setFilter', 'back'
+		];
+		if (!rootNode || !state || requiredFields.some(function(name) {
+			return !Object.prototype.hasOwnProperty.call(state, name);
+		}) || state.lastGood !== fixture || state.protocol !== 'all' ||
+		    state.filter !== '' || state.loading !== false || timers.size !== 1 ||
+		    Array.from(timers.values())[0].interval !== 1000) {
+			fail('clientDetailView.js render must initialize the fixed view state and auto-schedule at MIN_REFRESH_MS even when old prefs are paused');
+		}
+
+		const beforeReloadEvents = events.length;
+		const firstReload = state.reload();
+		const duplicateReload = state.reload();
+		if (firstReload !== duplicateReload || rpcCount !== 2 || timers.size !== 0 ||
+		    state.loading !== true || renders[renders.length - 1].loading !== true) {
+			fail('clientDetailView.js reload must stop its timer, render loading immediately, and return one identical pending Promise without overlapping RPC');
+		}
+		if (events.slice(beforeReloadEvents).some(function(event) { return event.indexOf('timer:') === 0; }))
+			fail('clientDetailView.js must never schedule the next timer while a reload Promise is pending');
+		now = new Date(2026, 0, 2, 3, 5, 6).getTime();
+		const successUpdatedAt = now;
+		successDeferred.resolve(success);
+		await firstReload;
+		const settledEvents = events.slice(beforeReloadEvents);
+		if (state.loading || state.response !== success || state.lastGood !== success ||
+		    state.updatedAt !== successUpdatedAt || state.error !== null ||
+		    timers.size !== 1 || settledEvents[settledEvents.length - 2] !== 'render:false' ||
+		    settledEvents[settledEvents.length - 1] !== 'timer:1000') {
+			fail('clientDetailView.js successful reload must replace response/lastGood, render loading=false, then schedule exactly one timer');
+		}
+
+		const failedReload = state.reload();
+		if (timers.size !== 0) fail('clientDetailView.js must clear the scheduled timer before a transport-failing reload');
+		rejectDeferred.reject(new Error('network down'));
+		await failedReload;
+		if (state.loading || state.lastGood !== success || state.response !== success ||
+		    state.updatedAt !== successUpdatedAt || !state.error || timers.size !== 1) {
+			fail('clientDetailView.js transport rejection must keep the last good response visible, expose the error, and resume scheduling');
+		}
+
+		now = new Date(2026, 0, 2, 3, 6, 7).getTime();
+		const unavailableUpdatedAt = now;
+		await state.reload();
+		if (state.response !== unavailable || state.lastGood !== null ||
+		    state.updatedAt !== unavailableUpdatedAt || state.error !== null ||
+		    state.loading || timers.size !== 1) {
+			fail('clientDetailView.js available:false success must become the current successful response, clear stale lastGood, and update receive time');
+		}
+
+		const unavailableFailure = state.reload();
+		unavailableRejectDeferred.reject(new Error('still down'));
+		await unavailableFailure;
+		if (state.response !== unavailable || state.lastGood !== null ||
+		    state.updatedAt !== unavailableUpdatedAt || !state.error || timers.size !== 1) {
+			fail('clientDetailView.js reject after available:false must retain the unavailable empty response without resurrecting older good rows or changing receive time');
+		}
+
+		now = new Date(2026, 0, 2, 3, 7, 8).getTime();
+		const goodBUpdatedAt = now;
+		await state.reload();
+		if (state.response !== goodB || state.lastGood !== goodB ||
+		    state.updatedAt !== goodBUpdatedAt || state.error !== null || timers.size !== 1) {
+			fail('clientDetailView.js next successful available response must replace the unavailable state with only the new data and receive time');
+		}
+
+		const rpcBeforeLocalControls = rpcCount;
+		const rendersBeforeLocalControls = renders.length;
+		state.setProtocol('tcp');
+		state.setFilter('443');
+		if (state.protocol !== 'tcp' || state.filter !== '443' ||
+		    rpcCount !== rpcBeforeLocalControls || renders.length !== rendersBeforeLocalControls + 2) {
+			fail('clientDetailView.js protocol/search controls must render local state only without issuing RPC');
+		}
+
+		state.schedule();
+		if (timers.size !== 1) fail('clientDetailView.js schedule must replace, not accumulate, timers');
+		listeners.beforeunload();
+		if (timers.size !== 0) fail('clientDetailView.js beforeunload must leave no detail refresh timer behind');
+		state.schedule();
+		state.back();
+		if (timers.size !== 0 || fakeWindow.location.assigned !== fakeWindow.location.pathname) {
+			fail('clientDetailView.js back must stop the timer and navigate to the current LAN pathname without a client query or hard-coded host');
+		}
+
+		let failingCalls = 0;
+		const firstFailureView = loadClientDetailViewModule(src, fmt, {
+			clientConnections: function() {
+				failingCalls++;
+				return Promise.reject(new Error('initial network down'));
+			}
+		}, shell, refresh, fakeWindow, fakeDate);
+		const failedInitial = await firstFailureView.load('30:c5:0a@eth1');
+		if (!failedInitial || failedInitial.identityKey !== '30:c5:0a@eth1' ||
+		    failedInitial.response !== null || failedInitial.updatedAt !== null ||
+		    !failedInitial.error || failingCalls !== 1) {
+			fail('clientDetailView.js must convert an initial transport rejection into renderable data without crashing the LuCI page');
+		}
+	}).catch(function(err) {
+		fail('clientDetailView.js lifecycle behavior could not execute: ' + (err && err.stack || err));
+	}));
+}
+
+function assertClientDetailIntegratedState(viewSrc) {
+	const fixture = JSON.parse(fs.readFileSync(
+		path.join(root, 'tests/fixtures/lanspeed-client-connections.json'), 'utf8'
+	));
+	const goodA = JSON.parse(JSON.stringify(fixture));
+	goodA.connections = [ Object.assign({}, goodA.connections[0], { remote_ip: '1.1.1.1' }) ];
+	goodA.total_connections = 1;
+	goodA.returned_connections = 1;
+	const unavailable = Object.assign({}, fixture, {
+		available: false,
+		sample_ms: null,
+		total_connections: 0,
+		returned_connections: 0,
+		connections: [],
+		warnings: [ 'conntrack_unavailable' ]
+	});
+	const goodB = JSON.parse(JSON.stringify(fixture));
+	goodB.connections = [ Object.assign({}, goodB.connections[0], { remote_ip: '2.2.2.2' }) ];
+	goodB.total_connections = 1;
+	goodB.returned_connections = 1;
+	const refresh = loadClientDetailRefreshModule(readModuleByName('clientDetailRefresh.js'));
+	let now = new Date(2026, 0, 2, 3, 4, 5).getTime();
+	const fakeDate = { now: function() { return now; } };
+
+	function harness(prefs, rpcResponses) {
+		const timers = new Map();
+		let timerId = 0;
+		let state = null;
+		let built = null;
+		const fakeWindow = {
+			location: { pathname: '/admin/status/lanspeed/overview', assign: function() {} },
+			setTimeout: function(handler, interval) {
+				const id = ++timerId;
+				timers.set(id, { handler: handler, interval: interval });
+				return id;
+			},
+			clearTimeout: function(id) { timers.delete(id); },
+			addEventListener: function() {}
+		};
+		const shell = { buildShell: function(viewState) {
+			state = viewState;
+			built = buildClientDetailShellForRefresh(viewState);
+			return built;
+		} };
+		const queue = rpcResponses.slice();
+		const view = loadClientDetailViewModule(viewSrc, {
+			MIN_REFRESH_MS: 1000,
+			DEFAULT_PREFS: { refreshMs: 3000 },
+			loadPrefs: function() { return Object.assign({}, prefs); }
+		}, {
+			clientConnections: function() { return queue.shift(); }
+		}, shell, refresh, fakeWindow, fakeDate);
+		return {
+			view: view,
+			timers: timers,
+			state: function() { return state; },
+			built: function() { return built; }
+		};
+	}
+
+	asyncChecks.push(Promise.resolve().then(async function() {
+		const sequence = harness({ refreshMs: 1000, paused: true }, [
+			Promise.resolve(goodA),
+			Promise.resolve(unavailable),
+			Promise.reject(new Error('transport still down')),
+			Promise.resolve(goodB)
+		]);
+		const initial = await sequence.view.load('fixture@lan');
+		sequence.view.render(initial);
+		let tbody = sequence.built().refs.tbody;
+		if (!fakeElementText(tbody).includes('1.1.1.1') || fakeElementText(tbody).includes('2.2.2.2'))
+			fail('client detail integration must initially render only good response A');
+
+		now = new Date(2026, 0, 2, 3, 5, 6).getTime();
+		await sequence.state().reload();
+		if (tbody.children.length !== 0 || sequence.state().lastGood !== null)
+			fail('client detail integration must clear table rows and stale lastGood after available:false success');
+		const unavailableTime = sequence.built().refs.summaryUpdated.textContent;
+		await sequence.state().reload();
+		if (tbody.children.length !== 0 || fakeElementText(tbody).includes('1.1.1.1') ||
+		    sequence.state().response !== unavailable ||
+		    sequence.built().refs.summaryUpdated.textContent !== unavailableTime ||
+		    !fakeElementText(sequence.built().refs.error).includes('连接数据仍不可用')) {
+			fail('client detail integration must keep unavailable rows empty and receive time unchanged after the following transport rejection');
+		}
+
+		now = new Date(2026, 0, 2, 3, 6, 7).getTime();
+		await sequence.state().reload();
+		if (!fakeElementText(tbody).includes('2.2.2.2') || fakeElementText(tbody).includes('1.1.1.1') ||
+		    sequence.built().refs.summaryUpdated.textContent !== '03:06:07') {
+			fail('client detail integration must replace unavailable state with only good response B and its new browser receive time');
+		}
+
+		const recovery = harness({ refreshMs: 1000, paused: true }, [
+			Promise.reject(new Error('initial down')),
+			Promise.resolve(goodB)
+		]);
+		const failedInitial = await recovery.view.load('fixture@lan');
+		recovery.view.render(failedInitial);
+		if (!fakeElementText(recovery.built().refs.empty).includes('首次加载连接详情失败'))
+			fail('client detail integration must render an initial transport rejection without stale rows');
+		now = new Date(2026, 0, 2, 3, 7, 8).getTime();
+		await recovery.state().reload();
+		if (!fakeElementText(recovery.built().refs.tbody).includes('2.2.2.2') ||
+		    !recovery.built().refs.error.hidden ||
+		    recovery.built().refs.summaryUpdated.textContent !== '03:07:08') {
+			fail('client detail integration must recover from initial rejection on the next successful response');
+		}
+
+		for (const invalid of [ null, 'not-a-number', Infinity, -1 ]) {
+			now = new Date(2026, 0, 2, 3, 8, 9).getTime();
+			const invalidPrefs = harness({ refreshMs: invalid, paused: true }, []);
+			invalidPrefs.view.render({
+				identityKey: 'fixture@lan', response: fixture, error: null
+			});
+			const interval = Array.from(invalidPrefs.timers.values())[0].interval;
+			if (invalidPrefs.state().prefs.refreshMs !== 3000 || interval !== 3000 ||
+			    !fakeElementText(invalidPrefs.built().refs.footer).includes('自动刷新：3000 ms') ||
+			    invalidPrefs.state().updatedAt !== now) {
+				fail('clientDetailView.js must normalize invalid refreshMs to 3000ms once, schedule despite paused=true, and stamp direct initial responses');
+			}
+		}
+	}).catch(function(err) {
+		fail('integrated client detail state behavior could not execute: ' + (err && err.stack || err));
+	}));
+}
+
+function loadClientDetailRefreshModule(src, fakeDate) {
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	return vm.compileFunction(src, [
+		'baseclass', 'fmt', 'clientConnections', 'E', '_', 'Date', 'document'
+	], { filename: 'resources/lanspeed/clientDetailRefresh.js' })(
+		fakeBaseclass,
+		loadFormatModule(readModuleByName('format.js')),
+		loadClientConnectionsModule(readModuleByName('clientConnections.js')),
+		fakeElement,
+		fakeTranslate,
+		fakeDate || Date,
+		fakeDocument
+	);
+}
+
+function buildClientDetailShellForRefresh(viewState) {
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	const shell = vm.compileFunction(readModuleByName('clientDetailShell.js'), [
+		'baseclass', 'lsTheme', 'clientDetailStyle', 'E', '_'
+	], { filename: 'resources/lanspeed/clientDetailShell.js' })(
+		fakeBaseclass, { applyRoot: function() {} }, { CSS: 'detail-css' },
+		fakeElement, function(value) { return value; }
+	);
+	return shell.buildShell(viewState);
+}
+
+function assertClientDetailRefreshSource(src) {
+	if (JSON.stringify(moduleRequireNames(src)) !== JSON.stringify([
+		'baseclass', 'lanspeed.format', 'lanspeed.clientConnections'
+	])) {
+		fail('clientDetailRefresh.js must require only baseclass, format and pure client connection helpers in dependency order');
+	}
+	const cleaned = stripComments(src);
+	if (/\brpc\b|set(?:Timeout|Interval)|clear(?:Timeout|Interval)|\bwindow\b|\blocation\b|innerHTML|\bCSS\b|clientDetailStyle/.test(cleaned)) {
+		fail('clientDetailRefresh.js must remain a refs-only renderer without RPC, timers, location, innerHTML, or CSS responsibilities');
+	}
+	if (!src.includes('clientConnections.groupsForResponse') ||
+	    !src.includes('clientConnections.formatEndpoint') ||
+	    !src.includes('.textContent') || !/\bE\s*\(/.test(src)) {
+		fail('clientDetailRefresh.js must render grouped connection detail through helpers, E(), and textContent');
+	}
+}
+
+function assertClientDetailRefreshBehavior(src) {
+	fakeDocument.activeElement = null;
+	const refresh = loadClientDetailRefreshModule(src);
+	if (!refresh || JSON.stringify(Object.keys(refresh).sort()) !== JSON.stringify([ 'render' ]) ||
+	    typeof refresh.render !== 'function') {
+		fail('clientDetailRefresh.js must export one explicit render(viewState) entry');
+		return;
+	}
+	const fixture = JSON.parse(fs.readFileSync(
+		path.join(root, 'tests/fixtures/lanspeed-client-connections.json'), 'utf8'
+	));
+	const state = {
+		identityKey: fixture.client.identity_key,
+		response: fixture,
+		lastGood: fixture,
+		updatedAt: new Date(2026, 0, 2, 3, 4, 5).getTime(),
+		error: null,
+		protocol: 'all',
+		filter: '',
+		expanded: {},
+		prefs: { refreshMs: 1000 },
+		loading: false,
+		back: function() {},
+		setProtocol: function(protocol) { state.protocol = protocol; refresh.render(state); },
+		setFilter: function(filter) { state.filter = filter; refresh.render(state); },
+		reload: function() {}
+	};
+	const built = buildClientDetailShellForRefresh(state);
+	state.refs = built.refs;
+	const refs = state.refs;
+	refresh.render(state);
+
+	const meta = fakeElementText(refs.clientMeta);
+	const footer = fakeElementText(refs.footer);
+	const rows = refs.tbody.children;
+	if (fakeElementText(refs.clientName) !== 'fixture-client' ||
+	    !meta.includes('192.0.2.10') || !meta.includes('02:00:00:00:00:01') ||
+	    !meta.includes('br-lan') || !meta.includes('lan') ||
+	    !fakeElementText(refs.connectionState).includes('有当前连接') ||
+	    refs.summaryTargets.textContent !== '2' || refs.summaryConnections.textContent !== '2' ||
+	    refs.summaryUpdated.textContent !== '03:04:05' ||
+	    refs.summaryUpdated.textContent.includes('12345') || rows.length !== 4 ||
+	    refs.table.hidden || !refs.empty.hidden || !refs.error.hidden) {
+		fail('clientDetailRefresh.js must render hostname-first identity/meta, unfiltered target count, real totals, browser receive wall clock, and two rows per destination group');
+	}
+	if (!footer.includes('数据源') || !footer.includes('Conntrack Netlink') ||
+	    !footer.includes('返回 2') || !footer.includes('总计 2') || !footer.includes('上限 512') ||
+	    !footer.includes('自动刷新') || !footer.includes('1000')) {
+		fail('clientDetailRefresh.js footer must report source, returned/total/limit with accurate meanings, and the clamped refresh cycle in Chinese');
+	}
+	const allCells = findFakeElementsByTag(refs.tbody, 'td');
+	if (allCells.length !== 12 || allCells.some(function(cell) {
+		return !Object.prototype.hasOwnProperty.call(cell.attrs, 'data-label');
+	})) {
+		fail('clientDetailRefresh.js must give all five group cells and the colspan detail cell mobile data-label text');
+	}
+	const groupRows = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-group');
+	const detailRows = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-detail-row');
+	if (groupRows.length !== 2 || detailRows.length !== 2 || groupRows.some(function(row) {
+		return row.attrs.tabindex !== '0' || row.attrs.role !== 'button' ||
+			row.attrs['aria-expanded'] !== 'false';
+	}) || detailRows.some(function(row) {
+		return !row.hidden || findFakeElementsByTag(row, 'td')[0].attrs.colspan !== '5';
+	})) {
+		fail('clientDetailRefresh.js group/detail rows must expose button semantics, aria-expanded, colspan=5 and real hidden collapse state');
+	}
+	const detailCopy = detailRows.map(fakeElementText).join(' ');
+	if (!detailCopy.includes('出站') || !detailCopy.includes('UDP') || !detailCopy.includes('活跃') ||
+	    !detailCopy.includes('192.0.2.10:53000 → 198.51.100.53:53') ||
+	    !detailCopy.includes('入站') || !detailCopy.includes('TCP') || !detailCopy.includes('已建立') ||
+	    !detailCopy.includes('[2001:db8:ffff::20]:54001 → [2001:db8:1::10]:443')) {
+		fail('clientDetailRefresh.js detail rows must render Chinese direction/state, uppercase protocol, direction-correct endpoints, and bracketed IPv6');
+	}
+
+	let prevented = 0;
+	const focusedGroup = groupRows[0];
+	const focusedDetail = detailRows[0];
+	focusedGroup.focus();
+	focusedGroup.listeners.keydown({ key: 'Enter', preventDefault: function() { prevented++; } });
+	let currentGroups = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-group');
+	let currentDetails = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-detail-row');
+	if (prevented !== 1 || currentGroups[0] !== focusedGroup || currentDetails[0] !== focusedDetail ||
+	    fakeDocument.activeElement !== focusedGroup ||
+	    focusedGroup.attrs['aria-expanded'] !== 'true' || focusedDetail.hidden ||
+	    state.expanded['198.51.100.53'] !== true) {
+		fail('clientDetailRefresh.js Enter must toggle the existing row in place, prevent default, and preserve keyboard focus while expanding');
+	}
+	focusedGroup.listeners.keydown({ key: ' ', preventDefault: function() { prevented++; } });
+	currentGroups = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-group');
+	currentDetails = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-detail-row');
+	if (prevented !== 2 || currentGroups[0] !== focusedGroup || currentDetails[0] !== focusedDetail ||
+	    fakeDocument.activeElement !== focusedGroup ||
+	    focusedGroup.attrs['aria-expanded'] !== 'false' || !focusedDetail.hidden ||
+	    state.expanded['198.51.100.53'] !== false) {
+		fail('clientDetailRefresh.js Space must toggle the existing row in place, prevent default, and preserve keyboard focus while collapsing');
+	}
+	focusedGroup.listeners.click({ preventDefault: function() { prevented++; } });
+	if (prevented !== 3 || refs.tbody.children[0] !== focusedGroup || focusedDetail.hidden ||
+	    state.expanded['198.51.100.53'] !== true) {
+		fail('clientDetailRefresh.js click must also toggle the existing group/detail rows without rebuilding the table');
+	}
+	refresh.render(state);
+	currentGroups = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-group');
+	currentDetails = findFakeElementsByClass(refs.tbody, 'lanspeed-connection-detail-row');
+	if (currentGroups[0] === focusedGroup ||
+	    currentGroups[0].attrs['data-remote-ip'] !== '198.51.100.53' ||
+	    fakeDocument.activeElement !== currentGroups[0] ||
+	    currentGroups[0].attrs['aria-expanded'] !== 'true' || currentDetails[0].hidden) {
+		fail('clientDetailRefresh.js refresh renders must restore keyboard focus to the rebuilt row for the same remote IP');
+	}
+
+	state.protocol = 'tcp';
+	state.filter = '54001';
+	refresh.render(state);
+	if (state.expanded['198.51.100.53'] !== true ||
+	    refs.protocolAll.attrs['aria-pressed'] !== 'false' ||
+	    refs.protocolTcp.attrs['aria-pressed'] !== 'true' ||
+	    !String(refs.protocolTcp.className).includes('active') ||
+	    refs.protocolUdp.attrs['aria-pressed'] !== 'false' || refs.filter.value !== '54001') {
+		fail('clientDetailRefresh.js must sync protocol aria/active classes and filter value without pruning temporarily filtered expanded groups');
+	}
+	state.response = Object.assign({}, fixture, { connections: [ fixture.connections[1] ] });
+	state.lastGood = state.response;
+	state.protocol = 'all';
+	state.filter = '';
+	refresh.render(state);
+	if (Object.prototype.hasOwnProperty.call(state.expanded, '198.51.100.53'))
+		fail('clientDetailRefresh.js must prune expanded destinations only when they disappear from the unfiltered response');
+
+	state.response = fixture;
+	state.lastGood = fixture;
+	state.updatedAt = new Date(2026, 0, 2, 3, 4, 5).getTime();
+	state.error = new Error('<img src=x onerror=alert(1)> network down');
+	refresh.render(state);
+	if (refs.error.hidden || !fakeElementText(refs.error).includes('刷新连接详情失败') ||
+	    refs.tbody.children.length !== 4 || refs.table.hidden ||
+	    refs.summaryUpdated.textContent !== '03:04:05' ||
+	    findFakeElementsByTag(refs.error, 'img').length !== 0) {
+		fail('clientDetailRefresh.js transport error must render the current successful response with safe Chinese error text and unchanged receive time');
+	}
+
+	state.error = null;
+	state.response = Object.assign({}, fixture, {
+		available: false,
+		sample_ms: null,
+		total_connections: 0,
+		returned_connections: 0,
+		warnings: [ 'conntrack_unavailable' ]
+	});
+	state.lastGood = null;
+	state.updatedAt = new Date(2026, 0, 2, 3, 5, 6).getTime();
+	refresh.render(state);
+	if (refs.tbody.children.length !== 0 || !refs.table.hidden || refs.empty.hidden ||
+	    !fakeElementText(refs.empty).includes('连接采集当前不可用') ||
+	    refs.summaryUpdated.textContent !== '03:05:06') {
+		fail('clientDetailRefresh.js available:false success must clear current rows and never leak last-good connection details');
+	}
+	state.error = new Error('still down');
+	refresh.render(state);
+	if (refs.tbody.children.length !== 0 || !refs.table.hidden ||
+	    !fakeElementText(refs.error).includes('连接数据仍不可用') ||
+	    fakeElementText(refs.tbody).includes('198.51.100.53') ||
+	    refs.summaryUpdated.textContent !== '03:05:06') {
+		fail('clientDetailRefresh.js reject after unavailable must keep the table empty, retain its receive time, and explain that connection data remains unavailable');
+	}
+
+	state.error = null;
+	state.response = Object.assign({}, fixture, {
+		available: false,
+		total_connections: 0,
+		returned_connections: 0,
+		connections: [],
+		warnings: [ 'conntrack_snapshot_incomplete' ]
+	});
+	refresh.render(state);
+	const incompleteFooter = fakeElementText(refs.footer);
+	if (refs.summaryTargets.textContent !== '—' ||
+	    refs.summaryConnections.textContent !== '—' ||
+	    fakeElementText(refs.empty) !== '连接快照不完整，无法确认当前连接数量，请稍后重试。' ||
+	    !incompleteFooter.includes('告警：连接快照不完整') ||
+	    incompleteFooter.includes('返回 0') || incompleteFooter.includes('总计 0')) {
+		fail('clientDetailRefresh.js incomplete snapshots must render unknown counts, dedicated Chinese guidance, and no definitive zero-count footer');
+	}
+
+	state.error = null;
+	state.response = Object.assign({}, fixture, {
+		client: null, total_connections: 0, returned_connections: 0,
+		connections: [], warnings: [ 'client_not_found' ]
+	});
+	refresh.render(state);
+	if (!fakeElementText(refs.empty).includes('未找到该客户端') || refs.tbody.children.length)
+		fail('clientDetailRefresh.js must render a distinct cleared not-found state for null client/client_not_found');
+
+	state.response = Object.assign({}, fixture, {
+		total_connections: 0, returned_connections: 0, connections: [], warnings: []
+	});
+	refresh.render(state);
+	if (!fakeElementText(refs.empty).includes('当前客户端没有连接') ||
+	    !fakeElementText(refs.connectionState).includes('无当前连接')) {
+		fail('clientDetailRefresh.js must render zero connections distinctly without claiming the client is offline');
+	}
+
+	state.response = null;
+	state.lastGood = null;
+	state.updatedAt = null;
+	state.error = new Error('initial down');
+	refresh.render(state);
+	if (refs.error.hidden || refs.tbody.children.length || !refs.table.hidden || refs.empty.hidden ||
+	    !fakeElementText(refs.empty).includes('首次加载连接详情失败')) {
+		fail('clientDetailRefresh.js must render an initial transport failure as a distinct safe empty state');
+	}
+
+	state.error = null;
+	state.response = Object.assign({}, fixture, {
+		total_connections: 5,
+		returned_connections: 2,
+		truncated: true,
+		limit: 2,
+		warnings: [ 'backend <warning>' ]
+	});
+	state.lastGood = state.response;
+	state.updatedAt = new Date(2026, 0, 2, 3, 6, 7).getTime();
+	state.loading = true;
+	refresh.render(state);
+	const truncatedFooter = fakeElementText(refs.footer);
+	if (refs.summaryTargets.textContent !== '至少 2' ||
+	    !truncatedFooter.includes('已截断') || !truncatedFooter.includes('返回 2') ||
+	    !truncatedFooter.includes('总计 5') || !truncatedFooter.includes('上限 2') ||
+	    !truncatedFooter.includes('backend <warning>') || !refs.refresh.disabled) {
+		fail('clientDetailRefresh.js must mark truncated target counts as a lower bound, render accurate footer text, and disable manual refresh while loading');
+	}
+	const hostile = JSON.parse(JSON.stringify(fixture));
+	hostile.client.hostname = '<svg onload=alert(1)>';
+	state.loading = false;
+	state.response = hostile;
+	state.lastGood = hostile;
+	refresh.render(state);
+	if (fakeElementText(refs.clientName) !== '<svg onload=alert(1)>' ||
+	    findFakeElementsByTag(built.root, 'svg').length !== 0) {
+		fail('clientDetailRefresh.js must keep every backend identity/warning/error string as text rather than markup');
+	}
+}
+
+function assertClientDetailShellSource(src) {
+	const cleaned = stripComments(src);
+	if (JSON.stringify(moduleRequireNames(src)) !== JSON.stringify([
+		'baseclass', 'lanspeed.theme', 'lanspeed.clientDetailStyle'
+	])) {
+		fail('clientDetailShell.js must require only baseclass, theme and clientDetailStyle');
+	}
+	if (/\brpc\b|\bset(?:Timeout|Interval)\b|\binnerHTML\b|\b(?:Promise|fetch|async|await)\b/.test(cleaned)) {
+		fail('clientDetailShell.js must remain free of RPC, timers, async work and innerHTML');
+	}
+	if (/(?:['"]style['"]\s*:|\.style\b)|@media|\b(?:var|let|const)\s+\w*CSS\b|['"][^'"\n]*[.#][\w-]+[^'"\n]*\{/.test(cleaned)) {
+		fail('clientDetailShell.js must not inline or assemble CSS');
+	}
+	const namedFunctions = Array.from(cleaned.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g), function(match) {
+		return match[1];
+	});
+	if (JSON.stringify(namedFunctions) !== JSON.stringify([ 'buildShell' ])) {
+		fail('clientDetailShell.js must only define buildShell, leaving filtering and summaries to the view module');
+	}
+	if (!src.includes('clientDetailStyle.CSS') || !src.includes('lsTheme.applyRoot(root)')) {
+		fail('clientDetailShell.js must inject the composed detail CSS and apply the existing theme helper');
+	}
+}
+
+function assertClientDetailShellInteraction(src) {
+	const E = fakeElement;
+	const fakeBaseclass = { extend: function(value) { return value; } };
+	let themedRoot = null;
+	const shell = vm.compileFunction(src,
+		[ 'baseclass', 'lsTheme', 'clientDetailStyle', 'E', '_' ],
+		{ filename: 'resources/lanspeed/clientDetailShell.js' })(
+			fakeBaseclass,
+			{ applyRoot: function(root) { themedRoot = root; } },
+			{ CSS: 'detail-css' },
+			E,
+			function(value) { return value; }
+		);
+	const calls = { back: [], protocol: [], filter: [], reload: [] };
+	const viewState = {
+		back: function() { calls.back.push(Array.from(arguments)); },
+		setProtocol: function() { calls.protocol.push(Array.from(arguments)); },
+		setFilter: function() { calls.filter.push(Array.from(arguments)); },
+		reload: function() { calls.reload.push(Array.from(arguments)); }
+	};
+	const built = shell.buildShell(viewState);
+	if (!built || !built.root || !built.refs) {
+		fail('clientDetailShell.js buildShell(viewState) must return { root, refs }');
+		return;
+	}
+	const rootClasses = String(built.root.attrs.class || '').split(/\s+/);
+	if (!rootClasses.includes('cbi-map') || !rootClasses.includes('lanspeed-root') ||
+	    !rootClasses.includes('lanspeed-connection-detail') || themedRoot !== built.root) {
+		fail('clientDetailShell.js root must reuse cbi-map/lanspeed-root, add the detail class and receive theme detection');
+	}
+	const sections = findFakeElementsByClass(built.root, 'cbi-section');
+	if (sections.length !== 2 || sections.some(function(section) {
+		return !built.root.children.includes(section);
+	}) || !findFakeElement(built.root, 'lanspeed-connection-identity-card') ||
+	    !findFakeElement(built.root, 'lanspeed-connections-card')) {
+		fail('clientDetailShell.js must render exactly two main sections for identity and connections');
+	}
+	if (findFakeElementsByClass(built.root, 'lanspeed-header').length !== 2 ||
+	    findFakeElementsByClass(built.root, 'lanspeed-body').length !== 2 ||
+	    findFakeElementsByClass(built.root, 'lanspeed-toolbar').length !== 1 ||
+	    findFakeElementsByClass(built.root, 'lanspeed-table').length !== 1 ||
+	    findFakeElementsByClass(built.root, 'big').length) {
+		fail('clientDetailShell.js must reuse the compact status header/body/toolbar/table structure without metric cards');
+	}
+
+	const allowedSharedClasses = new Set([
+		'cbi-map', 'lanspeed-root', 'cbi-section', 'lanspeed-header',
+		'lanspeed-body', 'lanspeed-toolbar', 'lanspeed-toolbar-left',
+		'lanspeed-toolbar-filter', 'lanspeed-toolbar-right', 'lanspeed-table',
+		'cbi-button', 'cbi-input-text', 'alert-message', 'error', 'label', 'spacer'
+	]);
+	walkFakeElements(built.root, function(node) {
+		String(node.attrs && node.attrs.class || '').split(/\s+/).filter(Boolean).forEach(function(className) {
+			if (!allowedSharedClasses.has(className) &&
+			    !className.startsWith('lanspeed-connection-') &&
+			    className !== 'lanspeed-connections-card') {
+				fail(`clientDetailShell.js must prefix its new class ${className}`);
+			}
+		});
+	});
+
+	const refs = built.refs;
+	[
+		'error', 'back', 'clientName', 'clientMeta', 'connectionState', 'summary',
+		'summaryTargets', 'summaryConnections', 'summaryUpdated', 'protocolAll',
+		'protocolTcp', 'protocolUdp', 'filter', 'refresh', 'table', 'tbody',
+		'empty', 'footer'
+	].forEach(function(name) {
+		if (!refs[name]) fail(`clientDetailShell.js refs must expose ${name}`);
+	});
+	if (!refs.table || !refs.tbody) return;
+
+	const copy = fakeElementText(built.root);
+	[
+		'返回客户端列表', 'LAN Speed 状态 / 客户端连接详情', '无法加载连接详情',
+		'客户端身份', '正在加载客户端身份…', 'MAC 与 IP 信息将在加载后显示',
+		'连接状态：等待加载', '连接摘要', '目标 IP 数', '连接数', '更新时间',
+		'当前连接', '全部', 'TCP', 'UDP', '立即刷新', '目标 IP', '目标端口',
+		'协议', '状态', '暂无连接', '连接数据将在加载后显示。'
+	].forEach(function(text) {
+		if (!copy.includes(text)) fail(`clientDetailShell.js must render Chinese copy: ${text}`);
+	});
+	const summaryLabels = findFakeElementsByClass(
+		built.root, 'lanspeed-connection-summary-label'
+	).map(fakeElementText);
+	if (JSON.stringify(summaryLabels) !== JSON.stringify([
+		'目标 IP 数', '连接数', '更新时间'
+	])) {
+		fail('clientDetailShell.js must label the grouped destination summary as target IP count');
+	}
+	const headers = findFakeElementsByTag(refs.table, 'th').map(fakeElementText);
+	if (JSON.stringify(headers) !== JSON.stringify([
+		'目标 IP', '目标端口', '协议', '状态', '连接数'
+	]) || findFakeElementsByTag(refs.table, 'th').some(function(th) {
+		return th.attrs.scope !== 'col';
+	})) {
+		fail('clientDetailShell.js must render the fixed accessible connection table headers');
+	}
+	if (refs.table.attrs['aria-label'] !== '客户端连接列表' ||
+	    refs.filter.attrs['aria-label'] !== '搜索连接' ||
+	    refs.filter.attrs.placeholder !== '搜索目标 IP 或端口' ||
+	    refs.error.attrs.role !== 'alert' || refs.error.attrs['aria-live'] !== 'assertive' ||
+	    refs.empty.attrs.role !== 'status' || refs.empty.attrs['aria-live'] !== 'polite' ||
+	    refs.footer.attrs['aria-live'] !== 'polite') {
+		fail('clientDetailShell.js must label the table/search and expose live error, empty and footer states');
+	}
+	[ refs.back, refs.protocolAll, refs.protocolTcp, refs.protocolUdp, refs.refresh ].forEach(function(button) {
+		if (!String(button.attrs.class || '').split(/\s+/).includes('cbi-button'))
+			fail('clientDetailShell.js action buttons must use cbi-button');
+	});
+	if (Object.values(calls).some(function(entries) { return entries.length; })) {
+		fail('clientDetailShell.js must not call viewState actions while constructing the shell');
+	}
+	refs.back.listeners.click({ target: refs.back });
+	refs.protocolAll.listeners.click({ target: refs.protocolAll });
+	refs.protocolTcp.listeners.click({ target: refs.protocolTcp });
+	refs.protocolUdp.listeners.click({ target: refs.protocolUdp });
+	refs.filter.listeners.input({ target: { value: '443' } });
+	refs.refresh.listeners.click({ target: refs.refresh });
+	if (JSON.stringify(calls.back) !== JSON.stringify([ [] ]) ||
+	    JSON.stringify(calls.protocol) !== JSON.stringify([ [ 'all' ], [ 'tcp' ], [ 'udp' ] ]) ||
+	    JSON.stringify(calls.filter) !== JSON.stringify([ [ '443' ] ]) ||
+	    JSON.stringify(calls.reload) !== JSON.stringify([ [] ])) {
+		fail('clientDetailShell.js events must delegate back/protocol/filter/reload directly to viewState');
+	}
 }
 
 function assertFormatActiveWindow(src) {
@@ -819,6 +2324,42 @@ function assertStatusRefreshSortingInteraction(src) {
 	    !String(refs.sortHeaders.tcp_conns.button.attrs.title).includes('TCP 仅统计 ESTABLISHED + ASSURED') ||
 	    !String(refs.sortHeaders.tcp_conns.button.attrs['aria-label']).includes('升序')) {
 		fail('statusRefresh.js must combine TCP/UDP connection semantics with accessible sorting instructions');
+	}
+}
+
+function assertStatusRefreshClientDetailLink(src) {
+	const pathname = '/cgi-bin/luci/admin/status/lanspeed/overview';
+	const mod = loadStatusRefreshModule(src, { location: { pathname: pathname } });
+	if (!mod || typeof mod.clientNameContent !== 'function') {
+		fail('statusRefresh.js must expose its client-name cell builder for behavior validation');
+		return;
+	}
+	const identified = mod.clientNameContent({
+		identity_key: '30:c5:0a:11:22:33@eth1',
+		hostname: '工作站'
+	}, '工作站', [ '192.0.2.30', '2001:db8::30' ]);
+	const link = identified && identified[0];
+	const ipline = identified && identified[1];
+	const expectedHref = pathname + '?client=30%3Ac5%3A0a%3A11%3A22%3A33%40eth1';
+	if (!Array.isArray(identified) || !link || link.tagName !== 'a' ||
+	    link.attrs.class !== 'lanspeed-connection-link' || link.attrs.href !== expectedHref ||
+	    !String(link.attrs.title).includes('查看 工作站 的当前连接') ||
+	    !String(link.attrs['aria-label']).includes('查看 工作站 的当前连接') ||
+	    fakeElementText(link) !== '工作站' ||
+	    !ipline || ipline.parentNode === link || fakeElementText(ipline) !== '192.0.2.30, 2001:db8::30') {
+		fail('statusRefresh.js must generate an encoded accessible detail link around only the display name while preserving the IP subline');
+	}
+	const missing = mod.clientNameContent({ hostname: '无身份' }, '无身份', [ '192.0.2.31' ]);
+	if (!Array.isArray(missing) || missing[0] !== '无身份' ||
+	    findFakeElementsByTag({ children: missing }, 'a').length !== 0) {
+		fail('statusRefresh.js must safely keep clients without identity_key as plain display text');
+	}
+	const hostile = mod.clientNameContent({
+		identity_key: 'safe@lan', hostname: '<img src=x onerror=alert(1)>'
+	}, '<img src=x onerror=alert(1)>', []);
+	if (!hostile[0] || fakeElementText(hostile[0]) !== '<img src=x onerror=alert(1)>' ||
+	    findFakeElementsByTag(hostile[0], 'img').length !== 0) {
+		fail('statusRefresh.js must keep backend display names as text inside the detail link');
 	}
 }
 
@@ -1994,6 +3535,12 @@ function assertStatusRefreshModule(src) {
 	    !src.includes('LAN 无活动流量')) {
 		fail('statusRefresh.js must distinguish low traffic from a truly idle LAN');
 	}
+	if (!src.includes("'class': 'lanspeed-connection-link'") ||
+	    !src.includes('clientConnections.detailHref(window.location.pathname, c.identity_key)') ||
+	    !src.includes("'aria-label':") || !src.includes("'title':") ||
+	    !src.includes('查看') || !src.includes('当前连接')) {
+		fail('statusRefresh.js must wrap only identified client display names in an accessible encoded detail link on the current pathname');
+	}
 }
 
 function assertConfigStyleModule(src) {
@@ -2081,14 +3628,25 @@ function assertConfigFormModule(src) {
 }
 
 function assertStatusViewEntryIsThin(src) {
-	if (src.includes('var LAYOUT_CSS = [') || src.includes('function buildShell(') ||
-	    src.includes('function refreshLive(') || src.includes('function parseIpv6ToWords(')) {
-		fail('view/lanspeed/index.js must stay a thin page lifecycle entry and delegate CSS/shell/refresh/IP helpers to modules');
+	const requires = moduleRequireNames(src);
+	if (JSON.stringify(requires) !== JSON.stringify([
+		'baseclass',
+		'lanspeed.clientConnections',
+		'lanspeed.clientDetailView',
+		'lanspeed.statusView'
+	])) {
+		fail('statusViewLive.js must require only the route parser, detail view, and existing overview view in dependency order');
 	}
-	if (!src.includes('statusShell.buildShell(viewState)') ||
-	    !src.includes('statusRefresh.refreshLive(this)') ||
-	    !src.includes('statusIp.hideIpv6RangesValue')) {
-		fail('view/lanspeed/index.js must delegate shell, refresh, and IPv6 helper work to status modules');
+	const cleaned = stripComments(src);
+	if (/\blsRpc\b|\brpc\b|statusShell|statusRefresh|statusStyle|set(?:Timeout|Interval)|clear(?:Timeout|Interval)|buildShell|refreshLive|loadAll|loadUiConfig/.test(cleaned)) {
+		fail('statusViewLive.js must remain a thin router without RPC, shell, refresh, style, or timer responsibilities');
+	}
+	if (!src.includes('clientConnections.identityFromSearch(window.location.search)') ||
+	    !src.includes("route: 'overview'") || !src.includes("route: 'detail'") ||
+	    !src.includes('statusView.load()') || !src.includes('statusView.render(data.data)') ||
+	    !src.includes('clientDetailView.load(identityKey)') ||
+	    !src.includes('clientDetailView.render(data.data)')) {
+		fail('statusViewLive.js must freeze an explicit load-time route marker and delegate load/render to overview or detail');
 	}
 }
 
@@ -2153,6 +3711,28 @@ EXPECTED_MODULES.forEach(function(name) {
 			assertFormatActiveWindow(src);
 			assertFormatSorting(src);
 		}
+	if (name === 'clientConnections.js') {
+		assertClientConnectionsModule(src);
+	}
+	if (name === 'clientDetailRefresh.js') {
+		assertClientDetailRefreshSource(src);
+		assertClientDetailRefreshBehavior(src);
+	}
+	if (name === 'clientDetailView.js') {
+		assertClientDetailViewSource(src);
+		assertClientDetailViewLifecycle(src);
+		assertClientDetailIntegratedState(src);
+	}
+	if (name === 'clientDetailShell.js') {
+		assertClientDetailShellSource(src);
+		assertClientDetailShellInteraction(src);
+	}
+	if (name === 'clientDetailStyle.js') {
+		assertClientDetailStyleComposer(src);
+	}
+	if (CLIENT_DETAIL_STYLE_PARTS.includes(name)) {
+		assertClientDetailStyleLeaf(name, src);
+	}
 	if (name === 'ifaceConfig.js') {
 		assertIfaceConfigThemeLayout(src);
 		assertIfaceSaveBehavior(src);
@@ -2175,7 +3755,8 @@ EXPECTED_MODULES.forEach(function(name) {
 	if (name === 'statusStyle.js') {
 		assertStatusStyleModule(styleSources(name, STATUS_STYLE_PARTS));
 	}
-	if (STATUS_STYLE_PARTS.includes(name) || CONFIG_STYLE_PARTS.includes(name))
+	if (STATUS_STYLE_PARTS.includes(name) || CLIENT_DETAIL_STYLE_PARTS.includes(name) ||
+	    CONFIG_STYLE_PARTS.includes(name))
 		assertStyleModuleIsolation(name, src);
 	if (name === 'statusStyleCompat.js' || name === 'statusStyleCompatLive.js' ||
 	    name === 'statusStyleCompatLive2.js' || name === 'statusStyleCompatLive3.js') {
@@ -2183,6 +3764,7 @@ EXPECTED_MODULES.forEach(function(name) {
 	}
 	if (name === 'statusViewLive.js') {
 		assertStatusViewEntryIsThin(src);
+		assertStatusViewRouterBehavior(src);
 	}
 	if (name === 'statusIp.js') {
 		assertStatusIpModule(src);
@@ -2197,6 +3779,7 @@ EXPECTED_MODULES.forEach(function(name) {
 	if (name === 'statusRefresh.js') {
 		assertStatusRefreshModule(src);
 		assertStatusRefreshSortingInteraction(src);
+		assertStatusRefreshClientDetailLink(src);
 	}
 	if (name === 'configStyle.js') {
 		assertConfigStyleModule(styleSources(name, CONFIG_STYLE_PARTS));
@@ -2208,6 +3791,7 @@ EXPECTED_MODULES.forEach(function(name) {
 });
 
 assertStyleAggregation();
+assertConnectionStyleOwnership();
 
 assertConfigSaveBehavior(
 	readModuleByName('configForm.js'),
@@ -2244,6 +3828,9 @@ if (fs.existsSync(statusViewFile)) {
 	const vcleaned = stripComments(vsrc);
 	const statusSrc = [
 		vsrc,
+		readModuleByName('statusView.js'),
+		readModuleByName('clientDetailView.js'),
+		readModuleByName('clientDetailRefresh.js'),
 		readModuleByName('statusStyle.js'),
 		...STATUS_STYLE_PARTS.map(readModuleByName),
 		readModuleByName('statusStyleCompat.js'),
