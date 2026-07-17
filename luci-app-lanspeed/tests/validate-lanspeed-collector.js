@@ -1396,6 +1396,7 @@ function assertLifecycleInit(initScript, hotplugScript, packageMakefile, default
   assert(defaultConfig.includes("option refresh_interval_ms '1000'"), 'default config must keep refresh_interval_ms=1000');
   assert(defaultConfig.includes("option active_client_window_ms '10000'"), 'default config must keep active window at 10s');
   assert(defaultConfig.includes("option active_client_min_bps '1'"), 'default config must keep active speed threshold at nonzero');
+  assert(defaultConfig.includes("option show_client_status '0'"), 'default config must hide the LAN client status column');
   assert(defaultConfig.includes("option show_ipv6 '1'"), 'default config must show IPv6 client addresses');
   assert(defaultConfig.includes("option hide_private_ipv6 '0'"), 'default config must not hide private IPv6 client addresses by default');
   assert(defaultConfig.includes("option hide_ipv6_ranges 'fc00::/7 fe80::/10'"), 'default config must provide hidden IPv6 ranges');
@@ -1456,14 +1457,12 @@ const hotplugScript = fs.readFileSync(path.join(root, 'net/lanspeedd/files/etc/h
 const defaultConfig = fs.readFileSync(path.join(root, 'net/lanspeedd/files/etc/config/lanspeed'), 'utf8');
 const statusResourceDir = path.join(root, 'applications/luci-app-lanspeed/htdocs/luci-static/resources');
 const indexSource = [
-  'view/lanspeed/index_live4.js',
-  'lanspeed/statusViewLive.js',
-  'lanspeed/statusViewLive2.js',
-  'lanspeed/statusViewLive3.js',
+  'view/lanspeed/overview.js',
+  'lanspeed/statusView.js',
+  'lanspeed/statusOverview.js',
   'lanspeed/statusCollector.js',
   'lanspeed/statusRefresh.js'
 ].map((relativePath) => fs.readFileSync(path.join(statusResourceDir, relativePath), 'utf8')).join('\n');
-const nssPanelSource = fs.readFileSync(path.join(root, 'applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/nssPanel.js'), 'utf8');
 const collectorModel = readJson('net/lanspeedd/src/collector-model.json');
 const bpfAttachedFixture = readJson('tests/fixtures/lanspeed-bpf-attached.json');
 

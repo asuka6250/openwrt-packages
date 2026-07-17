@@ -1,21 +1,20 @@
 #!/usr/bin/env node
-
 /*
  * Validates the modular structure of luci-app-lanspeed's resources tree.
  *
  * Contract enforced:
  *   1. Every expected sub-module file exists under
  *      applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/
- *      and the active view entry under resources/view/lanspeed/index_live.js.
+ *      and the active view entries under resources/view/lanspeed/.
  *   2. Each sub-module begins with 'use strict' and declares the expected
- *      'require baseclass' (plus 'require rpc' for rpc.js). NSS panel
+ *      'require baseclass' (plus 'require rpc' for rpc.js).
  *      additionally requires vocab + format.
  *   3. Each sub-module ends its body with `return baseclass.extend({...})`
  *      so LuCI's module loader receives a class.
  *   4. The status implementation module and config view entry declare their
  *      expected sub-module requires at the top of the file.
  *   5. Boundary hygiene: rpc.declare must only appear in rpc.js. The
- *      vocab/format/nssPanel modules must stay free of RPC declarations.
+ *      shared UI helper modules must stay free of RPC declarations.
  *   6. Every expected module and view entry parses as JavaScript
  *      (acorn-free: we use VM compile to catch syntax errors).
  *
@@ -34,10 +33,11 @@ const root = path.resolve(__dirname, '..');
 const resDir = path.join(root,
 	'applications/luci-app-lanspeed/htdocs/luci-static/resources');
 const modDir = path.join(resDir, 'lanspeed');
-const viewFile = path.join(resDir, 'view/lanspeed/index_live4.js');
-const legacyViewFile = path.join(resDir, 'view/lanspeed/index.js');
+const viewDir = path.join(resDir, 'view/lanspeed');
+const viewFile = path.join(resDir, 'view/lanspeed/overview.js');
+const diagnosticsEntryFile = path.join(resDir, 'view/lanspeed/diagnostics.js');
 const configViewFile = path.join(resDir, 'view/lanspeed/config.js');
-const statusViewFile = path.join(modDir, 'statusViewLive.js');
+const statusViewFile = path.join(modDir, 'statusView.js');
 const daemonMakefile = fs.readFileSync(path.join(root, 'net/lanspeedd/Makefile'), 'utf8');
 const luciMakefile = fs.readFileSync(path.join(root, 'applications/luci-app-lanspeed/Makefile'), 'utf8');
 
@@ -54,9 +54,17 @@ const EXPECTED_MODULES = [
 	'clientDetailStyleArgon.js',
 	'clientDetailStyleBootstrap.js',
 	'clientDetailStyleResponsive.js',
+	'diagnosticsRefresh.js',
+	'diagnosticsShell.js',
+	'diagnosticsStyle.js',
+	'diagnosticsStyleBase.js',
+	'diagnosticsStyleAurora.js',
+	'diagnosticsStyleArgon.js',
+	'diagnosticsStyleBootstrap.js',
+	'diagnosticsStyleResponsive.js',
+	'diagnosticsView.js',
 	'rpc.js',
 	'ifaceConfig.js',
-	'nssPanel.js',
 	'theme.js',
 	'version.js',
 	'statusStyle.js',
@@ -65,15 +73,10 @@ const EXPECTED_MODULES = [
 	'statusStyleArgon.js',
 	'statusStyleBootstrap.js',
 	'statusStyleResponsive.js',
-	'statusStyleCompat.js',
-	'statusStyleCompatLive.js',
-	'statusStyleCompatLive2.js',
-	'statusStyleCompatLive3.js',
-	'statusViewLive.js',
-	'statusViewLive2.js',
-	'statusViewLive3.js',
+	'statusView.js',
 	'statusIp.js',
 	'statusCollector.js',
+	'statusOverview.js',
 	'statusShell.js',
 	'statusRefresh.js',
 	'configStyle.js',
@@ -85,11 +88,13 @@ const EXPECTED_MODULES = [
 	'configStyleResponsive.js',
 	'configForm.js'
 ];
+const EXPECTED_VIEW_ENTRIES = [ 'config.js', 'diagnostics.js', 'overview.js' ];
+const VERSIONED_RESOURCE_TOKEN = /(?:Live\d+|_live\d+)/;
 
 const EXPECTED_VIEW_REQUIRES = [
 	'lanspeed.clientConnections',
 	'lanspeed.clientDetailView',
-	'lanspeed.statusView'
+	'lanspeed.statusOverview'
 ];
 
 const EXPECTED_CONFIG_VIEW_REQUIRES = [
@@ -116,6 +121,14 @@ const CLIENT_DETAIL_STYLE_PARTS = [
 	'clientDetailStyleResponsive.js'
 ];
 
+const DIAGNOSTICS_STYLE_PARTS = [
+	'diagnosticsStyleBase.js',
+	'diagnosticsStyleAurora.js',
+	'diagnosticsStyleArgon.js',
+	'diagnosticsStyleBootstrap.js',
+	'diagnosticsStyleResponsive.js'
+];
+
 const CONFIG_STYLE_PARTS = [
 	'configStyleBase.js',
 	'configStyleAurora.js',
@@ -125,8 +138,9 @@ const CONFIG_STYLE_PARTS = [
 	'configStyleResponsive.js'
 ];
 
-const EXPECTED_STATUS_STYLE_SHA256 = 'fccac6625c6988a867c7a9fc8a3438deee75500fddb0f2bb2e74a2221b5ece3d';
-const EXPECTED_CONFIG_STYLE_SHA256 = 'd16d845e2babf4b638bcc4e78ccfa44729e80b432fed9ead19dd51da9a3bb4d8';
+const EXPECTED_STATUS_STYLE_SHA256 = '25faec2f272831a0c758af83716538cae768171d2c07c971151ff9e4773ed4b7';
+const EXPECTED_DIAGNOSTICS_STYLE_SHA256 = 'f8e8015359f4e3e7aa2870c3d7c334dc527093af3c38ca41c5ad06a4a9372648';
+const EXPECTED_CONFIG_STYLE_SHA256 = '041fdf928e6bbf4e0b405b6f6b9b1860e94f9add57d44266ec41a1e48c33c43f';
 
 function readMakeVar(source, name, fileLabel) {
 	const match = source.match(new RegExp(`^${name}:=(.+)$`, 'm'));
@@ -138,8 +152,8 @@ function readMakeVar(source, name, fileLabel) {
 }
 
 const MODULE_REQUIRES = {
-	'vocab.js':       [ 'baseclass' ],
-	'format.js':      [ 'baseclass' ],
+	'vocab.js': [ 'baseclass' ],
+	'format.js': [ 'baseclass' ],
 	'clientConnections.js': [ 'baseclass', 'lanspeed.format' ],
 	'clientDetailRefresh.js': [
 		'baseclass',
@@ -172,11 +186,41 @@ const MODULE_REQUIRES = {
 	'clientDetailStyleArgon.js': [ 'baseclass' ],
 	'clientDetailStyleBootstrap.js': [ 'baseclass' ],
 	'clientDetailStyleResponsive.js': [ 'baseclass' ],
-	'rpc.js':         [ 'baseclass', 'rpc' ],
+	'diagnosticsRefresh.js': [
+		'baseclass',
+		'lanspeed.vocab',
+		'lanspeed.format',
+		'lanspeed.version',
+		'lanspeed.statusCollector'
+	],
+	'diagnosticsShell.js': [
+		'baseclass',
+		'lanspeed.theme',
+		'lanspeed.diagnosticsStyle'
+	],
+	'diagnosticsStyle.js': [
+		'baseclass',
+		'lanspeed.diagnosticsStyleBase',
+		'lanspeed.diagnosticsStyleAurora',
+		'lanspeed.diagnosticsStyleArgon',
+		'lanspeed.diagnosticsStyleBootstrap',
+		'lanspeed.diagnosticsStyleResponsive'
+	],
+	'diagnosticsStyleBase.js': [ 'baseclass' ],
+	'diagnosticsStyleAurora.js': [ 'baseclass' ],
+	'diagnosticsStyleArgon.js': [ 'baseclass' ],
+	'diagnosticsStyleBootstrap.js': [ 'baseclass' ],
+	'diagnosticsStyleResponsive.js': [ 'baseclass' ],
+	'diagnosticsView.js': [
+		'baseclass',
+		'lanspeed.rpc',
+		'lanspeed.diagnosticsShell',
+		'lanspeed.diagnosticsRefresh'
+	],
+	'rpc.js': [ 'baseclass', 'rpc' ],
 	'ifaceConfig.js': [ 'baseclass', 'lanspeed.format', 'lanspeed.rpc' ],
-	'nssPanel.js':    [ 'baseclass', 'lanspeed.vocab', 'lanspeed.format' ],
-	'theme.js':       [ 'baseclass' ],
-	'version.js':     [ 'baseclass' ],
+	'theme.js': [ 'baseclass' ],
+	'version.js': [ 'baseclass' ],
 	'statusStyle.js': [
 		'baseclass',
 		'lanspeed.statusStyleBase',
@@ -190,32 +234,25 @@ const MODULE_REQUIRES = {
 	'statusStyleArgon.js': [ 'baseclass' ],
 	'statusStyleBootstrap.js': [ 'baseclass' ],
 	'statusStyleResponsive.js': [ 'baseclass' ],
-	'statusStyleCompat.js': [ 'baseclass', 'lanspeed.statusStyleArgon' ],
-	'statusStyleCompatLive.js': [ 'baseclass', 'lanspeed.statusStyleArgon' ],
-	'statusStyleCompatLive2.js': [ 'baseclass', 'lanspeed.statusStyleArgon' ],
-	'statusStyleCompatLive3.js': [ 'baseclass', 'lanspeed.statusStyleArgon' ],
-	'statusViewLive.js': [
+	'statusView.js': [
 		'baseclass',
 		'lanspeed.clientConnections',
 		'lanspeed.clientDetailView',
-		'lanspeed.statusView'
+		'lanspeed.statusOverview'
 	],
-	'statusViewLive2.js': [
-		'baseclass',
-		'lanspeed.statusViewLive',
-		'lanspeed.statusStyleCompatLive2'
-	],
-	'statusViewLive3.js': [
-		'baseclass',
-		'lanspeed.statusViewLive',
-		'lanspeed.statusStyleCompatLive3'
-	],
-	'statusIp.js':    [ 'baseclass', 'lanspeed.format' ],
+	'statusIp.js': [ 'baseclass', 'lanspeed.format' ],
 	'statusCollector.js': [ 'baseclass' ],
+	'statusOverview.js': [
+		'baseclass',
+		'lanspeed.format',
+		'lanspeed.rpc',
+		'lanspeed.statusIp',
+		'lanspeed.statusShell',
+		'lanspeed.statusRefresh'
+	],
 	'statusShell.js': [
 		'baseclass',
 		'lanspeed.format',
-		'lanspeed.nssPanel',
 		'lanspeed.theme',
 		'lanspeed.statusStyle'
 	],
@@ -225,7 +262,6 @@ const MODULE_REQUIRES = {
 		'lanspeed.format',
 		'lanspeed.clientConnections',
 		'lanspeed.version',
-		'lanspeed.nssPanel',
 		'lanspeed.statusIp',
 		'lanspeed.statusCollector'
 	],
@@ -247,46 +283,9 @@ const MODULE_REQUIRES = {
 	'configForm.js': [ 'baseclass', 'uci', 'lanspeed.rpc', 'lanspeed.ifaceConfig' ]
 };
 
-/* Modules that MUST NOT contain `rpc.declare`. rpc.js is the only file
- * allowed to declare rpc handles. */
-const RPC_FREE_MODULES = [
-	'vocab.js',
-	'format.js',
-	'clientConnections.js',
-	'clientDetailRefresh.js',
-	'clientDetailShell.js',
-	'clientDetailView.js',
-	'clientDetailStyle.js',
-	'clientDetailStyleBase.js',
-	'clientDetailStyleAurora.js',
-	'clientDetailStyleArgon.js',
-	'clientDetailStyleBootstrap.js',
-	'clientDetailStyleResponsive.js',
-	'nssPanel.js',
-	'statusStyle.js',
-	'statusStyleBase.js',
-	'statusStyleAurora.js',
-	'statusStyleArgon.js',
-	'statusStyleBootstrap.js',
-	'statusStyleResponsive.js',
-	'statusStyleCompat.js',
-	'statusStyleCompatLive.js',
-	'statusStyleCompatLive2.js',
-	'statusStyleCompatLive3.js',
-	'statusViewLive.js',
-	'statusViewLive2.js',
-	'statusViewLive3.js',
-	'statusIp.js',
-	'statusCollector.js',
-	'statusRefresh.js',
-	'configStyle.js',
-	'configStyleBase.js',
-	'configStyleAurora.js',
-	'configStyleArgon.js',
-	'configStyleBootstrap.js',
-	'configStyleShared.js',
-	'configStyleResponsive.js'
-];
+const RPC_FREE_MODULES = EXPECTED_MODULES.filter(function(name) {
+	return name !== 'rpc.js';
+});
 
 const errors = [];
 const asyncChecks = [];
@@ -388,6 +387,27 @@ function assertStyleAggregation() {
 	if (styleHash(status.CSS) !== EXPECTED_STATUS_STYLE_SHA256)
 		fail('modular status CSS must match the reviewed stylesheet snapshot');
 
+	const diagnosticsBase = loadStyleLeaf('diagnosticsStyleBase.js');
+	const diagnosticsAurora = loadStyleLeaf('diagnosticsStyleAurora.js');
+	const diagnosticsArgon = loadStyleLeaf('diagnosticsStyleArgon.js');
+	const diagnosticsBootstrap = loadStyleLeaf('diagnosticsStyleBootstrap.js');
+	const diagnosticsResponsive = loadStyleLeaf('diagnosticsStyleResponsive.js');
+	const diagnostics = vm.compileFunction(readModuleByName('diagnosticsStyle.js'), [
+		'baseclass', 'diagnosticsStyleBase', 'diagnosticsStyleAurora',
+		'diagnosticsStyleArgon', 'diagnosticsStyleBootstrap', 'diagnosticsStyleResponsive'
+	], { filename: 'resources/lanspeed/diagnosticsStyle.js' })(
+		fakeBaseclass, diagnosticsBase, diagnosticsAurora, diagnosticsArgon,
+		diagnosticsBootstrap, diagnosticsResponsive
+	);
+	const expectedDiagnostics = [
+		diagnosticsBase.CSS, diagnosticsAurora.CSS, diagnosticsArgon.CSS,
+		diagnosticsBootstrap.CSS, diagnosticsResponsive.CSS
+	].join('\n');
+	if (diagnostics.CSS !== expectedDiagnostics)
+		fail('diagnosticsStyle.js must aggregate Base, Aurora, Argon, Bootstrap and Responsive CSS in cascade order');
+	if (styleHash(diagnostics.CSS) !== EXPECTED_DIAGNOSTICS_STYLE_SHA256)
+		fail('modular diagnostics CSS must match the reviewed stylesheet snapshot');
+
 	const configBase = loadStyleLeaf('configStyleBase.js');
 	const configAurora = loadStyleLeaf('configStyleAurora.js');
 	const configArgon = loadStyleLeaf('configStyleArgon.js');
@@ -410,6 +430,63 @@ function assertStyleAggregation() {
 		fail('configStyle.js must aggregate Base, Aurora, Argon, Bootstrap, Shared and Responsive CSS in cascade order');
 	if (styleHash(config.CSS) !== EXPECTED_CONFIG_STYLE_SHA256)
 		fail('modular config CSS must match the reviewed stylesheet snapshot');
+}
+
+function assertArgonAlignmentContracts() {
+	const statusCss = loadStyleLeaf('statusStyleArgon.js').CSS;
+	const diagnosticsCss = loadStyleLeaf('diagnosticsStyleArgon.js').CSS;
+	const detailCss = loadStyleLeaf('clientDetailStyleArgon.js').CSS;
+	const configCss = loadStyleLeaf('configStyleArgon.js').CSS;
+
+	[
+		'.lanspeed-theme-argon .lanspeed-details>summary{align-items:center}',
+		'.lanspeed-theme-argon .lanspeed-sort-button{height:auto!important',
+		'.lanspeed-theme-argon .lanspeed-toolbar label{font-size:1rem;line-height:1.5rem}',
+		'.lanspeed-theme-argon .lanspeed-hint:empty{display:none}'
+	].forEach(function(rule) {
+		if (!statusCss.includes(rule))
+			fail(`statusStyleArgon.js must retain reviewed Argon alignment rule: ${rule}`);
+	});
+	const overviewMetricRules = statusCss.match(
+		/\.lanspeed-theme-argon\s+\.lanspeed-metrics?\b[^{}]*\{[^{}]*\}/g
+	) || [];
+	if (overviewMetricRules.some(function(rule) {
+		return /\balign-(?:items|self)\s*:\s*start\b/.test(rule);
+	})) {
+		fail('statusStyleArgon.js must preserve the original overview metric alignment');
+	}
+
+	[
+		'.lanspeed-diagnostics-root.lanspeed-theme-argon .lanspeed-diagnostics-header>h3{font-size:1.35rem;line-height:1.25!important}',
+		'.lanspeed-diagnostics-root.lanspeed-theme-argon .lanspeed-diagnostics-intro{font-size:1rem;padding:0}',
+		'.lanspeed-diagnostics-root.lanspeed-theme-argon .lanspeed-diagnostic-description,',
+		'.lanspeed-diagnostics-root.lanspeed-theme-argon .lanspeed-diagnostic-alerts-title{padding:0!important'
+	].forEach(function(rule) {
+		if (!diagnosticsCss.includes(rule))
+			fail(`diagnosticsStyleArgon.js must retain reviewed Argon alignment rule: ${rule}`);
+	});
+
+	[
+		'.lanspeed-theme-argon .lanspeed-connection-client-name,',
+		'.lanspeed-theme-argon .lanspeed-connection-summary-title{padding:0!important',
+		'.lanspeed-theme-argon .lanspeed-connection-summary{align-content:start;align-self:start',
+		'.lanspeed-theme-argon .lanspeed-connection-protocol-label{font-size:1rem;line-height:1.5rem}',
+		'.lanspeed-theme-argon .lanspeed-connection-protocols .cbi-button{width:100%!important}'
+	].forEach(function(rule) {
+		if (!detailCss.includes(rule))
+			fail(`clientDetailStyleArgon.js must retain reviewed Argon alignment rule: ${rule}`);
+	});
+
+	[
+		'.lanspeed-theme-argon .lanspeed-header{padding:.95rem 1.25rem .8rem;align-items:center}',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-range-remove{',
+		'height:2.5rem;min-height:2.5rem;padding-top:0;padding-bottom:0',
+		'display:inline-flex;align-items:center;justify-content:center',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-hint:empty{display:none}'
+	].forEach(function(rule) {
+		if (!configCss.includes(rule))
+			fail(`configStyleArgon.js must retain reviewed Argon alignment rule: ${rule}`);
+	});
 }
 
 function assertConnectionStyleOwnership() {
@@ -448,6 +525,61 @@ function moduleRequireNames(src) {
 	while ((match = re.exec(src)) !== null)
 		names.push(match[1]);
 	return names;
+}
+
+function jsFilesUnder(dir) {
+	if (!fs.existsSync(dir)) return [];
+	return fs.readdirSync(dir, { withFileTypes: true }).reduce(function(files, entry) {
+		const entryPath = path.join(dir, entry.name);
+		if (entry.isDirectory())
+			return files.concat(jsFilesUnder(entryPath));
+		if (entry.isFile() && entry.name.endsWith('.js'))
+			files.push(entryPath);
+		return files;
+	}, []);
+}
+
+function assertSemanticResourceNames() {
+	jsFilesUnder(resDir).forEach(function(file) {
+		const relative = path.relative(resDir, file).split(path.sep).join('/');
+		const src = readModule(file);
+		if (VERSIONED_RESOURCE_TOKEN.test(relative))
+			fail(`resource filename must use a semantic name without a cache suffix: ${relative}`);
+		if (VERSIONED_RESOURCE_TOKEN.test(src))
+			fail(`resource source must not reference a LiveN or _liveN cache suffix: ${relative}`);
+		moduleRequireNames(src).forEach(function(requireName) {
+			if (VERSIONED_RESOURCE_TOKEN.test(requireName))
+				fail(`${relative} must require the semantic module name, not ${requireName}`);
+		});
+	});
+
+	if (VERSIONED_RESOURCE_TOKEN.test(luciMakefile))
+		fail('applications/luci-app-lanspeed/Makefile must not package LiveN or _liveN resources');
+
+	Object.keys(MODULE_REQUIRES).forEach(function(name) {
+		if (VERSIONED_RESOURCE_TOKEN.test(name))
+			fail(`module contract must use a semantic filename: ${name}`);
+		MODULE_REQUIRES[name].forEach(function(requireName) {
+			if (VERSIONED_RESOURCE_TOKEN.test(requireName))
+				fail(`module contract must use a semantic dependency: ${requireName}`);
+		});
+	});
+}
+
+function assertViewEntries() {
+	if (!fs.existsSync(viewDir)) return;
+	const expected = EXPECTED_VIEW_ENTRIES.slice().sort();
+	const actual = fs.readdirSync(viewDir).sort();
+	if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+		fail(`view/lanspeed must contain only ${expected.join(', ')} (found: ${actual.join(', ') || 'none'})`);
+	}
+
+	const packaged = Array.from(luciMakefile.matchAll(
+		/\.\/htdocs\/luci-static\/resources\/view\/lanspeed\/([^\s\\]+\.js)\b/g
+	), function(match) { return match[1]; }).sort();
+	if (JSON.stringify(packaged) !== JSON.stringify(expected)) {
+		fail(`Makefile must package each semantic view entry exactly once: ${expected.join(', ')}`);
+	}
 }
 
 function cssSelectorList(css) {
@@ -545,8 +677,15 @@ function assertClientDetailStyleLeaf(name, src) {
 		if (!css.includes('font-size:1rem') || !css.includes('padding:.65rem .75rem'))
 			fail(`${name} must retain the Argon status typography and table density`);
 		if (!css.includes('@media (max-width:480px){') ||
-		    !css.includes('.lanspeed-theme-argon .lanspeed-connection-refresh{width:100%!important}')) {
-			fail(`${name} must override Argon's width:auto!important so the phone refresh action fills its toolbar`);
+		    !css.includes('.lanspeed-theme-argon .lanspeed-connection-refresh,') ||
+		    !css.includes('.lanspeed-theme-argon .lanspeed-connection-protocols .cbi-button{width:100%!important}')) {
+			fail(`${name} must override Argon's width:auto!important so phone refresh and protocol actions fill their toolbar cells`);
+		}
+		if (!css.includes('.lanspeed-theme-argon .lanspeed-connection-client-name,') ||
+		    !css.includes('.lanspeed-theme-argon .lanspeed-connection-summary-title{padding:0!important;') ||
+		    !css.includes('line-height:1.25!important') ||
+		    !css.includes('line-height:1.35!important')) {
+			fail(`${name} must neutralize Argon h4 padding and line-height on client and summary titles`);
 		}
 	}
 	if (name === 'clientDetailStyleBootstrap.js') {
@@ -588,11 +727,13 @@ function assertClientDetailStyleLeaf(name, src) {
 		const hiddenRows = narrowCss.indexOf(
 			'.lanspeed-connections-card .lanspeed-table tbody>tr[hidden]{display:none!important}'
 		);
-		if (JSON.stringify(media) !== JSON.stringify([ 'max-width:700px', 'max-width:480px' ]) ||
+		if (JSON.stringify(media) !== JSON.stringify([
+			'max-width:1100px', 'max-width:700px', 'max-width:480px'
+		]) ||
 		    !css.includes('content:attr(data-label)') ||
 		    !css.includes('overflow-wrap:anywhere') ||
 		    !css.includes('.lanspeed-connection-refresh{width:100%')) {
-			fail(`${name} must provide only the 700px card-table and 480px full-width toolbar breakpoints`);
+			fail(`${name} must provide the 1100px identity, 700px card-table and 480px toolbar breakpoints`);
 		}
 		if (forcedRows < 0 || hiddenRows <= forcedRows) {
 			fail(`${name} must restore display:none!important for hidden group/detail rows after the forced mobile row display`);
@@ -709,7 +850,7 @@ function loadStatusViewRouter(src, fakeWindow, clientDetailView, statusView) {
 	const fakeBaseclass = { extend: function(value) { return value; } };
 	return vm.compileFunction(src, [
 		'baseclass', 'clientConnections', 'clientDetailView', 'statusView', 'window'
-	], { filename: 'resources/lanspeed/statusViewLive.js' })(
+	], { filename: 'resources/lanspeed/statusView.js' })(
 		fakeBaseclass,
 		loadClientConnectionsModule(readModuleByName('clientConnections.js')),
 		clientDetailView,
@@ -755,7 +896,7 @@ function assertStatusViewRouterBehavior(src) {
 		    calls.status !== 1 || calls.clients !== 1 || calls.interfaces !== 1 || calls.uci !== 1 ||
 		    calls.detailLoad.length !== 0 || overviewRoot.kind !== 'overview-root' ||
 		    calls.overviewRender !== 1 || calls.detailRender !== 0) {
-			fail('statusViewLive.js overview route must preserve the existing four-call load and render from its load-time marker');
+			fail('statusView.js overview route must preserve the status, clients, interfaces, and UCI load and render from its load-time marker');
 		}
 
 		fakeWindow.location.search = '?client=30%3Ac5%3A0a%40eth1';
@@ -766,15 +907,15 @@ function assertStatusViewRouterBehavior(src) {
 		    JSON.stringify(calls.detailLoad) !== JSON.stringify([ '30:c5:0a@eth1' ]) ||
 		    calls.status !== 1 || calls.clients !== 1 || calls.interfaces !== 1 || calls.uci !== 1 ||
 		    detailRoot.kind !== 'detail-root' || calls.detailRender !== 1 || calls.overviewRender !== 1) {
-			fail('statusViewLive.js detail route must decode identity, avoid overview RPC work, and render from its load-time marker');
+			fail('statusView.js detail route must decode identity, avoid overview RPC work, and render from its load-time marker');
 		}
 
 		fakeWindow.location.search = '?client=';
 		const empty = await router.load();
 		if (!empty || empty.route !== 'overview')
-			fail('statusViewLive.js must treat a missing or empty client identity as the overview route');
+			fail('statusView.js must treat a missing or empty client identity as the overview route');
 	}).catch(function(err) {
-		fail('statusViewLive.js router behavior could not execute: ' + (err && err.message || err));
+		fail('statusView.js router behavior could not execute: ' + (err && err.message || err));
 	}));
 }
 
@@ -1020,13 +1161,6 @@ function loadVocabModule(src) {
 	})(fakeBaseclass, function(value) { return value; });
 }
 
-function loadNssPanelModule(src) {
-	const fakeBaseclass = { extend: function(value) { return value; } };
-	return vm.compileFunction(src, [ 'baseclass', 'vocab', 'fmt', 'E', '_' ], {
-		filename: 'resources/lanspeed/nssPanel.js'
-	})(fakeBaseclass, {}, {}, fakeElement, function(value) { return value; });
-}
-
 function fakeTranslate(value) {
 	return {
 		format: function() {
@@ -1042,13 +1176,14 @@ function fakeTranslate(value) {
 
 function loadStatusRefreshModule(src, fakeWindow) {
 	const fakeBaseclass = { extend: function(value) { return value; } };
+	const vocab = loadVocabModule(readModuleByName('vocab.js'));
 	return vm.compileFunction(src,
 		[ 'baseclass', 'vocab', 'fmt', 'clientConnections', 'lsVersion',
-		  'nssPanel', 'statusIp', 'statusCollector', 'E', '_', 'window' ],
+		  'statusIp', 'statusCollector', 'E', '_', 'window' ],
 		{ filename: 'resources/lanspeed/statusRefresh.js' })(
-			fakeBaseclass, {}, {},
+			fakeBaseclass, vocab, {},
 			loadClientConnectionsModule(readModuleByName('clientConnections.js')),
-			{ FULL_VERSION: 'test' }, {}, {}, {}, fakeElement, fakeTranslate,
+			{ FULL_VERSION: 'test' }, {}, {}, fakeElement, fakeTranslate,
 			fakeWindow || { location: { pathname: '/admin/status/lanspeed/overview' } }
 		);
 }
@@ -1558,7 +1693,7 @@ function assertClientDetailIntegratedState(viewSrc) {
 			});
 			const interval = Array.from(invalidPrefs.timers.values())[0].interval;
 			if (invalidPrefs.state().prefs.refreshMs !== 3000 || interval !== 3000 ||
-			    !fakeElementText(invalidPrefs.built().refs.footer).includes('自动刷新：3000 ms') ||
+			    !fakeElementText(invalidPrefs.built().refs.footer).includes('每 3 秒自动刷新') ||
 			    invalidPrefs.state().updatedAt !== now) {
 				fail('clientDetailView.js must normalize invalid refreshMs to 3000ms once, schedule despite paused=true, and stamp direct initial responses');
 			}
@@ -1644,11 +1779,25 @@ function assertClientDetailRefreshBehavior(src) {
 	refresh.render(state);
 
 	const meta = fakeElementText(refs.clientMeta);
+	const metaIps = findFakeElementsByClass(
+		refs.clientMeta, 'lanspeed-connection-meta-ip'
+	).map(fakeElementText);
+	const metaFacts = findFakeElementsByClass(
+		refs.clientMeta, 'lanspeed-connection-meta-fact'
+	).map(fakeElementText);
+	const metaCounts = findFakeElementsByClass(
+		refs.clientMeta, 'lanspeed-connection-meta-count'
+	).map(fakeElementText);
 	const footer = fakeElementText(refs.footer);
 	const rows = refs.tbody.children;
 	if (fakeElementText(refs.clientName) !== 'fixture-client' ||
 	    !meta.includes('192.0.2.10') || !meta.includes('02:00:00:00:00:01') ||
-	    !meta.includes('br-lan') || !meta.includes('lan') ||
+	    !meta.includes('br-lan') || meta.includes('区域') ||
+	    JSON.stringify(metaIps) !== JSON.stringify([ '192.0.2.10', '2001:db8:1::10' ]) ||
+	    JSON.stringify(metaFacts) !== JSON.stringify([
+		    'MAC 地址02:00:00:00:00:01', '接口br-lan'
+	    ]) ||
+	    JSON.stringify(metaCounts) !== JSON.stringify([ '2' ]) ||
 	    !fakeElementText(refs.connectionState).includes('有当前连接') ||
 	    refs.summaryTargets.textContent !== '2' || refs.summaryConnections.textContent !== '2' ||
 	    refs.summaryUpdated.textContent !== '03:04:05' ||
@@ -1656,11 +1805,26 @@ function assertClientDetailRefreshBehavior(src) {
 	    refs.table.hidden || !refs.empty.hidden || !refs.error.hidden) {
 		fail('clientDetailRefresh.js must render hostname-first identity/meta, unfiltered target count, real totals, browser receive wall clock, and two rows per destination group');
 	}
-	if (!footer.includes('数据源') || !footer.includes('Conntrack Netlink') ||
-	    !footer.includes('返回 2') || !footer.includes('总计 2') || !footer.includes('上限 512') ||
-	    !footer.includes('自动刷新') || !footer.includes('1000')) {
+	if (!footer.includes('连接数据') || !footer.includes('Conntrack Netlink') ||
+	    !footer.includes('显示 2 / 共 2 条') ||
+	    !footer.includes('每 1 秒自动刷新')) {
 		fail('clientDetailRefresh.js footer must report source, returned/total/limit with accurate meanings, and the clamped refresh cycle in Chinese');
 	}
+	const unorderedIpsResponse = JSON.parse(JSON.stringify(fixture));
+	unorderedIpsResponse.client.ips = [
+		'192.0.2.10', '2001:db8:1::10', 'fe80::1'
+	];
+	state.response = unorderedIpsResponse;
+	refresh.render(state);
+	if (JSON.stringify(findFakeElementsByClass(
+		refs.clientMeta, 'lanspeed-connection-meta-ip'
+	).map(fakeElementText)) !== JSON.stringify([
+		'192.0.2.10', 'fe80::1', '2001:db8:1::10'
+	])) {
+		fail('clientDetailRefresh.js must place link-local IPv6 before public IPv6 while preserving IPv4 first');
+	}
+	state.response = fixture;
+	refresh.render(state);
 	const allCells = findFakeElementsByTag(refs.tbody, 'td');
 	if (allCells.length !== 12 || allCells.some(function(cell) {
 		return !Object.prototype.hasOwnProperty.call(cell.attrs, 'data-label');
@@ -1791,7 +1955,7 @@ function assertClientDetailRefreshBehavior(src) {
 	    refs.summaryConnections.textContent !== '—' ||
 	    fakeElementText(refs.empty) !== '连接快照不完整，无法确认当前连接数量，请稍后重试。' ||
 	    !incompleteFooter.includes('告警：连接快照不完整') ||
-	    incompleteFooter.includes('返回 0') || incompleteFooter.includes('总计 0')) {
+	    incompleteFooter.includes('显示 0') || incompleteFooter.includes('共 0')) {
 		fail('clientDetailRefresh.js incomplete snapshots must render unknown counts, dedicated Chinese guidance, and no definitive zero-count footer');
 	}
 
@@ -1809,7 +1973,7 @@ function assertClientDetailRefreshBehavior(src) {
 	});
 	refresh.render(state);
 	if (!fakeElementText(refs.empty).includes('当前客户端没有连接') ||
-	    !fakeElementText(refs.connectionState).includes('无当前连接')) {
+	    !fakeElementText(refs.connectionState).includes('暂无连接')) {
 		fail('clientDetailRefresh.js must render zero connections distinctly without claiming the client is offline');
 	}
 
@@ -1837,8 +2001,8 @@ function assertClientDetailRefreshBehavior(src) {
 	refresh.render(state);
 	const truncatedFooter = fakeElementText(refs.footer);
 	if (refs.summaryTargets.textContent !== '至少 2' ||
-	    !truncatedFooter.includes('已截断') || !truncatedFooter.includes('返回 2') ||
-	    !truncatedFooter.includes('总计 5') || !truncatedFooter.includes('上限 2') ||
+	    !truncatedFooter.includes('显示 2 / 共 5 条') ||
+	    !truncatedFooter.includes('连接较多，仅显示前 2 条') ||
 	    !truncatedFooter.includes('backend <warning>') || !refs.refresh.disabled) {
 		fail('clientDetailRefresh.js must mark truncated target counts as a lower bound, render accurate footer text, and disable manual refresh while loading');
 	}
@@ -1954,9 +2118,9 @@ function assertClientDetailShellInteraction(src) {
 	[
 		'返回客户端列表', 'LAN Speed 状态 / 客户端连接详情', '无法加载连接详情',
 		'客户端身份', '正在加载客户端身份…', 'MAC 与 IP 信息将在加载后显示',
-		'连接状态：等待加载', '连接摘要', '目标 IP 数', '连接数', '更新时间',
+		'等待数据', '连接摘要', '目标 IP 数', '连接数', '更新时间',
 		'当前连接', '全部', 'TCP', 'UDP', '立即刷新', '目标 IP', '目标端口',
-		'协议', '状态', '暂无连接', '连接数据将在加载后显示。'
+		'协议', '状态', '暂无连接', '连接数据加载后会显示来源和刷新间隔。'
 	].forEach(function(text) {
 		if (!copy.includes(text)) fail(`clientDetailShell.js must render Chinese copy: ${text}`);
 	});
@@ -1979,6 +2143,7 @@ function assertClientDetailShellInteraction(src) {
 	if (refs.table.attrs['aria-label'] !== '客户端连接列表' ||
 	    refs.filter.attrs['aria-label'] !== '搜索连接' ||
 	    refs.filter.attrs.placeholder !== '搜索目标 IP 或端口' ||
+	    refs.clientMeta.attrs['aria-label'] !== '客户端网络身份' ||
 	    refs.error.attrs.role !== 'alert' || refs.error.attrs['aria-live'] !== 'assertive' ||
 	    refs.empty.attrs.role !== 'status' || refs.empty.attrs['aria-live'] !== 'polite' ||
 	    refs.footer.attrs['aria-live'] !== 'polite') {
@@ -2253,24 +2418,6 @@ function assertStatusRefreshSortingInteraction(src) {
 		fail('statusRefresh.js must expose its sort-header refresh behavior for validation');
 		return;
 	}
-	if (typeof mod.nssEvidenceState !== 'function') {
-		fail('statusRefresh.js must expose Rust-first NSS evidence normalization for validation');
-	} else {
-		const rustWins = mod.nssEvidenceState({
-			ecm_active: false,
-			ecm_offload_active: true,
-			ppe_active: false,
-			ppe_offload_active: true
-		});
-		const legacyFallback = mod.nssEvidenceState({
-			ecm_offload_active: true,
-			ppe_offload_active: true
-		});
-		if (rustWins.ecmActive || rustWins.ppeActive ||
-		    !legacyFallback.ecmActive || !legacyFallback.ppeActive) {
-			fail('statusRefresh.js must let explicit Rust false values override stale old C NSS aliases');
-		}
-	}
 	if (typeof mod.splitClientWarnings !== 'function') {
 		fail('statusRefresh.js must expose client warning classification for validation');
 	} else {
@@ -2279,14 +2426,32 @@ function assertStatusRefreshSortingInteraction(src) {
 		], {});
 		const warningState = mod.splitClientWarnings([
 			'conntrack_connection_only',
+			'map_read_failed',
 			'counter_anomaly',
 			'global_warning'
 		], { global_warning: true });
 		if (JSON.stringify(Array.from(connectionOnlyState.info)) !== JSON.stringify([ 'conntrack_connection_only' ]) ||
 		    connectionOnlyState.warnings.length !== 0 ||
 		    JSON.stringify(Array.from(warningState.info)) !== JSON.stringify([ 'conntrack_connection_only' ]) ||
-		    JSON.stringify(Array.from(warningState.warnings)) !== JSON.stringify([ 'counter_anomaly' ])) {
-			fail('statusRefresh.js must render connection-only rows as information without hiding real client warnings');
+		    JSON.stringify(Array.from(warningState.warnings)) !== JSON.stringify([ 'map_read_failed' ])) {
+			fail('statusRefresh.js must render connection-only rows as information and keep only actionable client warnings');
+		}
+	}
+	if (typeof mod.setClientStatusVisibility !== 'function' ||
+	    typeof mod.clientStateCell !== 'function') {
+		fail('statusRefresh.js must expose configured client-status column visibility behavior');
+	} else {
+		const visibilityRefs = { statusHeader: fakeElement('th', {}) };
+		mod.setClientStatusVisibility(visibilityRefs, false);
+		const headerHiddenByDefault = visibilityRefs.statusHeader.hidden;
+		const hiddenCell = mod.clientStateCell([ fakeElement('span', {}, 'BPF') ], false);
+		mod.setClientStatusVisibility(visibilityRefs, true);
+		const visibleCell = mod.clientStateCell([ fakeElement('span', {}, 'BPF') ], true);
+		if (!headerHiddenByDefault || visibilityRefs.statusHeader.hidden ||
+		    !hiddenCell.hidden || visibleCell.hidden ||
+		    hiddenCell.attrs.class !== 'lanspeed-client-state-cell' ||
+		    fakeElementText(visibleCell) !== 'BPF') {
+			fail('statusRefresh.js must hide both status header and cells when disabled and restore them when enabled');
 		}
 	}
 
@@ -2499,6 +2664,7 @@ function daemonRefsForSave() {
 		connCollectorMode: { value: 'auto' },
 		activeWindow: { value: '10000' },
 		activeMin: { value: '1' },
+		showClientStatus: { checked: false },
 		showIpv6: { checked: true },
 		hidePrivateIpv6: { checked: false },
 		hideIpv6RangesItems: [ 'fc00::/7', 'fe80::/10' ],
@@ -2561,6 +2727,7 @@ function assertConfigCompatibility(src) {
 	}, noRpc, ifaceCfg);
 	asyncChecks.push(loadMod.loadValues().then(function(values) {
 		if (!values ||
+		    values.show_client_status !== '0' ||
 		    sortedJson(values.interfaceConfig && values.interfaceConfig.ifname) !== sortedJson(originalLists.ifname) ||
 		    sortedJson(values.interfaceConfig && values.interfaceConfig.interface_include) !== sortedJson(originalLists.interface_include) ||
 		    sortedJson(values.interfaceConfig && values.interfaceConfig.observe) !== sortedJson(originalLists.observe)) {
@@ -2574,8 +2741,13 @@ function assertConfigCompatibility(src) {
 function makeSaveHarness(configSrc, ifaceSrc, overrides) {
 	overrides = overrides || {};
 	const calls = [];
+	let savedDaemonValues = null;
 	const rpc = {
-		uciSet: overrides.uciSet || function() { calls.push('set'); return Promise.resolve(); },
+		uciSet: overrides.uciSet || function(config, section, values) {
+			calls.push('set');
+			savedDaemonValues = values;
+			return Promise.resolve();
+		},
 		uciDelete: overrides.uciDelete || function() { calls.push('delete'); return Promise.resolve(); },
 		uciCommit: overrides.uciCommit || function() { calls.push('commit'); return Promise.resolve(); },
 		uciRevert: overrides.uciRevert || function() { calls.push('revert'); return Promise.resolve(); },
@@ -2597,7 +2769,12 @@ function makeSaveHarness(configSrc, ifaceSrc, overrides) {
 		ifaceOriginal: { ifname: [], interface_include: [], observe: [] },
 		ifcfgButtons: [ { disabled: false }, { disabled: false } ]
 	};
-	return { calls: calls, form: configForm, state: viewState };
+	return {
+		calls: calls,
+		form: configForm,
+		state: viewState,
+		savedDaemonValues: function() { return savedDaemonValues; }
+	};
 }
 
 function assertConfigSaveBehavior(configSrc, ifaceSrc) {
@@ -2612,7 +2789,8 @@ function assertConfigSaveBehavior(configSrc, ifaceSrc) {
 		    probe.calls.filter(function(v) { return v === 'commit'; }).length !== 1 ||
 		    probe.calls.filter(function(v) { return v === 'reload'; }).length !== 1 ||
 		    probe.calls.indexOf('unload:lanspeed') === -1 ||
-		    probe.calls.indexOf('load:lanspeed') === -1) {
+		    probe.calls.indexOf('load:lanspeed') === -1 ||
+		    !probe.savedDaemonValues() || probe.savedDaemonValues().show_client_status !== '0') {
 			fail('configForm.js must save daemon settings when sysdevices is unavailable, commit/reload once, and refresh the LuCI UCI cache');
 		}
 	}).catch(function(err) {
@@ -2627,7 +2805,7 @@ function assertConfigSaveBehavior(configSrc, ifaceSrc) {
 	});
 	asyncChecks.push(reloadFailure.form.saveAll(reloadFailure.state).then(function(result) {
 		if (result !== false ||
-		    !reloadFailure.state.saveRefs.status.textContent.includes('配置已保存，但 daemon 重载失败') ||
+		    !reloadFailure.state.saveRefs.status.textContent.includes('配置已保存，但后端服务重载失败') ||
 		    reloadFailure.calls.indexOf('commit') === -1 ||
 		    reloadFailure.calls.indexOf('unload:lanspeed') === -1) {
 			fail('configForm.js must distinguish a committed configuration from a later daemon reload failure');
@@ -2666,7 +2844,7 @@ function assertConfigSaveBehavior(configSrc, ifaceSrc) {
 		const refs = busy.state.daemonRefs;
 		const daemonControls = [
 			refs.rateCollectorMode, refs.connCollectorMode, refs.activeWindow,
-			refs.activeMin, refs.showIpv6, refs.hidePrivateIpv6,
+			refs.activeMin, refs.showClientStatus, refs.showIpv6, refs.hidePrivateIpv6,
 			refs.hideIpv6RangeInput, refs.addRangeBtn, refs.resetBtn
 		].concat(refs.rangeRemoveButtons);
 		if (!daemonControls.every(function(control) { return control.disabled; }) ||
@@ -2703,29 +2881,52 @@ function assertWarningAliases(src) {
 		fail('vocab.js must expose warning ID normalization for old daemon compatibility');
 		return;
 	}
-	if (vocab.normalizeWarningId('nss_daed_prefers_bpf') !== 'dae_runtime_prefers_bpf' ||
-	    vocab.normalizeWarningId('nss_daed_nss_fallback_may_be_inaccurate') !==
+	if (vocab.normalizeWarningId('nss_daed_nss_fallback_may_be_inaccurate') !==
 		'nss_dae_bpf_fallback_may_be_inaccurate' ||
-	    vocab.normalizeWarningId('dae_runtime_prefers_bpf') !== 'dae_runtime_prefers_bpf' ||
-	    vocab.warningText('nss_daed_prefers_bpf') !== vocab.warningText('dae_runtime_prefers_bpf')) {
-		fail('vocab.js must accept legacy dae warning IDs while normalizing rendered keys to the new Rust IDs');
+	    vocab.normalizeWarningId('nss_dae_bpf_fallback_may_be_inaccurate') !==
+		'nss_dae_bpf_fallback_may_be_inaccurate') {
+		fail('vocab.js must keep the actionable legacy dae warning alias');
+	}
+	if (src.includes('nss_daed_prefers_bpf') || src.includes('dae_runtime_prefers_bpf')) {
+		fail('vocab.js must not retain obsolete non-actionable dae warning copy');
 	}
 	if (vocab.warningText('dae_process_probe_failed') === 'dae process probe failed' ||
 	    vocab.warningClass('dae_process_probe_failed') !== 'label label-danger') {
 		fail('vocab.js must render the Rust /proc dae scan failure as a critical localized warning');
 	}
-	if (!vocab.warningText('bpf_optional_package_missing').includes('必选 BPF 软件包') ||
+	if (!vocab.warningText('bpf_optional_package_missing').includes('必需的 BPF 软件包') ||
 	    vocab.warningText('bpf_optional_package_missing').includes('可选 BPF 软件包')) {
 		fail('vocab.js must keep the legacy BPF warning ID but describe the package as mandatory');
 	}
-	if (!vocab.warningText('nss_prefers_conntrack_sync').includes('当前 NSS 模式选择或回退到了 NSS sync')) {
-		fail('vocab.js must describe NSS sync overriding BPF as an explicit mode choice');
-	}
 	const connectionOnlyText = vocab.warningText('conntrack_connection_only');
-	if (!connectionOnlyText.includes('用于补全当前连接数') ||
-	    !connectionOnlyText.includes('不代表异常') ||
+	if (!connectionOnlyText.includes('只有连接记录') ||
+	    !connectionOnlyText.includes('不是异常') ||
 	    connectionOnlyText.includes('仅连接')) {
 		fail('vocab.js must explain connection-only rows without rendering a separate connection-only label');
+	}
+	if (typeof vocab.importantWarnings !== 'function' ||
+	    typeof vocab.isImportantWarning !== 'function') {
+		fail('vocab.js must expose important-warning filtering for the simplified diagnostics view');
+		return;
+	}
+	const healthyStatus = {
+		mode: 'Full',
+		capabilities: { live_metrics: true, bpf_runtime_metrics: true },
+		evidence: { effective_collector: 'bpf' }
+	};
+	const filtered = vocab.importantWarnings([
+		'existing_tc_filters_detected',
+		'software_flow_offload_enabled',
+		'fullcone_detected',
+		'openclash_detected',
+		'probe_error',
+		'map_read_failed',
+		'map_read_failed'
+	], healthyStatus);
+	if (JSON.stringify(Array.from(filtered)) !== JSON.stringify([ 'map_read_failed' ]) ||
+	    vocab.isImportantWarning('software_flow_offload_enabled') ||
+	    !vocab.isImportantWarning('bpf_runtime_loader_unavailable')) {
+		fail('vocab.js must hide environment notices, suppress healthy probe noise, and retain actionable failures');
 	}
 }
 
@@ -2752,17 +2953,17 @@ function assertStatusShellInteraction(src) {
 	};
 	const fakeBaseclass = { extend: function(value) { return value; } };
 	const shell = vm.compileFunction(src,
-		[ 'baseclass', 'fmt', 'nssPanel', 'lsTheme', 'statusStyle', 'E', '_' ],
+		[ 'baseclass', 'fmt', 'lsTheme', 'statusStyle', 'E', '_' ],
 		{ filename: 'resources/lanspeed/statusShell.js' })(
 			fakeBaseclass,
 			fmt,
-			{ build: function() { return E('div', { class: 'nss-test' }); } },
 			{ applyRoot: function() {} },
 			{ CSS: '' },
 			E,
 			function(value) { return value; }
 		);
 	const viewState = {
+		showClientStatus: false,
 		prefs: { refreshMs: 3000, unit: 'bit', activeOnly: false, sortKey: 'rx', sortDir: 'desc', sortCustom: false, paused: false },
 		filter: '',
 		reload: function() {},
@@ -2781,6 +2982,17 @@ function assertStatusShellInteraction(src) {
 	    right.children[2] !== refs.btnPause || refs.sortSel) {
 		fail('statusShell.js toolbar DOM must keep unit/filter left and refresh actions right without a sort select');
 	}
+	if (!refs.statusHeader || !refs.statusHeader.hidden || refs.showClientStatus) {
+		fail('statusShell.js must hide the client status header by default without rendering a realtime-page toggle');
+	}
+	const visibleState = Object.assign({}, viewState, {
+		showClientStatus: true,
+		prefs: Object.assign({}, viewState.prefs)
+	});
+	const visibleBuilt = shell.buildShell(visibleState);
+	if (!visibleBuilt.refs.statusHeader || visibleBuilt.refs.statusHeader.hidden) {
+		fail('statusShell.js must show the client status header when configuration enables it');
+	}
 	if (!refs.sortHeaders || !refs.sortHeaders.rx || !refs.sortHeaders.hostname ||
 	    !refs.sortHeaders.rx.button || !refs.sortHeaders.rx.button.listeners.click ||
 	    !refs.sortHeaders.hostname.button || !refs.sortHeaders.hostname.button.listeners.click) {
@@ -2788,9 +3000,9 @@ function assertStatusShellInteraction(src) {
 		return;
 	}
 	if (!refs.sortHeaders.tcp_conns ||
-	    refs.sortHeaders.tcp_conns.description !== 'TCP 仅统计 ESTABLISHED + ASSURED' ||
+	    refs.sortHeaders.tcp_conns.description !== '当前已建立并确认的 TCP 连接' ||
 	    !refs.sortHeaders.udp_conns ||
-	    refs.sortHeaders.udp_conns.description !== 'UDP 仅统计 ASSURED conntrack 条目') {
+	    refs.sortHeaders.udp_conns.description !== '当前已确认的 UDP 连接') {
 		fail('statusShell.js sortable TCP/UDP headers must retain their connection-statistics semantics');
 	}
 	refs.sortHeaders.rx.button.listeners.click();
@@ -2811,61 +3023,17 @@ function assertStatusShellInteraction(src) {
 	}
 }
 
-function assertNssPanelSource(src) {
-	if (!src.includes('function hasNssSignal(status)')) {
-		fail('lanspeed/nssPanel.js must keep the NSS panel signal helper');
-	}
-	if (!src.includes('function nssDirectFallbackText(reason)') ||
-	    !src.includes('collector_mode_bpf') ||
-	    !src.includes('当前使用 BPF') ||
-	    !src.includes('collector_mode_nss_conntrack_sync') ||
-	    !src.includes('当前使用 NSS sync')) {
-		fail('lanspeed/nssPanel.js must render NSS-direct collector-mode fallback reasons as user-facing text');
-	}
-	if (!src.includes('NSS 状态') ||
-	    !src.includes('引擎与加速') ||
-	    !src.includes('NSS 相关告警')) {
-		fail('lanspeed/nssPanel.js must render NSS panel sections');
-	}
-	if (src.includes('nssInitialized') ||
-	    src.includes("setAttribute('open'") ||
-	    src.includes("'open': 'open'")) {
-		fail('lanspeed/nssPanel.js must leave NSS status collapsed by default');
-	}
-	if (!src.includes('ev.ecm_active') || !src.includes('ev.ecm_offload_active') ||
-	    !src.includes('ev.ppe_active') || !src.includes('ev.ppe_offload_active') ||
-	    !src.includes('ev.direct_state_readable') || !src.includes('ev.direct_supported')) {
-		fail('lanspeed/nssPanel.js must prefer new Rust NSS evidence fields and retain old C aliases');
-	}
-	if (!src.includes('vocab.normalizeWarningId(w)')) {
-		fail('lanspeed/nssPanel.js must render legacy dae warning aliases with their new Rust IDs');
-	}
-	const panel = loadNssPanelModule(src);
-	if (panel.hasNssSignal({ evidence: { nss: {
-		present: false,
-		ecm_active: false,
-		ppe_active: false,
-		direct_state_readable: false,
-		bridge_mgr: false,
-		ifb_active: false,
-		nsm_active: false,
-		dp_active: false,
-		mcs_active: false
-	} } })) {
-		fail('lanspeed/nssPanel.js must hide false-only Rust NSS evidence on non-NSS devices');
-	}
-	if (!panel.hasNssSignal({ evidence: { nss: { present: true } } }) ||
-	    !panel.hasNssSignal({ evidence: { nss: { ecm_offload_active: true } } }) ||
-	    !panel.hasNssSignal({ capabilities: { nss_dp: true } })) {
-		fail('lanspeed/nssPanel.js must still show real Rust, legacy C, or capability NSS signals');
-	}
-}
-
 function assertRpcModule(src) {
 	if (!src.includes("method: 'revert'") ||
 	    !src.includes('uciRevert:') ||
 	    !src.includes('callUciRevert')) {
 		fail('lanspeed/rpc.js must expose uci.revert so failed raw writes can clear server-side staged deltas');
+	}
+	if (!src.includes("method: 'interfaces'") || !src.includes('interfaces: callInterfaces')) {
+		fail('lanspeed/rpc.js must expose interface throughput data');
+	}
+	if (!src.includes("method: 'health'") || !src.includes('health:')) {
+		fail('lanspeed/rpc.js must expose the dedicated runtime health method');
 	}
 }
 
@@ -2879,23 +3047,25 @@ function assertViewRequires(src) {
 	EXPECTED_VIEW_REQUIRES.forEach(function(req) {
 		const re = new RegExp("^\\s*['\"]require\\s+" + req.replace(/\./g, '\\.') + "\\s+as\\s+\\w+['\"]\\s*;", 'm');
 		if (!re.test(src)) {
-			fail(`lanspeed/statusView.js must declare 'require ${req} as <alias>'`);
+			fail(`lanspeed/statusOverview.js must declare 'require ${req} as <alias>'`);
 		}
 	});
 }
 
-function assertStatusViewWrapper(src, label) {
+function assertCacheAwareViewEntry(src, moduleName, label) {
 	if (!/^\s*['"]require\s+view['"]\s*;/m.test(src) ||
-	    !/^\s*['"]require\s+lanspeed\.statusViewLive3\s+as\s+statusViewLive3['"]\s*;/m.test(src) ||
+	    !src.includes("var RESOURCE_VERSION = 'lanspeed-1.1.0-r2';") ||
+	    !src.includes('var previousVersion = L.env.resource_version;') ||
+	    !src.includes('L.env.resource_version = RESOURCE_VERSION;') ||
+	    !src.includes(`L.require('${moduleName}')`) ||
+	    !src.includes('L.env.resource_version = previousVersion;') ||
 	    !src.includes('return view.extend({') ||
-	    !src.includes('return statusViewLive3.load();') ||
-	    !src.includes('return statusViewLive3.render(data);')) {
-		fail(`${label} must wrap lanspeed/statusViewLive3.js through a concrete LuCI view.extend() constructor`);
+	    !src.includes('return module.load();') ||
+	    !src.includes('return pageModule.render(data);')) {
+		fail(`${label} must load ${moduleName} through the 1.1.0 resource cache boundary`);
 	}
-	if (src.includes('statusShell.buildShell(') ||
-	    src.includes('statusRefresh.refreshLive(') ||
-	    src.includes('loadAll()')) {
-		fail(`${label} must remain a cache-busting wrapper, not duplicate status view logic`);
+	if (src.includes('buildShell(') || src.includes('refreshLive(') || src.includes('loadAll()')) {
+		fail(`${label} must remain a cache-aware entry and not duplicate page logic`);
 	}
 }
 
@@ -2980,15 +3150,12 @@ function assertConfigView(src) {
 	    !src.includes("[ 'conntrack_procfs', 'CT-Procfs' ]")) {
 		fail('view/lanspeed/config.js connection collector options must use plain labels');
 	}
-	if (!src.includes('dae/daed 运行中') || !src.includes('BPF')) {
-		fail('view/lanspeed/config.js must explain the dae/daed BPF preference');
-	}
-	if (!src.includes('NSS 设备同样优先使用 BPF') ||
-	    !src.includes('BPF 不可用时回退 NSS sync / NSS-direct')) {
+	if (!src.includes('自动模式优先使用 BPF') ||
+	    !src.includes('后端会选择可用的 NSS 数据源')) {
 		fail('view/lanspeed/config.js must explain the NSS auto BPF-first policy and fallback');
 	}
-	if (!src.includes('前置 passthrough 挂载')) {
-		fail('view/lanspeed/config.js must explain the dae/daed early BPF attach behavior');
+	if (!src.includes('当前实际生效的数据源，由后端根据设备能力与运行环境选择')) {
+		fail('view/lanspeed/config.js must explain the effective collector without exposing stale attach internals');
 	}
 	if (src.includes('lanspeed-rate-badge') || src.includes('rateBadge')) {
 		fail('view/lanspeed/config.js must not render the removed rate badge');
@@ -3008,6 +3175,15 @@ function assertConfigView(src) {
 	if (!src.includes('conn_collector_mode')) {
 		fail('view/lanspeed/config.js must expose conn_collector_mode');
 	}
+	if (!src.includes("show_client_status: '0'") ||
+	    !src.includes('show_client_status: refs.showClientStatus.checked') ||
+	    !src.includes("uci.get('lanspeed', 'main', 'show_client_status')")) {
+		fail('view/lanspeed/config.js must persist a default-off show_client_status option');
+	}
+	if (!src.includes('显示客户端状态') ||
+	    !src.includes('显示采集来源和告警状态；默认隐藏。')) {
+		fail('view/lanspeed/config.js must explain the default-hidden LAN client status column');
+	}
 	if (!src.includes('show_ipv6')) {
 		fail('view/lanspeed/config.js must expose show_ipv6 for client IP display');
 	}
@@ -3024,7 +3200,7 @@ function assertConfigView(src) {
 		fail('view/lanspeed/config.js must expose hide_private_ipv6 for client IP display');
 	}
 	if (!src.includes('隐藏私有 IPv6 地址') ||
-	    !src.includes('fc00::/7 私有 IPv6 地址和 fe80::/10 链路本地地址')) {
+	    !src.includes('fc00::/7 私有地址和 fe80::/10 链路本地地址')) {
 		fail('view/lanspeed/config.js must explain the private IPv6 display toggle');
 	}
 	if (!src.includes('hide_ipv6_ranges')) {
@@ -3032,7 +3208,7 @@ function assertConfigView(src) {
 	}
 	if (!src.includes('隐藏 IPv6 范围') ||
 	    !src.includes('fc00::/7 fe80::/10') ||
-	    !src.includes('用空格或逗号分隔')) {
+	    !src.includes('可添加一个或多个 IPv6 网段')) {
 		fail('view/lanspeed/config.js must explain custom hidden IPv6 ranges');
 	}
 	if (!src.includes('lanspeed-range-list') ||
@@ -3057,7 +3233,8 @@ function assertConfigView(src) {
 	if (!src.includes('速率采集') || !src.includes('连接数采集')) {
 		fail('view/lanspeed/config.js must split speed and connection collector settings');
 	}
-	if (!src.includes('非 NSS 实时测速只使用 BPF') || !src.includes('CT 只用于连接数和诊断')) {
+	if (!src.includes('自动模式使用 BPF 统计客户端实时速率') ||
+	    !src.includes('仅统计当前 TCP/UDP 连接，不参与非 NSS 设备的实时测速')) {
 		fail('view/lanspeed/config.js must make the non-NSS BPF-only live-rate policy explicit');
 	}
 	if (!src.includes('ifaceCfg.load(viewState)')) {
@@ -3120,29 +3297,29 @@ function assertIfaceConfigThemeLayout(src) {
 
 function assertStatusViewNoInterfaceConfig(src) {
 	if (/^\s*['"]require\s+lanspeed\.ifaceConfig(?:\s+as\s+\w+)?['"]\s*;/m.test(src)) {
-		fail('view/lanspeed/index.js must not load ifaceConfig; interface assignments belong on config.js');
+		fail('LAN Speed status modules must not load ifaceConfig; interface assignments belong on config.js');
 	}
 	if (src.includes('ifaceCfg.load(viewState)')) {
-		fail('view/lanspeed/index.js must not load interface configuration');
+		fail('LAN Speed status modules must not load interface configuration');
 	}
 	if (src.includes('ifaceCfg.save(viewState)')) {
-		fail('view/lanspeed/index.js must not save interface configuration');
+		fail('LAN Speed status modules must not save interface configuration');
 	}
 	if (src.includes('_(\'接口配置\')') || src.includes('_(\"接口配置\")')) {
-		fail('view/lanspeed/index.js must not render the interface configuration section');
+		fail('LAN Speed status modules must not render the interface configuration section');
 	}
 	if (src.includes('ifcfgCard')) {
-		fail('view/lanspeed/index.js must not include the interface configuration card');
+		fail('LAN Speed status modules must not include the interface configuration card');
 	}
 	if (src.includes('lsRpc.reload()') || src.includes('btnReload') ||
 	    src.includes('重载 daemon') || src.includes('正在重载')) {
-		fail('view/lanspeed/index.js must not expose daemon reload controls on the live status page');
+		fail('LAN Speed status modules must not expose daemon reload controls on the live status page');
 	}
 	if (src.includes('lsRpc.init(\'lanspeedd\', \'reload\')')) {
-		fail('view/lanspeed/index.js must not reload through rc init');
+		fail('LAN Speed status modules must not reload through rc init');
 	}
 	if (!src.includes('self.error = error')) {
-		fail('view/lanspeed/index.js must surface daemon reload errors instead of swallowing them');
+		fail('LAN Speed status modules must surface daemon reload errors instead of swallowing them');
 	}
 }
 
@@ -3157,25 +3334,25 @@ function assertNoInlineNavigation(src, label) {
 
 function assertStatusViewNoTrend(src) {
 	if (/lanspeed-trend|trendPath|trendSvg|trendLegend|updateTrend|pointLine|SVG_NS/.test(src)) {
-		fail('view/lanspeed/index.js must not render the trend chart');
+		fail('LAN Speed status modules must not render the trend chart');
 	}
 	if (/lsRpc\.overview\s*\(/.test(src)) {
-		fail('view/lanspeed/index.js must not poll overview only for the removed trend chart');
+		fail('LAN Speed status modules must not poll overview only for the removed trend chart');
 	}
 }
 
 function assertStatusViewSourceOnlyState(src) {
 	if (!src.includes('lanspeed-root')) {
-		fail('view/lanspeed/index.js must scope local typography to the LAN Speed status root');
+		fail('LAN Speed status modules must scope local typography to the LAN Speed status root');
 	}
 	if (src.includes('.lanspeed-root{font-size:') ||
 	    src.includes('.lanspeed-root button,.lanspeed-root input,.lanspeed-root select{font-size:')) {
-		fail('view/lanspeed/index.js must not force LAN Speed root or form control text larger than the theme');
+		fail('LAN Speed status modules must not force LAN Speed root or form control text larger than the theme');
 	}
 	if (!src.includes('grid-template-columns:repeat(5,12.5em)') ||
 	    !src.includes('row-gap:1.1em;column-gap:1.2em;align-items:center;justify-content:start;margin:0') ||
 	    !src.includes('@media (max-width:1100px){.lanspeed-metrics{grid-template-columns:repeat(auto-fit,minmax(10em,1fr))}}')) {
-		fail('view/lanspeed/index.js must keep overview metrics left-aligned with compact spacing on wide Argon layouts');
+		fail('LAN Speed status modules must keep overview metrics left-aligned with compact spacing on wide Argon layouts');
 	}
 	if (src.includes('.lanspeed-metric .caption{font-size:.86em') ||
 	    src.includes('.lanspeed-metric .big{font-size:1.7em') ||
@@ -3186,109 +3363,115 @@ function assertStatusViewSourceOnlyState(src) {
 	    src.includes('.lanspeed-table td .state .label{display:inline-flex') ||
 	    src.includes('padding:.18em .5em;font-size:.95em;line-height:1.35') ||
 	    src.includes('.lanspeed-warnings li{margin:.2em 0;font-size:1em}')) {
-		fail('view/lanspeed/index.js must keep previous compact text sizes');
+		fail('LAN Speed status modules must keep previous compact text sizes');
 	}
 	if (!src.includes('align-items:baseline') || !src.includes('white-space:nowrap')) {
-		fail('view/lanspeed/index.js header metadata must stay aligned with the section title on Argon');
+		fail('LAN Speed status modules header metadata must stay aligned with the section title on Argon');
 	}
 	if (!src.includes('lanspeed-toolbar-left') || !src.includes('lanspeed-toolbar-filter') || !src.includes('lanspeed-toolbar-right')) {
-		fail('view/lanspeed/index.js must group toolbar controls for Argon compatibility');
+		fail('LAN Speed status modules must group toolbar controls for Argon compatibility');
 	}
 	if (!src.includes('lanspeed-active-only') ||
 	    !src.includes('position:relative;top:auto;right:auto;margin:0') ||
 	    !src.includes("E('label', { 'class': 'lanspeed-active-only cbi-checkbox', 'for': 'lanspeed-active' }") ||
 	    !src.includes("'class': 'cbi-input-checkbox'") ||
 	    !src.includes("'class': 'lanspeed-active-label'")) {
-		fail('view/lanspeed/index.js must align the active-only checkbox in the toolbar on Argon');
+		fail('LAN Speed status modules must align the active-only checkbox in the toolbar on Argon');
 	}
 	if (src.includes('appearance:auto') ||
 	    src.includes('-webkit-appearance:checkbox')) {
-		fail('view/lanspeed/index.js must let Aurora/LuCI theme draw the active-only checkbox');
+		fail('LAN Speed status modules must let Aurora/LuCI theme draw the active-only checkbox');
 	}
 	if (!src.includes('.lanspeed-clients-card .lanspeed-table{font-weight:500}')) {
-		fail('view/lanspeed/index.js must make the LAN client table weight stronger without enlarging it');
+		fail('LAN Speed status modules must make the LAN client table weight stronger without enlarging it');
 	}
 	if (src.includes('.lanspeed-clients-card .lanspeed-table{font-size:') ||
 	    src.includes('.lanspeed-clients-card .lanspeed-table>thead>tr>th,.lanspeed-clients-card .lanspeed-table>tbody>tr>td') ||
 	    src.includes('.lanspeed-table>thead>tr>th,.lanspeed-table>tbody>tr>td{padding-top:.55em')) {
-		fail('view/lanspeed/index.js must not enlarge the LAN client table text or row spacing');
+		fail('LAN Speed status modules must not enlarge the LAN client table text or row spacing');
 	}
 	if (!src.includes('collectorLabel') || src.includes("metaParts.push(_('模式 ')")) {
-		fail('view/lanspeed/index.js header must show collector source instead of runtime mode');
+		fail('LAN Speed status modules header must show collector source instead of runtime mode');
 	}
 	if (!src.includes('function collectorClass(mode)')) {
-		fail('view/lanspeed/index.js must style the collector source pill without using confidence text');
+		fail('LAN Speed status modules must style the collector source pill without using confidence text');
 	}
 	if (!src.includes('function effectiveCollector(status, clientsData)') ||
 	    !src.includes('evidence.effective_collector') ||
 	    !src.includes('clientEvidence.primary_source') ||
 	    !src.includes('clientEvidence.collector_mode')) {
-		fail('view/lanspeed/index.js must display the daemon-published collector source before rendering the header');
+		fail('LAN Speed status modules must display the daemon-published collector source before rendering the header');
 	}
 	if (/for\s*\([^)]*clients\.length[\s\S]{0,260}?collector_mode/.test(src) ||
 	    /fmt\.asArray\(clientsData && clientsData\.clients\)/.test(src)) {
-		fail('view/lanspeed/index.js must not infer the global collector source from client rows');
+		fail('LAN Speed status modules must not infer the global collector source from client rows');
 	}
 	if (!src.includes('refs.collectorPill') ||
 	    !(src.includes('refs.collectorPill.className = collectorClass(collector)') ||
 	      src.includes('refs.collectorPill.className = statusCollector.collectorClass(collector)')) ||
 	    !(src.includes('refs.collectorPill.textContent = collectorLabel(collector)') ||
 	      src.includes('refs.collectorPill.textContent = statusCollector.collectorLabel(collector)'))) {
-		fail('view/lanspeed/index.js header must show the current collector source in the status pill');
+		fail('LAN Speed status modules header must show the current collector source in the status pill');
 	}
 	if (src.includes("metaParts.push(_('采集方式 ')")) {
-		fail('view/lanspeed/index.js header metadata must not repeat the collector source');
+		fail('LAN Speed status modules header metadata must not repeat the collector source');
 	}
 	if (src.includes("status.collector_mode;")) {
-		fail('view/lanspeed/index.js header must not show configured collector_mode as the current collector source');
+		fail('LAN Speed status modules header must not show configured collector_mode as the current collector source');
 	}
 	if (!src.includes('grid-template-columns:repeat(5,12.5em)') ||
 	    !src.includes('justify-content:start') ||
 	    !src.includes('column-gap:1.2em')) {
-		fail('view/lanspeed/index.js overview metrics must be left-aligned with compact desktop spacing');
+		fail('LAN Speed status modules overview metrics must be left-aligned with compact desktop spacing');
 	}
 	if (!src.includes("return 'NSS sync'")) {
-		fail('view/lanspeed/index.js must keep NSS sync as a clear collector label');
+		fail('LAN Speed status modules must keep NSS sync as a clear collector label');
 	}
 	if (!src.includes("return 'CT-Netlink'")) {
-		fail('view/lanspeed/index.js must keep conntrack netlink as a clear collector label');
+		fail('LAN Speed status modules must keep conntrack netlink as a clear collector label');
 	}
 	if (/confPill|_\(['"]置信/.test(src)) {
-		fail('view/lanspeed/index.js must not render confidence in overview header');
+		fail('LAN Speed status modules must not render confidence in overview header');
 	}
 	if (/modeLabel\s*\+\s*['"]·['"]\s*\+\s*vocab\.confidenceText/.test(src)) {
-		fail('view/lanspeed/index.js client state must show collector source without confidence suffix');
+		fail('LAN Speed status modules client state must show collector source without confidence suffix');
 	}
 	if (src.includes('置信度：')) {
-		fail('view/lanspeed/index.js client state tooltip must not expose confidence text');
+		fail('LAN Speed status modules client state tooltip must not expose confidence text');
 	}
 	if (!src.includes("return 'NSS-direct'")) {
-		fail('view/lanspeed/index.js must keep existing nss_ecm_direct label');
+		fail('LAN Speed status modules must keep existing nss_ecm_direct label');
 	}
 	if (!src.includes('function isIpv6Address(ip)') ||
 	    !src.includes('function parseIpv6ToWords(ip)') ||
 	    !src.includes('function parseIpv6Cidr(range)') ||
 	    !src.includes('function isIpInIpv6Ranges(ip, ranges)') ||
 	    !src.includes('function displayIpsForClient(ips, showIpv6, hidePrivateIpv6, hideIpv6Ranges)')) {
-		fail('view/lanspeed/index.js must filter IPv6 display through custom range helpers');
+		fail('LAN Speed status modules must filter IPv6 display through custom range helpers');
 	}
 	if (!src.includes("DEFAULT_HIDE_IPV6_RANGES = 'fc00::/7 fe80::/10'") ||
 	    !src.includes('hidePrivateIpv6') ||
 	    !src.includes('hideIpv6Ranges')) {
-		fail('view/lanspeed/index.js must hide configurable IPv6 ranges when the private IPv6 option is enabled');
+		fail('LAN Speed status modules must hide configurable IPv6 ranges when the private IPv6 option is enabled');
 	}
 	if (!src.includes("lsRpc.uciGet('lanspeed', 'main')") ||
 	    !src.includes('show_ipv6') ||
 	    !src.includes('hide_private_ipv6') ||
 	    !src.includes('hide_ipv6_ranges')) {
-		fail('view/lanspeed/index.js must read IPv6 display options before rendering client IPs');
+		fail('LAN Speed status modules must read IPv6 display options before rendering client IPs');
+	}
+	if (!src.includes("showClientStatus: uciMain.show_client_status === '1'") ||
+	    !src.includes('showClientStatus: false') ||
+	    !src.includes('showClientStatus: data.showClientStatus === true') ||
+	    !src.includes('self.showClientStatus = next.showClientStatus')) {
+		fail('LAN Speed status modules must load show_client_status as a default-off UCI display option');
 	}
 	if (!src.includes('function loadUiConfig()') ||
 	    !src.includes(".catch(function() { return {}; })")) {
-		fail('view/lanspeed/index.js must keep show_ipv6 reads non-fatal');
+		fail('LAN Speed status modules must keep show_ipv6 reads non-fatal');
 	}
 	if (/\bvar ips = fmt\.asArray\(c\.ips\);/.test(src)) {
-		fail('view/lanspeed/index.js must not render raw client IP arrays directly');
+		fail('LAN Speed status modules must not render raw client IP arrays directly');
 	}
 }
 
@@ -3331,19 +3514,19 @@ function assertThemeWiring(src, label) {
 
 function assertStatusThemeMetricAlignment(src) {
 	if (!src.includes('.lanspeed-theme-aurora .lanspeed-metrics{grid-template-columns:repeat(auto-fit,minmax(11em,12.5em));')) {
-		fail('view/lanspeed/index.js must keep Aurora overview metrics left-aligned with fixed-width columns');
+		fail('LAN Speed status modules must keep Aurora overview metrics left-aligned with fixed-width columns');
 	}
 	if (!src.includes('.lanspeed-theme-argon .lanspeed-metrics{grid-template-columns:repeat(auto-fit,minmax(10.5em,12.5em));')) {
-		fail('view/lanspeed/index.js must keep Argon overview metrics left-aligned with fixed-width columns');
+		fail('LAN Speed status modules must keep Argon overview metrics left-aligned with fixed-width columns');
 	}
 	if (!src.includes('justify-content:start')) {
-		fail('view/lanspeed/index.js must keep overview metric grids left-aligned');
+		fail('LAN Speed status modules must keep overview metric grids left-aligned');
 	}
 }
 
 function assertStatusThemeMobileOverflow(src) {
 	if (!src.includes('.lanspeed-theme-argon .lanspeed-details-body{padding:.85rem 1rem;overflow-x:auto}')) {
-		fail('view/lanspeed/index.js must keep Argon mobile status tables horizontally scrollable inside clipped theme cards');
+		fail('LAN Speed status modules must keep Argon mobile status tables horizontally scrollable inside clipped theme cards');
 	}
 }
 
@@ -3359,6 +3542,10 @@ function assertStatusStyleModule(src) {
 	if (!src.includes('.lanspeed-theme-aurora .lanspeed-clients-card .lanspeed-body{overflow-x:auto}') ||
 	    !src.includes('.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-body{overflow-x:auto}')) {
 		fail('lanspeed/statusStyle.js must keep client tables scrollable above the narrow stacked breakpoint');
+	}
+	if (!src.includes('.lanspeed-clients-card .lanspeed-table th[hidden],') ||
+	    !src.includes('.lanspeed-clients-card .lanspeed-table td[hidden]{display:none!important}')) {
+		fail('lanspeed/statusStyle.js must keep configured-hidden status headers and cells hidden in every theme and breakpoint');
 	}
 	if (!src.includes('.lanspeed-toolbar{display:flex;flex-wrap:wrap;gap:.7em 1em;') ||
 	    !src.includes('.lanspeed-toolbar-left{display:grid;grid-template-columns:auto minmax(14em,1fr);') ||
@@ -3407,45 +3594,33 @@ function assertStatusStyleModule(src) {
 	    !src.includes('.lanspeed-theme-argon .lanspeed-table th,.lanspeed-theme-argon .lanspeed-table td{padding:.65rem .75rem;font-size:1rem;line-height:1.45}')) {
 		fail('lanspeed/statusStyle.js must enlarge Argon status page typography without changing other themes');
 	}
-	if (!src.includes('.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table td:nth-child(2).mono{font-size:.96rem}')) {
+	if (!src.includes('.lanspeed-theme-argon .lanspeed-table .mono{font-size:.96rem}')) {
 		fail('lanspeed/statusStyle.js must keep Argon client MAC text readable without changing other themes');
 	}
-	if (!src.includes('@media (min-width:901px){.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table{table-layout:fixed}') ||
+	if (!src.includes('@media (min-width:1201px){.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table{table-layout:fixed}') ||
 	    !src.includes('.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table th:nth-child(1),.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table td:nth-child(1){width:17rem}') ||
 	    !src.includes('.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table th:nth-child(2),.lanspeed-theme-argon .lanspeed-clients-card .lanspeed-table td:nth-child(2){width:14.5rem}')) {
 		fail('lanspeed/statusStyle.js must keep Argon client, MAC and upload columns balanced on desktop');
 	}
+	if (!src.includes('.lanspeed-theme-argon .lanspeed-header,') ||
+	    !src.includes('.lanspeed-theme-argon .lanspeed-details>summary{align-items:center}') ||
+	    !src.includes('font-size:1.35rem;line-height:1.25!important') ||
+	    !src.includes('.lanspeed-theme-argon .lanspeed-sort-button{height:auto!important;') ||
+	    !src.includes('.lanspeed-theme-argon .lanspeed-hint{padding:0}')) {
+		fail('lanspeed/statusStyle.js must keep Argon headings, sort controls and interface hints optically aligned');
+	}
+	if (src.includes('align-items:start;justify-content:start;gap:.9rem 1rem') ||
+	    src.includes('.lanspeed-theme-argon .lanspeed-metric{align-self:start}')) {
+		fail('lanspeed/statusStyle.js must preserve the original Argon overview metric layout');
+	}
 	if (!src.includes('.lanspeed-theme-argon .lanspeed-table th:first-child,.lanspeed-theme-argon .lanspeed-table td:first-child{padding-left:.35rem}')) {
 		fail('lanspeed/statusStyle.js must keep Argon status table text away from the card edge');
 	}
-	if (!src.includes('.lanspeed-theme-argon .lanspeed-caps{grid-template-columns:repeat(4,12.95rem);max-width:56rem;justify-content:start;align-items:center;gap:.5rem 1rem;margin:.2rem 0 1rem 1.25rem}') ||
-	    !src.includes('.lanspeed-theme-argon .lanspeed-caps .cap{display:grid;grid-template-columns:minmax(0,9.65rem) 2.55rem;') ||
-	    !src.includes('  align-items:center;column-gap:.45rem;min-width:0;padding:.18rem 0}') ||
-	    !src.includes('.lanspeed-theme-argon .lanspeed-caps .cap>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}') ||
-	    !src.includes('.lanspeed-theme-argon .lanspeed-caps .cap>span:last-child{justify-self:start;min-width:2.25rem;text-align:center}') ||
-	    !src.includes('@media (max-width:900px){.lanspeed-theme-argon .lanspeed-caps{grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;margin:.2rem 0 1rem}') ||
-	    !src.includes('.lanspeed-theme-argon .lanspeed-caps .cap{grid-template-columns:minmax(0,1fr) 2.55rem;max-width:none}}') ||
-	    !src.includes('@media (max-width:700px){.lanspeed-theme-argon .lanspeed-caps{grid-template-columns:minmax(0,1fr)}}')) {
-		fail('lanspeed/statusStyle.js must keep Argon capability badges aligned while using the full mobile width');
+	if (/lanspeed-(?:caps|warnings|subhead|strip)/.test(src) || src.includes('CAPS_CSS')) {
+		fail('lanspeed/statusStyle.js must not retain obsolete capability or legacy warning styles');
 	}
-}
-
-function assertStatusStyleCompatModule(name, src) {
-	if (!src.includes('lanspeed-style-argon-caps-compat') ||
-	    !src.includes('var ARGON_CAPS_CSS = statusStyleArgon.CAPS_CSS;') ||
-	    !src.includes('CSS: ARGON_CAPS_CSS') ||
-	    !src.includes('install: install')) {
-		fail(`lanspeed/${name} must install the shared Argon capability-grid CSS from statusStyleArgon`);
-		return;
-	}
-
-	const fakeBaseclass = { extend: function(value) { return value; } };
-	const statusArgon = loadStyleLeaf('statusStyleArgon.js');
-	const compat = vm.compileFunction(src, [ 'baseclass', 'statusStyleArgon' ], {
-		filename: `resources/lanspeed/${name}`
-	})(fakeBaseclass, statusArgon);
-	if (compat.CSS !== statusArgon.CAPS_CSS) {
-		fail(`lanspeed/${name} must reuse statusStyleArgon.CAPS_CSS byte-for-byte`);
+	if (src.includes('.lanspeed-diagnostic-') || src.includes('.lanspeed-diagnostics-')) {
+		fail('lanspeed/statusStyle.js must not retain diagnostics-page CSS');
 	}
 }
 
@@ -3469,13 +3644,20 @@ function assertStatusCollectorModule(src) {
 function assertStatusShellModule(src) {
 	if (!src.includes('buildShell: function(viewState)') ||
 	    !src.includes('statusStyle.CSS') ||
-	    !src.includes('lsTheme.applyRoot(root)') ||
-	    !src.includes('nssPanel.build(refs)')) {
+	    !src.includes('lsTheme.applyRoot(root)')) {
 		fail('lanspeed/statusShell.js must own status page DOM shell construction');
 	}
-	if (!/refs\.diagnostics\s*=\s*E\('details',\s*\{\s*'class':\s*'lanspeed-details'\s*\}/.test(src) ||
-	    /refs\.diagnostics\s*=\s*E\('details',[\s\S]{0,120}['"]open['"]/.test(src)) {
-		fail('lanspeed/statusShell.js must leave diagnostics collapsed by default');
+	if (src.includes('能力矩阵') || src.includes('全部告警') ||
+	    src.includes('说明与元数据') || src.includes('nssPanel.build(refs)')) {
+		fail('lanspeed/statusShell.js must remove the obsolete capability, metadata, and standalone NSS diagnostics');
+	}
+	if (!src.includes('接口吞吐') || !src.includes('refs.ifacesDetails') ||
+	    !src.includes('refs.ifacesBody') || !src.includes('ifacesCard')) {
+		fail('lanspeed/statusShell.js must preserve the interface throughput details');
+	}
+	if (src.includes('运行诊断') || src.includes('diagnosticStatusCard') ||
+	    src.includes('lanspeed-diagnostic-') || src.includes('diagnosticsCard')) {
+		fail('lanspeed/statusShell.js must not render the dedicated diagnostics page inside realtime status');
 	}
 	const sortableKeys = [ 'hostname', 'mac', 'tx', 'rx', 'tcp_conns', 'udp_conns' ];
 	if (!src.includes('function sortableHeader(viewState, refs, sortKey, label, attrs)') ||
@@ -3491,14 +3673,18 @@ function assertStatusShellModule(src) {
 	    !src.includes("E('label', { 'class': 'lanspeed-refresh-control' }, [ _('刷新'), refs.intervalSel ])")) {
 		fail('lanspeed/statusShell.js must place unit/filter controls left and refresh controls right');
 	}
+	if (!src.includes('refs.statusHeader') ||
+	    !src.includes('refs.statusHeader.hidden = viewState.showClientStatus !== true') ||
+	    src.includes("_('显示客户端状态')")) {
+		fail('lanspeed/statusShell.js must apply config-driven status-column visibility without an inline switch');
+	}
 }
 
 function assertStatusRefreshModule(src) {
 	if (!src.includes('refreshLive: function(viewState)') ||
 	    !src.includes('statusIp.displayIpsForClient') ||
 	    !src.includes('statusCollector.collectorLabel') ||
-	    !src.includes('lsVersion.FULL_VERSION') ||
-	    !src.includes('nssPanel.render(refs, status)')) {
+	    !src.includes('lsVersion.FULL_VERSION')) {
 		fail('lanspeed/statusRefresh.js must own status page live refresh rendering');
 	}
 	if (!src.includes('fmt.sortClients(filtered, prefs.sortKey, prefs.sortDir, latestSample, activeCfg)') ||
@@ -3516,13 +3702,19 @@ function assertStatusRefreshModule(src) {
 	    !src.includes("'data-label': _('状态')")) {
 		fail('lanspeed/statusRefresh.js must label client fields for the narrow stacked layout');
 	}
-	if (!src.includes('function nssEvidenceState(') ||
-	    !src.includes('ev.ecm_active') ||
-	    !src.includes('ev.ecm_offload_active') ||
-	    !src.includes('ev.ppe_active') ||
-	    !src.includes('ev.ppe_offload_active') ||
-	    !src.includes('vocab.normalizeWarningId(w)')) {
-		fail('statusRefresh.js must render new Rust NSS evidence and warning IDs with old C aliases');
+	if (!src.includes('var showClientStatus = viewState.showClientStatus === true;') ||
+	    !src.includes('setClientStatusVisibility(refs, showClientStatus);') ||
+	    !src.includes('clientStateCell(stateCells, showClientStatus)') ||
+	    !src.includes('cell.hidden = !visible;')) {
+		fail('lanspeed/statusRefresh.js must hide or show the complete client status column from UCI state');
+	}
+	if (src.includes('refreshDiagnostics') || src.includes('lanspeed-diagnostic-') ||
+	    src.includes('diagnosticsSummary') || src.includes('importantWarnings(status.warnings')) {
+		fail('statusRefresh.js must not refresh diagnostics content on the realtime status page');
+	}
+	if (!src.includes('viewState.interfaces') || !src.includes('refs.ifacesBody') ||
+	    !src.includes('refs.ifacesSummary') || !src.includes('refs.ifacesHint')) {
+		fail('statusRefresh.js must refresh the interface throughput details');
 	}
 	if (!src.includes('splitClientWarnings(rawWarnings, globalWarnings)') ||
 	    !src.includes("modeTitle += '\\n' + vocab.warningText('conntrack_connection_only');") ||
@@ -3540,6 +3732,54 @@ function assertStatusRefreshModule(src) {
 	    !src.includes("'aria-label':") || !src.includes("'title':") ||
 	    !src.includes('查看') || !src.includes('当前连接')) {
 		fail('statusRefresh.js must wrap only identified client display names in an accessible encoded detail link on the current pathname');
+	}
+}
+
+function assertDiagnosticsStyleModule(src) {
+	if (!src.includes('CSS: DIAGNOSTICS_CSS') ||
+	    !src.includes('.lanspeed-diagnostics-root.lanspeed-theme-aurora') ||
+	    !src.includes('.lanspeed-diagnostics-root.lanspeed-theme-argon') ||
+	    !src.includes('.lanspeed-diagnostics-root.lanspeed-theme-bootstrap') ||
+	    !src.includes('.lanspeed-diagnostic-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))') ||
+	    !src.includes('@media (max-width:900px){.lanspeed-diagnostics-root .lanspeed-diagnostic-grid{grid-template-columns:minmax(0,1fr)}')) {
+		fail('lanspeed/diagnosticsStyle.js must provide dedicated Base, Aurora, Argon, Bootstrap and responsive diagnostics CSS');
+	}
+}
+
+function assertDiagnosticsShellModule(src) {
+	if (!src.includes('buildShell: function(viewState)') ||
+	    !src.includes('diagnosticsStyle.CSS') ||
+	    !src.includes('lsTheme.applyRoot(root)') ||
+	    !src.includes("diagnosticStatusCard(refs, 'plugin'") ||
+	    !src.includes("diagnosticStatusCard(refs, 'backend'") ||
+	    !src.includes("diagnosticStatusCard(refs, 'bpf'") ||
+	    !src.includes("E('h3', {}, _('运行诊断'))")) {
+		fail('lanspeed/diagnosticsShell.js must own the independent diagnostics page DOM');
+	}
+	if (src.includes("E('details'") || src.includes('refs.diagnostics')) {
+		fail('lanspeed/diagnosticsShell.js must show the new diagnostics page directly, not retain the old collapsed details panel');
+	}
+}
+
+function assertDiagnosticsRefreshModule(src) {
+	if (!src.includes('refreshStatusCards: refreshStatusCards') ||
+	    !src.includes("refs, 'plugin', 'good'") ||
+	    !src.includes("refs, 'backend'") ||
+	    !src.includes("refs, 'bpf'") ||
+	    !src.includes('vocab.importantWarnings(runtime.warnings, runtime)') ||
+	    !src.includes('未发现影响实时测速的异常') ||
+	    !src.includes('lsVersion.FULL_VERSION')) {
+		fail('lanspeed/diagnosticsRefresh.js must render plugin, backend, BPF and actionable warning state');
+	}
+}
+
+function assertDiagnosticsViewModule(src) {
+	if (!src.includes('lsRpc.status()') ||
+	    !src.includes('lsRpc.health()') ||
+	    !src.includes('lsRpc.clients()') ||
+	    !src.includes('diagnosticsShell.buildShell(viewState)') ||
+	    !src.includes('diagnosticsRefresh.refresh(viewState)')) {
+		fail('lanspeed/diagnosticsView.js must load health data and render the independent diagnostics page');
 	}
 }
 
@@ -3589,6 +3829,13 @@ function assertConfigStyleModule(src) {
 	    !src.includes('.lanspeed-theme-argon .lanspeed-ifcfg-table th:nth-child(3),.lanspeed-theme-argon .lanspeed-ifcfg-table td:nth-child(3){width:21rem}')) {
 		fail('lanspeed/configStyle.js must keep Argon interface configuration columns compact on desktop');
 	}
+	if (!src.includes('.lanspeed-config-root.lanspeed-theme-argon .lanspeed-range-text,') ||
+	    !src.includes('height:2.5rem;min-height:2.5rem;box-sizing:border-box') ||
+	    !src.includes('.lanspeed-config-root.lanspeed-theme-argon .cbi-button,') ||
+	    !src.includes('display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;') ||
+	    !src.includes('.lanspeed-config-root.lanspeed-theme-argon .lanspeed-hint{padding:0}')) {
+		fail('lanspeed/configStyle.js must align Argon range inputs, buttons, labels and hint text without changing other themes');
+	}
 }
 
 function assertConfigFormModule(src) {
@@ -3617,6 +3864,7 @@ function assertConfigFormModule(src) {
 		'conn_collector_mode',
 		'active_client_window_ms',
 		'active_client_min_bps',
+		'show_client_status',
 		'show_ipv6',
 		'hide_private_ipv6',
 		'hide_ipv6_ranges'
@@ -3633,20 +3881,20 @@ function assertStatusViewEntryIsThin(src) {
 		'baseclass',
 		'lanspeed.clientConnections',
 		'lanspeed.clientDetailView',
-		'lanspeed.statusView'
+		'lanspeed.statusOverview'
 	])) {
-		fail('statusViewLive.js must require only the route parser, detail view, and existing overview view in dependency order');
+		fail('statusView.js must require only the route parser, detail view, and existing overview view in dependency order');
 	}
 	const cleaned = stripComments(src);
 	if (/\blsRpc\b|\brpc\b|statusShell|statusRefresh|statusStyle|set(?:Timeout|Interval)|clear(?:Timeout|Interval)|buildShell|refreshLive|loadAll|loadUiConfig/.test(cleaned)) {
-		fail('statusViewLive.js must remain a thin router without RPC, shell, refresh, style, or timer responsibilities');
+		fail('statusView.js must remain a thin router without RPC, shell, refresh, style, or timer responsibilities');
 	}
 	if (!src.includes('clientConnections.identityFromSearch(window.location.search)') ||
 	    !src.includes("route: 'overview'") || !src.includes("route: 'detail'") ||
 	    !src.includes('statusView.load()') || !src.includes('statusView.render(data.data)') ||
 	    !src.includes('clientDetailView.load(identityKey)') ||
 	    !src.includes('clientDetailView.render(data.data)')) {
-		fail('statusViewLive.js must freeze an explicit load-time route marker and delegate load/render to overview or detail');
+		fail('statusView.js must freeze an explicit load-time route marker and delegate load/render to overview or detail');
 	}
 }
 
@@ -3694,9 +3942,11 @@ if (!fs.existsSync(modDir)) {
 if (!assertFileExists(viewFile, 'view entry')) {
 	/* keep going, other checks still useful */
 }
-assertFileExists(legacyViewFile, 'legacy view wrapper');
+assertFileExists(diagnosticsEntryFile, 'diagnostics view entry');
 assertFileExists(configViewFile, 'config view entry');
 assertFileExists(statusViewFile, 'status view module');
+assertSemanticResourceNames();
+assertViewEntries();
 
 EXPECTED_MODULES.forEach(function(name) {
 	const p = path.join(modDir, name);
@@ -3730,15 +3980,15 @@ EXPECTED_MODULES.forEach(function(name) {
 	if (name === 'clientDetailStyle.js') {
 		assertClientDetailStyleComposer(src);
 	}
+	if (name === 'diagnosticsStyle.js') {
+		assertDiagnosticsStyleModule(styleSources(name, DIAGNOSTICS_STYLE_PARTS));
+	}
 	if (CLIENT_DETAIL_STYLE_PARTS.includes(name)) {
 		assertClientDetailStyleLeaf(name, src);
 	}
 	if (name === 'ifaceConfig.js') {
 		assertIfaceConfigThemeLayout(src);
 		assertIfaceSaveBehavior(src);
-	}
-	if (name === 'nssPanel.js') {
-		assertNssPanelSource(src);
 	}
 	if (name === 'vocab.js') {
 		assertWarningAliases(src);
@@ -3755,14 +4005,20 @@ EXPECTED_MODULES.forEach(function(name) {
 	if (name === 'statusStyle.js') {
 		assertStatusStyleModule(styleSources(name, STATUS_STYLE_PARTS));
 	}
-	if (STATUS_STYLE_PARTS.includes(name) || CLIENT_DETAIL_STYLE_PARTS.includes(name) ||
+	if (STATUS_STYLE_PARTS.includes(name) || DIAGNOSTICS_STYLE_PARTS.includes(name) ||
+	    CLIENT_DETAIL_STYLE_PARTS.includes(name) ||
 	    CONFIG_STYLE_PARTS.includes(name))
 		assertStyleModuleIsolation(name, src);
-	if (name === 'statusStyleCompat.js' || name === 'statusStyleCompatLive.js' ||
-	    name === 'statusStyleCompatLive2.js' || name === 'statusStyleCompatLive3.js') {
-		assertStatusStyleCompatModule(name, src);
+	if (name === 'diagnosticsShell.js') {
+		assertDiagnosticsShellModule(src);
 	}
-	if (name === 'statusViewLive.js') {
+	if (name === 'diagnosticsRefresh.js') {
+		assertDiagnosticsRefreshModule(src);
+	}
+	if (name === 'diagnosticsView.js') {
+		assertDiagnosticsViewModule(src);
+	}
+	if (name === 'statusView.js') {
 		assertStatusViewEntryIsThin(src);
 		assertStatusViewRouterBehavior(src);
 	}
@@ -3772,7 +4028,7 @@ EXPECTED_MODULES.forEach(function(name) {
 	if (name === 'statusCollector.js') {
 		assertStatusCollectorModule(src);
 	}
-		if (name === 'statusShell.js') {
+	if (name === 'statusShell.js') {
 			assertStatusShellModule(src);
 			assertStatusShellInteraction(src);
 		}
@@ -3791,6 +4047,7 @@ EXPECTED_MODULES.forEach(function(name) {
 });
 
 assertStyleAggregation();
+assertArgonAlignmentContracts();
 assertConnectionStyleOwnership();
 
 assertConfigSaveBehavior(
@@ -3808,19 +4065,19 @@ RPC_FREE_MODULES.forEach(function(name) {
 if (fs.existsSync(viewFile)) {
 	const vsrc = readModule(viewFile);
 	const vcleaned = stripComments(vsrc);
-	assertStrict(vsrc, 'view/lanspeed/index_live4.js');
-	assertStatusViewWrapper(vsrc, 'view/lanspeed/index_live4.js');
-	assertSyntax(vsrc, 'view/lanspeed/index_live4.js');
-	assertNoRpcDeclare(vcleaned, 'view/lanspeed/index_live4.js');
+	assertStrict(vsrc, 'view/lanspeed/overview.js');
+	assertCacheAwareViewEntry(vsrc, 'lanspeed.statusView', 'view/lanspeed/overview.js');
+	assertSyntax(vsrc, 'view/lanspeed/overview.js');
+	assertNoRpcDeclare(vcleaned, 'view/lanspeed/overview.js');
 }
 
-if (fs.existsSync(legacyViewFile)) {
-	const lsrc = readModule(legacyViewFile);
-	const lcleaned = stripComments(lsrc);
-	assertStrict(lsrc, 'view/lanspeed/index.js');
-	assertStatusViewWrapper(lsrc, 'view/lanspeed/index.js');
-	assertSyntax(lsrc, 'view/lanspeed/index.js');
-	assertNoRpcDeclare(lcleaned, 'view/lanspeed/index.js');
+if (fs.existsSync(diagnosticsEntryFile)) {
+	const dsrc = readModule(diagnosticsEntryFile);
+	const dcleaned = stripComments(dsrc);
+	assertStrict(dsrc, 'view/lanspeed/diagnostics.js');
+	assertCacheAwareViewEntry(dsrc, 'lanspeed.diagnosticsView', 'view/lanspeed/diagnostics.js');
+	assertSyntax(dsrc, 'view/lanspeed/diagnostics.js');
+	assertNoRpcDeclare(dcleaned, 'view/lanspeed/diagnostics.js');
 }
 
 if (fs.existsSync(statusViewFile)) {
@@ -3828,26 +4085,23 @@ if (fs.existsSync(statusViewFile)) {
 	const vcleaned = stripComments(vsrc);
 	const statusSrc = [
 		vsrc,
-		readModuleByName('statusView.js'),
+		readModuleByName('statusOverview.js'),
 		readModuleByName('clientDetailView.js'),
 		readModuleByName('clientDetailRefresh.js'),
 		readModuleByName('statusStyle.js'),
 		...STATUS_STYLE_PARTS.map(readModuleByName),
-		readModuleByName('statusStyleCompat.js'),
-		readModuleByName('statusStyleCompatLive.js'),
-		readModuleByName('statusStyleCompatLive2.js'),
-		readModuleByName('statusStyleCompatLive3.js'),
 		readModuleByName('statusIp.js'),
 		readModuleByName('statusCollector.js'),
 		readModuleByName('statusShell.js'),
-		readModuleByName('statusRefresh.js')
+		readModuleByName('statusRefresh.js'),
+		readModuleByName('vocab.js')
 	].join('\n');
 	assertStatusViewNoInterfaceConfig(statusSrc);
-	assertNoInlineNavigation(statusSrc, 'lanspeed/statusViewLive.js');
+	assertNoInlineNavigation(statusSrc, 'lanspeed/statusView.js');
 	assertStatusViewNoTrend(statusSrc);
 	assertStatusViewSourceOnlyState(statusSrc);
 	/* View should no longer declare rpc; it goes through lsRpc */
-	assertNoRpcDeclare(vcleaned, 'lanspeed/statusViewLive.js');
+	assertNoRpcDeclare(vcleaned, 'lanspeed/statusView.js');
 }
 
 if (fs.existsSync(configViewFile)) {
@@ -3881,6 +4135,7 @@ function finish() {
 	console.log('validate-lanspeed-modules: PASS');
 	console.log(`  modules checked: ${EXPECTED_MODULES.length} (${EXPECTED_MODULES.join(', ')})`);
 	console.log(`  view entry: ${path.relative(root, viewFile)}`);
+	console.log(`  diagnostics entry: ${path.relative(root, diagnosticsEntryFile)}`);
 	console.log(`  status view: ${path.relative(root, statusViewFile)}`);
 }
 

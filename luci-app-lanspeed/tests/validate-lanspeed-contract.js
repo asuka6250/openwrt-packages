@@ -581,13 +581,18 @@ function validateMenu(menu) {
   assert(menu['admin/status/lanspeed'].action.type === 'firstchild',
     'status menu parent must route to its first child so config can navigate back');
   assertObject(menu['admin/status/lanspeed/overview'], 'status overview menu entry');
-  assert(menu['admin/status/lanspeed/overview'].action.path === 'lanspeed/index_live4',
-    'status overview menu must point to the cache-busting lanspeed/index_live4 entry');
+  assert(menu['admin/status/lanspeed/overview'].action.path === 'lanspeed/overview',
+    'status overview menu must point to the cache-aware lanspeed/overview entry');
   assert(menu['admin/status/lanspeed/overview'].depends.acl.includes('luci-app-lanspeed'),
     'status overview menu must require luci-app-lanspeed ACL');
+  assertObject(menu['admin/status/lanspeed/diagnostics'], 'status diagnostics menu entry');
+  assert(menu['admin/status/lanspeed/diagnostics'].action.path === 'lanspeed/diagnostics',
+    'status diagnostics menu must point to the dedicated lanspeed/diagnostics entry');
+  assert(menu['admin/status/lanspeed/diagnostics'].depends.acl.includes('luci-app-lanspeed'),
+    'status diagnostics menu must require luci-app-lanspeed ACL');
   assertObject(menu['admin/status/lanspeed/config'], 'config menu entry');
   assert(menu['admin/status/lanspeed/config'].action.path === 'lanspeed/config',
-    'config menu must point to lanspeed/config');
+    'config menu must point to the cache-busting lanspeed/config entry');
   assert(menu['admin/status/lanspeed/config'].depends.acl.includes('luci-app-lanspeed'),
     'config menu must require luci-app-lanspeed ACL');
 }
@@ -601,6 +606,7 @@ function validateUci(config) {
     "option overview_window_samples '240'",
     "option rate_collector_mode 'auto'",
     "option conn_collector_mode 'auto'",
+    "option show_client_status '0'",
     "option show_ipv6 '1'",
     "option hide_private_ipv6 '0'",
     "option hide_ipv6_ranges 'fc00::/7 fe80::/10'",
