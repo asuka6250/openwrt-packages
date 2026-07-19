@@ -183,7 +183,7 @@ function reportSshError(err: any, sshHost: string): void {
   ) {
     console.error(`\n${utTag()} SSH authentication failed for ${sshHost}.`);
     console.error(
-      `${utTag()} Run \`pnpm setup\` to configure passwordless login.\n`,
+      `${utTag()} Run \`pnpm setup:router\` to configure passwordless login.\n`,
     );
   } else if (
     stderr.includes("Connection refused") ||

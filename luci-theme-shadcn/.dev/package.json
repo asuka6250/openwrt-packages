@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "setup": "node scripts/setup.js",
+    "setup:router": "node scripts/setup.js",
     "build": "pnpm clean && pnpm gen:tokens && pnpm check:contrast && vite build && pnpm check:colors",
     "check:colors": "node scripts/check-built-css.js",
     "check:contrast": "node scripts/check-token-contrast.js",
@@ -14,6 +14,9 @@
     "format:check": "prettier --config prettier.config.mjs --ignore-path ../.prettierignore --check .. --ignore-unknown",
     "lint-staged": "lint-staged --cwd ..",
     "prepare": "cd .. && husky"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.2.8",
