@@ -141,7 +141,7 @@ const CONFIG_STYLE_PARTS = [
 
 const EXPECTED_STATUS_STYLE_SHA256 = '7efc85957caddd7dbea15cae2776551a7089d204a71d4eefa9883795a110e5ec';
 const EXPECTED_DIAGNOSTICS_STYLE_SHA256 = 'f8e8015359f4e3e7aa2870c3d7c334dc527093af3c38ca41c5ad06a4a9372648';
-const EXPECTED_CONFIG_STYLE_SHA256 = '7ce8a26813864aecc56ba2fa630436ecaca9a261b709561d3e51becd7971ca48';
+const EXPECTED_CONFIG_STYLE_SHA256 = 'e969a7acddc5ed9bb59bb3493bfd9641787345b0fd57c569c78a51d054e03482';
 
 function readMakeVar(source, name, fileLabel) {
 	const match = source.match(new RegExp(`^${name}:=(.+)$`, 'm'));
@@ -485,6 +485,12 @@ function assertArgonAlignmentContracts() {
 		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-range-remove{',
 		'height:2.5rem;min-height:2.5rem;padding-top:0;padding-bottom:0',
 		'display:inline-flex;align-items:center;justify-content:center',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-ifcfg-table td{border-top:0}',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-config-table tbody tr{align-items:start;align-content:start}',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-config-table tbody td:nth-child(3){padding-left:.35rem}',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-config-table tbody tr.lanspeed-range-row{position:relative;min-height:7rem}',
+		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-config-table tbody tr.lanspeed-range-row>td.hint{',
+		'margin-top:calc(1.45rem + .2rem);width:min(20rem,calc(50% - 1.125rem))',
 		'.lanspeed-config-root.lanspeed-theme-argon .lanspeed-hint:empty{display:none}'
 	].forEach(function(rule) {
 		if (!configCss.includes(rule))
@@ -4646,6 +4652,9 @@ function assertConfigFormModule(src) {
 	    !src.includes("control.addEventListener('change'") ||
 	    !src.includes('markDirty(refs.viewState)')) {
 		fail('configForm.js must report daemon, range and default-value edits to the native unsaved indicator');
+	}
+	if (!src.includes("E('tr', { 'class': 'lanspeed-range-row' }, [")) {
+		fail('configForm.js must identify the multi-control IPv6 range row for theme-specific alignment');
 	}
 	[
 		'rate_collector_mode',
