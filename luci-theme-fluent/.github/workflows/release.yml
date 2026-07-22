@@ -1,0 +1,225 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare release source
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TAG }}
+
+      - id: meta
+        name: Resolve release version
+        run: |
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Using release version ${VERSION} from ${TAG}"
+
+      - name: Sync version files
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${VERSION}/" package/luci-theme-fluent/Makefile
+          sed -i "s/^  \"version\": \"[^\"]*\",/  \"version\": \"${VERSION}\",/" package.json
+          grep '^PKG_VERSION:=' package/luci-theme-fluent/Makefile
+          grep '^  "version":' package.json
+
+      - name: Commit version bump
+        if: github.event_name == 'push'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+          BRANCH=$(git for-each-ref --format='%(refname:short)' refs/remotes/origin --contains "$TAG_COMMIT" | grep -Ev '^origin/HEAD$' | sed 's#^origin/##' | head -1)
+          BRANCH=${BRANCH:-$DEFAULT_BRANCH}
+          git checkout "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package/luci-theme-fluent/Makefile package.json
+          if git diff --cached --quiet; then
+            echo "Version files already match ${TAG}; nothing to commit."
+          else
+            git commit -m "chore: sync release version ${TAG}"
+            git push origin HEAD:"$BRANCH"
+          fi
+
+      - name: Pack prepared source
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/release-source.tar.gz" .
+
+      - name: Upload prepared source
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-source-${{ env.TAG }}
+          path: ${{ runner.temp }}/release-source.tar.gz
+
+  assets:
+    name: Build minified assets
+    needs: prepare
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      RSBUILD_MINIFY: "true"
+    steps:
+      - name: Download prepared source
+        uses: actions/download-artifact@v8
+        with:
+          name: release-source-${{ env.TAG }}
+
+      - name: Extract prepared source
+        run: tar -xzf release-source.tar.gz
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Build CSS & JS
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Verify built assets
+        run: |
+          test -s package/luci-theme-fluent/htdocs/luci-static/fluent/css/fluent.css
+          test -s package/luci-theme-fluent/htdocs/luci-static/resources/menu-fluent.js
+          test -s package/luci-theme-fluent/htdocs/luci-static/resources/view/fluent-config.js
+          css_size=$(wc -c < package/luci-theme-fluent/htdocs/luci-static/fluent/css/fluent.css)
+          menu_size=$(wc -c < package/luci-theme-fluent/htdocs/luci-static/resources/menu-fluent.js)
+          config_size=$(wc -c < package/luci-theme-fluent/htdocs/luci-static/resources/view/fluent-config.js)
+          echo "Built fluent.css (${css_size} bytes)"
+          echo "Built menu-fluent.js (${menu_size} bytes)"
+          echo "Built fluent-config.js (${config_size} bytes)"
+
+      - name: Upload built assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: fluent-assets-${{ env.TAG }}
+          path: |
+            package/luci-theme-fluent/htdocs/luci-static/fluent/css/fluent.css
+            package/luci-theme-fluent/htdocs/luci-static/resources/menu-fluent.js
+            package/luci-theme-fluent/htdocs/luci-static/resources/view/fluent-config.js
+
+  release:
+    name: Build & Publish (${{ matrix.version }})
+    needs: [prepare, assets]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['24.10.7', '25.12.4']
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Download prepared source
+        uses: actions/download-artifact@v8
+        with:
+          name: release-source-${{ env.TAG }}
+
+      - name: Extract prepared source
+        run: tar -xzf release-source.tar.gz
+
+      - name: Download built assets
+        uses: actions/download-artifact@v8
+        with:
+          name: fluent-assets-${{ env.TAG }}
+          path: package/luci-theme-fluent/htdocs/luci-static
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y zstd wget
+
+      - name: Prepare package sources
+        run: |
+          mkdir -p ${HOME}/builder/packages
+          cp -r "$PWD/package/luci-theme-fluent" "${HOME}/builder/packages/luci-theme-fluent"
+
+      - name: Build packages
+        run: |
+          chmod +x .github/workflows/build.sh
+          bash .github/workflows/build.sh "${{ matrix.version }}"
+
+      - name: Collect built packages
+        run: |
+          mkdir -p release
+          cp ${HOME}/builder/output/luci-theme-fluent*.ipk release/ 2>/dev/null || true
+          cp ${HOME}/builder/output/luci-theme-fluent*.apk release/ 2>/dev/null || true
+          cp ${HOME}/builder/output/luci-i18n-fluent*.ipk release/ 2>/dev/null || true
+          cp ${HOME}/builder/output/luci-i18n-fluent*.apk release/ 2>/dev/null || true
+          echo "Built packages:"
+          ls -lh release/
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ env.TAG }}-openwrt-${{ matrix.version }}
+          path: |
+            release/luci-theme-fluent*.ipk
+            release/luci-theme-fluent*.apk
+            release/luci-i18n-fluent*.ipk
+            release/luci-i18n-fluent*.apk
+
+  publish:
+    name: Create GitHub Release
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts/
+          pattern: release-${{ env.TAG }}-*
+          merge-multiple: true
+
+      - name: List all packages
+        run: |
+          echo "All packages for release ${{ env.TAG }}:"
+          find artifacts/ -type f \( -name "*.ipk" -o -name "*.apk" \) -exec ls -lh {} \;
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "Release ${{ env.TAG }}"
+          body: |
+            ## LuCI Theme Fluent ${{ env.TAG }}
+
+            ### Packages
+            - `luci-theme-fluent` — FluentUI theme for OpenWrt LuCI
+            - `luci-i18n-fluent` — Translations
+
+            ### Installation
+
+            **OpenWrt 24.10.x (opkg/ipk):**
+            ```bash
+            opkg install luci-theme-fluent_*.ipk
+            ```
+
+            **OpenWrt 25.12.x (apk):**
+            ```bash
+            apk add luci-theme-fluent_*.apk
+            ```
+          files: |
+            artifacts/**/*.ipk
+            artifacts/**/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
