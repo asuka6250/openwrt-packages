@@ -6,8 +6,23 @@ html {
   @apply bg-background text-foreground scrollbar-thumb-rounded-full scrollbar-thumb-foreground-a30 scrollbar-thin scrollbar-track-transparent font-sans text-sm;
 
   body {
-    @apply flex h-screen overflow-hidden supports-[height:100dvh]:h-dvh;
+    /* flex-wrap: third parties append stray children to <body> (OpenClash
+       portals its dialogs there with oc.css's .oc { width: 100% }, browser
+       extensions inject helper divs). In a nowrap row they'd join the
+       sidebar/#main-wrapper line and shrink #main-wrapper (flex-basis 0) to
+       nothing; wrapping shunts them onto a second line below the viewport-
+       high first line (#sidebar/#main-wrapper are h-full), out of view —
+       the same place strays end up on a normally-flowing page (below the
+       content). */
+    /* h-dvh with no vh fallback: the OKLCH tokens already gate us to
+       browsers (Chrome 111+ / Safari 15.4+ / Firefox 113+) that all ship
+       dvh, so a fallback would only serve browsers the theme can't render
+       colors on anyway. */
+    @apply flex h-dvh flex-wrap;
 
+    /* Scroll lock while a LuCI modal is open — ui.js toggles this class on
+       <body>, the stock LuCI convention. Off-modal the shell needs no clamp:
+       the row exactly fills h-dvh and scrolling lives in #maincontent. */
     &.modal-overlay-active {
       @apply overflow-hidden;
     }

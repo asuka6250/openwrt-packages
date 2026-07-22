@@ -1,5 +1,5 @@
 .cbi-tooltip {
-  /* Hidden bubbles park off-screen (bootstrap's `left:-10000px` trick): a
+  /* Hidden bubbles park off-screen (`left:-10000px`): a
      visibility-hidden absolute box left at its anchor still counts into the
      page's scrollable overflow, so the horizontal scrollbar would survive the
      bubble's disappearance and the page could never snap back. `:hover`

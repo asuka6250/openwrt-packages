@@ -5,7 +5,7 @@
   @apply max-md:fixed max-md:top-0 max-md:left-0 max-md:z-40 max-md:w-[240px] max-md:-translate-x-full max-md:shadow-xl max-md:transition-transform;
   /* Drawer height tracks the dynamic viewport so its bottom edge meets the
      Safari toolbar smoothly instead of jumping when the toolbar shows/hides. */
-  @apply max-md:h-screen max-md:supports-[height:100dvh]:h-dvh;
+  @apply max-md:h-dvh;
 
   &[data-drawer-open="true"] {
     @apply max-md:translate-x-0;
@@ -221,7 +221,12 @@ html[data-sidebar-collapsed="true"] #sidebar {
 /* ── Main wrapper ─────────────────────────────────────────────────── */
 
 #main-wrapper {
-  @apply bg-background flex flex-1 flex-col overflow-hidden py-2 pr-2 pl-0 max-md:w-full max-md:p-0;
+  /* h-full (not stretch-derived): body wraps stray third-party children onto
+     a second flex line; the first line must always be exactly viewport-high
+     so those wrapped lines land offscreen. basis-full (not w-full) on mobile:
+     with the sidebar out of flow, a zero flex-basis would leave room for a
+     stray full-width sibling on the same line instead of forcing it to wrap. */
+  @apply bg-background flex h-full flex-1 flex-col overflow-hidden py-2 pr-2 pl-0 max-md:basis-full max-md:p-0;
 }
 
 /* ── Content card ────────────────────────────────────────────────── */

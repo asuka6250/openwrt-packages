@@ -1,1 +1,1 @@
-pnpm --dir .dev lint-staged
+cd .dev && pnpm lint-staged

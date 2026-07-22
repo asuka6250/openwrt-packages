@@ -102,4 +102,5 @@ make package/luci-theme-shadcn/compile -j$(nproc) V=s
 - [Linear](https://linear.app) — 色彩系统灵感
 - [Vite](https://vite.dev/) 和 [Tailwind CSS](https://tailwindcss.com/)
 - [luci-theme-bootstrap](https://github.com/openwrt/luci/tree/master/themes/luci-theme-bootstrap) — 模板结构与 LuCI 集成参考
+- [luci-theme-material](https://github.com/openwrt/luci/tree/master/themes/luci-theme-material) — 侧边栏菜单渲染参考
 - [Claude Code](https://claude.ai/code)

@@ -55,9 +55,9 @@ Style with TailwindCSS v4 `@apply`, using CSS Nesting (`&:hover`, `&[disabled]`,
 
 ## Sidebar & Menu
 
-- `header.ut`: minimal shell — empty `#sidebar` (like material's `#mainmenu`); sidebar chrome + nav are built client-side in `menu-shadcn.js`
+- `header.ut`: minimal shell — empty `#sidebar`; sidebar chrome + nav are built client-side in `menu-shadcn.js`
 - `sidebar-shadcn.js`: state machine for theme (light/dark/device), sidebar collapse/expand, accordion, and mobile drawer — exposed as `window.ShadcnSidebar` after the `shadcn-sidebar-ready` event fires
-- `menu-shadcn.js`: resolves the `admin` branch of `ui.menu.load()`, then renders a two-level sidebar matching luci-theme-material's depth; `ICON_MAP` maps a LuCI menu node's `name` to `/shadcn/icons/*.svg`; deeper levels render as `#tabmenu`
+- `menu-shadcn.js`: resolves the `admin` branch of `ui.menu.load()`, then renders a two-level sidebar; `ICON_MAP` maps a LuCI menu node's `name` to `/shadcn/icons/*.svg`; deeper levels render as `#tabmenu`
 
 ## Releases
 

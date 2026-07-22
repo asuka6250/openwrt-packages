@@ -4,8 +4,8 @@
 
 /**
  * Shadcn sidebar + menu: empty #sidebar in header.ut, chrome built here.
- * Menu depth matches luci-theme-material (top + one submenu level, tabs for deeper):
- * @see https://github.com/openwrt/luci/blob/master/themes/luci-theme-material/htdocs/luci-static/resources/menu-material.js
+ * Menu depth: top + one submenu level in the sidebar; deeper levels render
+ * as #tabmenu tabs.
  */
 
 /** LuCI menu node `name` → icon basename under /luci-static/shadcn/icons/.
@@ -107,7 +107,7 @@ return baseclass.extend({
 
   /**
    * LuCI root often has one child (admin / 管理权). Sidebar lists that child’s
-   * children — same as material renderModeMenu → renderMainMenu(activeChild).
+   * children rather than the single root node itself.
    */
   _resolveMenuBranch(tree) {
     const dp = L.env.dispatchpath || [];
@@ -134,7 +134,7 @@ return baseclass.extend({
   },
 
   /**
-   * Mirrors material’s #mainmenu pattern: populate an empty server shell.
+   * Populates the empty server-rendered #sidebar shell with its chrome.
    */
   renderSidebarChrome() {
     const sidebar = document.getElementById("sidebar");
@@ -221,7 +221,7 @@ return baseclass.extend({
 
   /**
    * Two levels under the active branch (e.g. admin): 状态 → 概览…
-   * Matches material renderMainMenu(activeChild) with l <= 2.
+   * Capped at l <= 2; anything deeper renders in #tabmenu.
    */
   renderSidebarNav(branch, branchUrl) {
     const nav = document.getElementById("sidebar-nav");
@@ -661,7 +661,7 @@ return baseclass.extend({
     }
   },
 
-  /** Ported from menu-material.js renderTabMenu (recursive tab rows). */
+  /** Recursive tab rows for menu levels below the sidebar’s two. */
   renderTabMenu(tree, url, level) {
     const container = document.getElementById("tabmenu");
     if (!container) return;
