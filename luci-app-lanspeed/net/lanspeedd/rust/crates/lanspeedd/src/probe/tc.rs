@@ -11,8 +11,12 @@ pub const LANSPEED_EARLY_HANDLE: &str = "0x1eee";
 pub struct TcFilterDetails {
     pub filter: TcFilter,
     pub kind: Option<String>,
+    pub protocol: Option<String>,
     pub program_name: Option<String>,
     pub program_id: Option<u32>,
+    pub direct_action: Option<bool>,
+    pub in_hw: Option<bool>,
+    pub not_in_hw: Option<bool>,
 }
 
 pub fn has_owned_identity_collision(filters: &[TcFilter]) -> bool {
@@ -27,6 +31,16 @@ pub fn has_owned_identity_collision(filters: &[TcFilter]) -> bool {
 
 pub fn has_foreign_filters(filters: &[TcFilter]) -> bool {
     filters.iter().any(|filter| filter.owner != "lanspeed")
+}
+
+/// Validate the execution properties that make a cls_bpf hook suitable for
+/// exact software-path accounting. Older iproute2 builds may omit these
+/// details, so only explicit contradictions are rejected.
+pub fn has_software_direct_action_semantics(filter: &TcFilterDetails) -> bool {
+    filter.protocol.as_deref().is_none_or(protocol_is_all)
+        && filter.direct_action != Some(false)
+        && filter.in_hw != Some(true)
+        && filter.not_in_hw != Some(false)
 }
 
 pub fn dae_preempts_lan_ingress(filters: &[TcFilter], attach_ifnames: &[String]) -> bool {
@@ -53,7 +67,7 @@ pub fn parse_filter_json(
         .as_array()
         .ok_or_else(|| "tc filter JSON root is not an array".to_owned())?;
 
-    entries
+    let mut details = entries
         .iter()
         .enumerate()
         .map(|(index, entry)| {
@@ -73,14 +87,30 @@ pub fn parse_filter_json(
             let bpf = options
                 .and_then(|item| item.get("bpf"))
                 .and_then(Value::as_object);
+            let prog = options
+                .and_then(|item| item.get("prog"))
+                .and_then(Value::as_object);
             let program_name = bpf
                 .and_then(|item| string_field(item, "name"))
+                .or_else(|| prog.and_then(|item| string_field(item, "name")))
+                .or_else(|| options.and_then(|item| string_field(item, "bpf_name")))
                 .or_else(|| options.and_then(|item| string_field(item, "name")))
                 .or_else(|| string_field(object, "name"));
             let program_id = bpf
                 .and_then(|item| item.get("id"))
                 .and_then(value_u32)
+                .or_else(|| prog.and_then(|item| item.get("id")).and_then(value_u32))
                 .or_else(|| options.and_then(|item| item.get("id")).and_then(value_u32));
+            let detail_bool = |names: &[&str]| {
+                names.iter().find_map(|name| {
+                    options
+                        .and_then(|item| item.get(*name))
+                        .or_else(|| bpf.and_then(|item| item.get(*name)))
+                        .or_else(|| prog.and_then(|item| item.get(*name)))
+                        .or_else(|| object.get(*name))
+                        .and_then(Value::as_bool)
+                })
+            };
             let owner = owner(program_name.as_deref().unwrap_or_default());
             let chain = object.get("chain").and_then(value_u32).unwrap_or(0);
 
@@ -98,11 +128,47 @@ pub fn parse_filter_json(
                     .get("kind")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
+                protocol: object.get("protocol").map(value_protocol),
                 program_name,
                 program_id,
+                direct_action: detail_bool(&["direct-action", "direct_action"]),
+                in_hw: detail_bool(&["in_hw", "in-hw"]),
+                not_in_hw: detail_bool(&["not_in_hw", "not-in-hw"]),
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, String>>()?;
+
+    /*
+     * Some tc-full builds emit a header object immediately before the full
+     * filter object. Keep a lone sparse object conservative, but discard it
+     * when a detailed object for the same slot is present so one kernel
+     * filter cannot be misreported as an additional foreign filter.
+     */
+    let detailed_slots = details
+        .iter()
+        .filter(|detail| detail.filter.handle != "unknown")
+        .map(|detail| {
+            (
+                detail.filter.chain,
+                detail.filter.pref,
+                detail.kind.clone(),
+                detail.protocol.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    details.retain(|detail| {
+        let sparse = detail.filter.handle == "unknown"
+            && detail.program_name.is_none()
+            && detail.program_id.is_none();
+        !sparse
+            || !detailed_slots.iter().any(|slot| {
+                slot.0 == detail.filter.chain
+                    && slot.1 == detail.filter.pref
+                    && slot.2 == detail.kind
+                    && slot.3 == detail.protocol
+            })
+    });
+    Ok(details)
 }
 
 pub fn qdisc_json_has_clsact(output: &str) -> Result<bool, String> {
@@ -145,6 +211,22 @@ fn value_handle(value: &Value) -> Option<String> {
     } else {
         format!("0x{canonical}")
     })
+}
+
+fn value_protocol(value: &Value) -> String {
+    match value {
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        _ => "invalid".into(),
+    }
+}
+
+fn protocol_is_all(protocol: &str) -> bool {
+    protocol.eq_ignore_ascii_case("all")
+        || matches!(
+            protocol.to_ascii_lowercase().as_str(),
+            "3" | "0x3" | "0x0003"
+        )
 }
 
 fn canonical_handle(handle: &str) -> String {

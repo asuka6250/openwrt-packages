@@ -55,7 +55,7 @@ make -j"$(nproc)" package/luci-app-lanspeed/compile
 - **接口配置**：采集 / 观察 / 关闭 三态切换，默认采集 `br-lan`、观察 `wan`；异步扫描具有代次保护，并显示缺失接口、数量限制和不可采集原因。自动忽略 `dae*`、`miireg*`、`tun*`、`erspan*`、`gretap*`、`gre*`、`ip6gre*`、`ip6tnl*`、`sit*`、`bonding_masters*`，拒绝 nssifb 采集并可观察 WAN / ifb 计数。
 - **告警体系**：OpenClash / dae/daed / SQM/qosify/ifb / flow offload / fullcone NAT 等场景自动识别并提示。
 - **客户端状态列**：默认隐藏 LAN 客户端的采集来源与告警状态，可在“LAN Speed 配置”中开启。
-- **版本显示**：LuCI 状态页显示完整版本，例如 `1.1.2-r5`。
+- **版本显示**：LuCI 状态页显示完整版本，例如 `1.1.2-r6`。
 
 ## 采集策略
 
@@ -128,7 +128,7 @@ workspace 的 `rust-version` 与构建驱动统一使用 `1.87.0`，CI 同时覆
 
 - `luci-app-lanspeed` 必须依赖 `lanspeedd-bpf`，`lanspeedd-bpf` 再依赖用户态 daemon `lanspeedd`；在 menuconfig 中选择 LuCI 应用会自动选中完整依赖链。
 - `lanspeedd-bpf` 的标准 OpenWrt 包构建使用固定的 `bpf-linker 0.10.3` 构建两套 Rust eBPF 对象；显式传入兼容版本的 `BPF_LINKER` 时，构建驱动按上述版本范围校验。目标机必须提供 `tc-full` 和 `kmod-sched-bpf`。统一使用多数流控插件采用的 `tc-full`，避免与 `tc-tiny` 的包冲突。
-- daemon 使用 `tc-full` 的 JSON 明细核对 chain、pref、handle、BPF 类型和内核程序 ID；帮助命令只要明确报告 BPF/clsact 能力，即使按 iproute2 约定返回非零 usage 状态也不会误报健康检查降级。
+- daemon 使用 `tc-full` 的 JSON 明细核对 chain、pref、handle、BPF 类型、内核程序 ID、全协议 direct-action 与软件执行状态；通过 RTNetlink TC 事件触发精确复核，并保留 30 秒强制审计。监听不可用、溢出或报文异常时会退回逐周期完整审计；实际对象加载、hook 挂载和 map 读取结果优先于 `tc help` 的文字与返回码，避免兼容输出误报降级。
 - 当前固定的 `bpf-linker` 发布包要求 x86_64 编译主机，目标路由器架构仍由 OpenWrt SDK 决定。
 - NSS sync 是 ECM/PPE 加速活跃时自动模式的权威来源；NSS-direct 保留为显式模式和 sync 不可用时的后备。两者都不替代 LuCI 应用对 `lanspeedd-bpf` 的安装依赖，BPF 仍用于慢路径观测。
 
@@ -175,7 +175,7 @@ SDK_DIR=/openwrt/immortalwrt ENABLE_BPF=1 scripts/build-sdk.sh
 
 普通用户从 GitHub 构建时优先使用前面的 `src-git lanspeed` feed 流程；辅助脚本不会下载 SDK 或工具链。
 
-ABI 注意点：纯 Rust 用户态 daemon 不再绑定 libubox/libubus/libuci 的日期 SONAME，但这不等于一个 APK 可以安装到所有固件。APK 架构、musl 基线、LuCI 运行时和 `lanspeedd-bpf` 的内核能力仍须与目标固件匹配，不能伪造架构或把 BPF 包强装到不兼容内核上。未纳入实机验收的设备必须使用对应 SDK 构建，且不得仅凭交叉编译结果声明已经验证。
+ABI 注意点：纯 Rust 用户态 daemon 不再绑定 libubox/libubus/libuci 的日期 SONAME，但这不等于一个 APK 可以安装到所有固件。APK 架构、musl 基线、LuCI 运行时和 `lanspeedd-bpf` 的内核能力仍须与目标固件匹配，不能伪造架构或把 BPF 包强装到不兼容内核上。未纳入实机验收的设备必须使用对应 SDK 重建，且不得仅凭交叉编译结果声明已经验证。
 
 回滚时三个包应作为同一版本集合降级，避免混用用户态协议契约和采集资产。先备份 `/etc/config/lanspeed` 与当前三包，再执行：
 

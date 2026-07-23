@@ -90,8 +90,18 @@ function fakeElement(tag, attrs, children) {
 		removeAttribute: function(name) { delete this.attrs[name]; },
 		appendChild: function(child) {
 			if (child === null || child === undefined || child === '') return child;
+			if (child && typeof child === 'object' && child.parentNode)
+				child.parentNode.removeChild(child);
 			if (typeof child === 'object') child.parentNode = this;
 			this.children.push(child);
+			return child;
+		},
+		insertBefore: function(child, reference) {
+			if (child && typeof child === 'object' && child.parentNode)
+				child.parentNode.removeChild(child);
+			const index = reference === null ? this.children.length : this.children.indexOf(reference);
+			this.children.splice(index < 0 ? this.children.length : index, 0, child);
+			if (child && typeof child === 'object') child.parentNode = this;
 			return child;
 		},
 		removeChild: function(child) {
@@ -325,11 +335,13 @@ async function testControllerLifecycle(context, fmt) {
 		removeEventListener: function(name) { delete events[name]; }
 	};
 	let refreshes = 0;
+	let busyRefreshes = 0;
 	let calls = 0;
 	let deferred = makeDeferred();
 	const state = Object.assign(normalizedResult('initial', 100), {
 		prefs: { paused: false, refreshMs: 3000 },
 		refreshLive: function() { refreshes++; },
+		refreshBusy: function() { busyRefreshes++; },
 		loading: false,
 		manualBusy: false
 	});
@@ -350,6 +362,8 @@ async function testControllerLifecycle(context, fmt) {
 	assert.strictEqual(automatic, manual);
 	assert.strictEqual(state.loading, true);
 	assert.strictEqual(state.manualBusy, true);
+	assert.strictEqual(busyRefreshes, 2,
+		'loading and duplicate manual joins must update only busy controls without rebuilding client rows');
 	assert.strictEqual(timers.count(), 0);
 	await Promise.resolve();
 	assert.strictEqual(calls, 1);
@@ -383,7 +397,9 @@ async function testControllerLifecycle(context, fmt) {
 	assert.strictEqual(controller.isDestroyed(), true);
 	assert.strictEqual(events.pagehide, undefined);
 	assert.strictEqual(events.beforeunload, undefined);
-	assert.ok(refreshes >= 3);
+	assert.strictEqual(refreshes, 1,
+		'only the completed sample may rebuild live client rows');
+	assert.ok(busyRefreshes >= 3);
 }
 
 function testRenderWiresLiveRefresh(context, fmt) {
@@ -535,6 +551,11 @@ function testPaginationAndUiStates(context, fmt) {
 	assert.strictEqual(state.refs.root.attrs['aria-busy'], 'false');
 	assert.strictEqual(state.refs.pageNext.attrs['aria-controls'], 'lanspeed-clients-table');
 	assert.ok(textOf(state.refs.pageSummary).includes('1 / 3'));
+	const stableFirstRow = state.refs.tbody.children[0];
+	clients[29].tx_bps = 987654;
+	state.refreshLive();
+	assert.strictEqual(state.refs.tbody.children[0], stableFirstRow,
+		'live refresh must preserve a stable client row so its hover state does not flash');
 
 	state.refs.pageNext.listeners.click({ preventDefault: function() {} });
 	assert.strictEqual(state.page, 2);

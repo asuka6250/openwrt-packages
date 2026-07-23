@@ -132,6 +132,7 @@ function refreshPagination(viewState, refs, sorted) {
 
 function clientNameContent(c, displayName, ips) {
 	var name = displayName;
+	var ipText = '';
 	if (c.identity_key) {
 		var label = _('查看 %s 的当前连接').format(displayName);
 		name = E('a', {
@@ -142,14 +143,22 @@ function clientNameContent(c, displayName, ips) {
 		}, displayName);
 	}
 
+	if (c.hostname && ips.length)
+		ipText = ips.join(', ');
+	else if (ips.length > 1)
+		ipText = ips.slice(1).join(', ');
+
+	var ipAttrs = { 'class': 'ipline' };
+	if (ipText)
+		ipAttrs.title = ips.join(', ');
+	else {
+		ipAttrs.class += ' lanspeed-ipline-placeholder';
+		ipAttrs['aria-hidden'] = 'true';
+	}
+
 	return [
 		name,
-		(c.hostname && ips.length)
-			? E('span', { 'class': 'ipline', 'title': ips.join(', ') }, ips.join(', '))
-			: (ips.length > 1
-				? E('span', { 'class': 'ipline', 'title': ips.join(', ') },
-				    ips.slice(1).join(', '))
-				: '')
+		E('span', ipAttrs, ipText || '\u00a0')
 	];
 }
 
@@ -178,6 +187,109 @@ function clientStateCell(stateCells, visible) {
 	}, E('span', { 'class': 'state' }, stateCells));
 	cell.hidden = !visible;
 	return cell;
+}
+
+var CLIENT_HOVER_LOCK = 'lanspeed-client-hover-lock';
+var CLIENT_REFRESH_LOCK = 'lanspeed-client-refresh-lock';
+
+function rowHasClass(row, name) {
+	return (' ' + String(row && row.className || '') + ' ').indexOf(' ' + name + ' ') !== -1;
+}
+
+function addRowClass(row, name) {
+	if (row && !rowHasClass(row, name))
+		row.className = [ row.className, name ].filter(Boolean).join(' ');
+}
+
+function removeRowClass(row, name) {
+	if (!row) return;
+	row.className = String(row.className || '').split(/\s+/).filter(function(value) {
+		return value && value !== name;
+	}).join(' ');
+}
+
+function hoveredClientRow(tbody) {
+	if (!tbody || typeof tbody.querySelector !== 'function') return null;
+	try { return tbody.querySelector('tr:hover'); } catch (error) { return null; }
+}
+
+function captureClientViewport(refs) {
+	var tbody = refs && refs.tbody;
+	var hovered = hoveredClientRow(tbody);
+	if (hovered) {
+		addRowClass(hovered, CLIENT_HOVER_LOCK);
+		addRowClass(tbody, CLIENT_REFRESH_LOCK);
+	}
+	var host = typeof window !== 'undefined' ? window : null;
+	var scrollX = host ? Number(host.scrollX !== undefined ? host.scrollX : host.pageXOffset) || 0 : 0;
+	var scrollY = host ? Number(host.scrollY !== undefined ? host.scrollY : host.pageYOffset) || 0 : 0;
+	return {
+		host: host,
+		tbody: tbody,
+		hovered: hovered,
+		scrollX: scrollX,
+		scrollY: scrollY
+	};
+}
+
+function restoreClientViewport(state) {
+	if (!state) return;
+	var host = state.host;
+	if (host && typeof host.scrollTo === 'function')
+		host.scrollTo(state.scrollX, state.scrollY);
+
+	var unlock = function() {
+		removeRowClass(state.hovered, CLIENT_HOVER_LOCK);
+		removeRowClass(state.tbody, CLIENT_REFRESH_LOCK);
+	};
+	if (state.hovered && host && typeof host.setTimeout === 'function')
+		host.setTimeout(unlock, 80);
+	else
+		unlock();
+}
+
+function replaceRowContents(target, source) {
+	var hoverLocked = rowHasClass(target, CLIENT_HOVER_LOCK);
+	var children = [];
+	while (source.firstChild)
+		children.push(source.removeChild(source.firstChild));
+	while (target.firstChild)
+		target.removeChild(target.firstChild);
+	target.className = source.className;
+	if (hoverLocked) addRowClass(target, CLIENT_HOVER_LOCK);
+	children.forEach(function(child) { target.appendChild(child); });
+}
+
+/*
+ * Keep stable client <tr> nodes alive across samples. Replacing the complete
+ * tbody makes the browser drop :hover for one paint and causes the highlighted
+ * row to flash at every refresh even when its identity and position are stable.
+ */
+function reconcileClientRows(tbody, rows) {
+	var existing = Object.create(null);
+	Array.prototype.forEach.call(tbody.children, function(row) {
+		var key = row.getAttribute('data-client-key');
+		if (key !== null && !Object.prototype.hasOwnProperty.call(existing, key))
+			existing[key] = row;
+	});
+
+	var desired = rows.map(function(row) {
+		var key = row.getAttribute('data-client-key');
+		if (key === null || !Object.prototype.hasOwnProperty.call(existing, key))
+			return row;
+		var current = existing[key];
+		delete existing[key];
+		replaceRowContents(current, row);
+		return current;
+	});
+
+	desired.forEach(function(row, index) {
+		var current = tbody.children[index] || null;
+		if (current !== row)
+			tbody.insertBefore(row, current);
+	});
+	while (tbody.children.length > desired.length)
+		tbody.removeChild(tbody.lastChild);
 }
 
 function refreshSortHeaders(refs, prefs) {
@@ -210,6 +322,7 @@ function refreshSortHeaders(refs, prefs) {
 function refreshLive(viewState) {
 	var refs = viewState.refs;
 	if (!refs) return;
+	var viewport = captureClientViewport(refs);
 	var status = viewState.status || {};
 	var clientsAll = fmt.asArray(viewState.clients && viewState.clients.clients);
 	var prefs = viewState.prefs;
@@ -354,7 +467,7 @@ function refreshLive(viewState) {
 			globalWarnings[vocab.normalizeWarningId(w)] = true;
 		});
 
-		fmt.replaceChildren(refs.tbody, page.items.map(function(c) {
+		reconcileClientRows(refs.tbody, page.items.map(function(c) {
 			var tx = Number(c.tx_bps) || 0, rx = Number(c.rx_bps) || 0;
 			var idle = !fmt.isActiveClient(c, latestSample, activeCfg);
 			var ips = statusIp.displayIpsForClient(c.ips, showIpv6, hidePrivateIpv6, hideIpv6Ranges);
@@ -407,7 +520,10 @@ function refreshLive(viewState) {
 				displayName = c.mac || '-';
 			}
 
-			return E('tr', idle ? { 'class': 'idle' } : {}, [
+			return E('tr', {
+				'class': idle ? 'idle' : '',
+				'data-client-key': String(fmt.identityOf(c))
+			}, [
 				E('td', { 'class': 'lanspeed-client-name' },
 					clientNameContent(c, displayName, ips)),
 				E('td', {
@@ -507,6 +623,7 @@ function refreshLive(viewState) {
 			].filter(Boolean).join(' ');
 		}
 	}
+	restoreClientViewport(viewport);
 
 }
 
@@ -516,6 +633,9 @@ return baseclass.extend({
 	splitClientWarnings: splitClientWarnings,
 	setClientStatusVisibility: setClientStatusVisibility,
 	clientStateCell: clientStateCell,
+	captureClientViewport: captureClientViewport,
+	restoreClientViewport: restoreClientViewport,
+	reconcileClientRows: reconcileClientRows,
 	refreshAvailability: refreshAvailability,
 	refreshPagination: refreshPagination,
 

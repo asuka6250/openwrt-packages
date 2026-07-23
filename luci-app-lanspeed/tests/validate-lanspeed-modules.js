@@ -3691,6 +3691,70 @@ function assertStatusRefreshSortingInteraction(src) {
 			fail('statusRefresh.js must render connection-only rows as information and keep only actionable client warnings');
 		}
 	}
+	if (typeof mod.reconcileClientRows !== 'function') {
+		fail('statusRefresh.js must expose keyed client-row reconciliation for validation');
+	} else {
+		const tbody = fakeElement('tbody', {});
+		tbody.insertBefore = function(row, reference) {
+			if (row.parentNode) row.parentNode.removeChild(row);
+			const index = reference === null ? this.children.length : this.children.indexOf(reference);
+			this.children.splice(index < 0 ? this.children.length : index, 0, row);
+			row.parentNode = this;
+			return row;
+		};
+		function row(key, value, className) {
+			return fakeElement('tr', {
+				'class': className || '',
+				'data-client-key': key
+			}, fakeElement('td', {}, value));
+		}
+		const originalA = row('a@lan', 'A old', 'idle');
+		const removedB = row('b@lan', 'B old', '');
+		tbody.appendChild(originalA);
+		tbody.appendChild(removedB);
+		const addedC = row('c@lan', 'C new', '');
+		mod.reconcileClientRows(tbody, [ row('a@lan', 'A new', ''), addedC ]);
+		if (tbody.children.length !== 2 || tbody.children[0] !== originalA ||
+		    tbody.children[1] !== addedC || originalA.className !== '' ||
+		    fakeElementText(originalA) !== 'A new' || removedB.parentNode !== null) {
+			fail('statusRefresh.js must reuse stable rows while updating content and removing stale identities');
+		}
+		const retainedC = tbody.children[1];
+		retainedC.className = 'lanspeed-client-hover-lock';
+		mod.reconcileClientRows(tbody, [ row('c@lan', 'C newest', 'idle'), row('a@lan', 'A newest', '') ]);
+		if (tbody.children[0] !== retainedC || tbody.children[1] !== originalA ||
+		    retainedC.className !== 'idle lanspeed-client-hover-lock' || fakeElementText(retainedC) !== 'C newest' ||
+		    fakeElementText(originalA) !== 'A newest') {
+			fail('statusRefresh.js must move existing keyed rows without recreating them or dropping the hover lock');
+		}
+
+		const timers = [];
+		const scrolls = [];
+		const viewportWindow = {
+			location: { pathname: '/admin/status/lanspeed/overview' },
+			scrollX: 7,
+			scrollY: 240,
+			scrollTo: function(x, y) { scrolls.push([ x, y ]); },
+			setTimeout: function(handler, delay) { timers.push([ handler, delay ]); }
+		};
+		const viewportMod = loadStatusRefreshModule(src, viewportWindow);
+		tbody.querySelector = function(selector) {
+			return selector === 'tr:hover' ? retainedC : null;
+		};
+		const viewport = viewportMod.captureClientViewport({ tbody: tbody });
+		viewportMod.restoreClientViewport(viewport);
+		if (!retainedC.className.includes('lanspeed-client-hover-lock') ||
+		    !tbody.className.includes('lanspeed-client-refresh-lock') ||
+		    JSON.stringify(scrolls) !== JSON.stringify([ [ 7, 240 ] ]) ||
+		    timers.length !== 1 || timers[0][1] !== 80) {
+			fail('statusRefresh.js must lock hover transitions without changing the page scroll coordinates');
+		}
+		timers[0][0]();
+		if (retainedC.className.includes('lanspeed-client-hover-lock'))
+			fail('statusRefresh.js must release the transient hover lock after the browser has repainted');
+		if (tbody.className.includes('lanspeed-client-refresh-lock'))
+			fail('statusRefresh.js must restore normal row transitions after the browser has repainted');
+	}
 	if (typeof mod.setClientStatusVisibility !== 'function' ||
 	    typeof mod.clientStateCell !== 'function') {
 		fail('statusRefresh.js must expose configured client-status column visibility behavior');
@@ -3774,10 +3838,12 @@ function assertStatusRefreshClientDetailLink(src) {
 	    !ipline || ipline.parentNode === link || fakeElementText(ipline) !== '192.0.2.30, 2001:db8::30') {
 		fail('statusRefresh.js must generate an encoded accessible detail link around only the display name while preserving the IP subline');
 	}
-	const missing = mod.clientNameContent({ hostname: '无身份' }, '无身份', [ '192.0.2.31' ]);
-	if (!Array.isArray(missing) || missing[0] !== '无身份' ||
+	const missing = mod.clientNameContent({}, '192.0.2.31', [ '192.0.2.31' ]);
+	if (!Array.isArray(missing) || missing[0] !== '192.0.2.31' ||
+	    !missing[1] || !String(missing[1].attrs.class).includes('lanspeed-ipline-placeholder') ||
+	    missing[1].attrs['aria-hidden'] !== 'true' || fakeElementText(missing[1]) !== '\u00a0' ||
 	    findFakeElementsByTag({ children: missing }, 'a').length !== 0) {
-		fail('statusRefresh.js must safely keep clients without identity_key as plain display text');
+		fail('statusRefresh.js must keep identity-less clients safe and reserve the second line needed for stable row height');
 	}
 	const hostile = mod.clientNameContent({
 		identity_key: 'safe@lan', hostname: '<img src=x onerror=alert(1)>'
@@ -4441,6 +4507,11 @@ function assertRpcModule(src) {
 	if (!src.includes("method: 'health'") || !src.includes('health:')) {
 		fail('lanspeed/rpc.js must expose the dedicated runtime health method');
 	}
+	if (!src.includes("object: 'luci'") || !src.includes("method: 'setInitAction'") ||
+	    !src.includes("return callInitAction('lanspeedd', 'restart')") ||
+	    !src.includes('restartService: restartService')) {
+		fail('lanspeed/rpc.js must expose only the fixed LAN Speed service restart action');
+	}
 }
 
 function assertNoRpcDeclare(src, modName) {
@@ -4460,7 +4531,7 @@ function assertViewRequires(src) {
 
 function assertCacheAwareViewEntry(src, moduleName, label) {
 	if (!/^\s*['"]require\s+view['"]\s*;/m.test(src) ||
-	    !src.includes("var RESOURCE_VERSION = 'lanspeed-1.1.2-r5';") ||
+	    !src.includes("var RESOURCE_VERSION = 'lanspeed-1.1.2-r6';") ||
 	    !src.includes('var previousVersion = L.env.resource_version;') ||
 	    !src.includes('L.env.resource_version = RESOURCE_VERSION;') ||
 	    !src.includes(`L.require('${moduleName}')`) ||
@@ -5278,6 +5349,14 @@ function assertStatusStyleModule(src) {
 		if (!baseCss.includes(marker))
 			fail(`statusStyleBase.js must retain status information architecture: ${marker}`);
 	});
+	if (!baseCss.includes('.lanspeed-clients-card{overflow-anchor:none}') ||
+	    !baseCss.includes('.ipline.lanspeed-ipline-placeholder{visibility:hidden}') ||
+	    !baseCss.includes('line-height:1.2;white-space:nowrap') ||
+	    !baseCss.includes('tr.lanspeed-client-hover-lock') ||
+	    !baseCss.includes('tbody.lanspeed-client-refresh-lock tr') ||
+	    !baseCss.includes('transition:none!important')) {
+		fail('statusStyleBase.js must prevent scroll anchoring and suppress hover transitions during client reconciliation');
+	}
 	[
 		'@media (max-width:900px)', '@media (max-width:700px)', '@media (max-width:480px)',
 		'.lanspeed-clients-card .lanspeed-table tbody>tr{display:grid;',
@@ -5292,10 +5371,13 @@ function assertStatusStyleModule(src) {
 	themeCss.forEach(function(theme) {
 		if (!theme[2].includes(`lanspeed-theme-${theme[1]}`) ||
 		    !theme[2].includes('.lanspeed-metrics{') ||
-		    !theme[2].includes('.lanspeed-table')) {
+		    !theme[2].includes('.lanspeed-table') ||
+		    !theme[2].includes('tr.lanspeed-client-hover-lock')) {
 			fail(`statusStyle${theme[0]}.js must independently implement metrics and table density`);
 		}
 	});
+	if (!themeCss[1][2].includes('.lanspeed-theme-argon .lanspeed-metric .big{font-size:1.3rem}'))
+		fail('statusStyleArgon.js must keep live rate values on one line at narrow widths');
 	if (!themeCss[0][2].includes('.lanspeed-clients-card .lanspeed-body{overflow-x:auto}') ||
 	    !themeCss[1][2].includes('.lanspeed-clients-card .lanspeed-body{overflow-x:auto}')) {
 		fail('Aurora and Argon status styles must retain desktop client-table overflow containment');
@@ -5396,6 +5478,14 @@ function assertStatusRefreshModule(src) {
 	    !src.includes("'data-label': _('状态')")) {
 		fail('lanspeed/statusRefresh.js must label client fields for the narrow stacked layout');
 	}
+	if (!src.includes('reconcileClientRows(refs.tbody') ||
+	    !src.includes("'data-client-key': String(fmt.identityOf(c))") ||
+	    !src.includes('captureClientViewport(refs)') ||
+	    !src.includes('restoreClientViewport(viewport)') ||
+	    !src.includes('lanspeed-client-hover-lock') ||
+	    src.includes('fmt.replaceChildren(refs.tbody')) {
+		fail('statusRefresh.js must preserve keyed rows, hover and viewport position across changing live samples');
+	}
 	if (!src.includes('var showClientStatus = viewState.showClientStatus === true;') ||
 	    !src.includes('setClientStatusVisibility(refs, showClientStatus);') ||
 	    !src.includes('clientStateCell(stateCells, showClientStatus)') ||
@@ -5491,6 +5581,8 @@ function assertDiagnosticsShellModule(src) {
 	    !src.includes("stage(refs, 'path'") ||
 	    !src.includes("stage(refs, 'connections'") ||
 	    !src.includes('refs.btnCopy') ||
+	    !src.includes('refs.btnRestart') ||
+	    !src.includes('lanspeed-diagnostics-restart-feedback') ||
 	    !src.includes('lanspeed-diagnostics-error-details') ||
 	    !src.includes('lanspeed-diagnostics-rpc-group') ||
 	    !src.includes('lanspeed-diagnostics-report-details') ||
@@ -5562,6 +5654,8 @@ function assertDiagnosticsViewModule(src) {
 	    !src.includes('lsRpc.overview()') ||
 	    !src.includes('normalizeResults: normalizeResults') ||
 	    !src.includes('diagnosticsModel.buildReport(self, lsVersion.FULL_VERSION)') ||
+	    !src.includes('lsRpc.restartService()') ||
+	    !src.includes('restartService: function()') ||
 	    !src.includes('diagnosticsShell.buildShell(viewState)') ||
 	    !src.includes('diagnosticsRefresh.refresh(viewState)')) {
 		fail('lanspeed/diagnosticsView.js must isolate RPC failures, retain prior data and render/copy the independent diagnostics page');
@@ -6201,7 +6295,7 @@ function matchingConfigStatus(values) {
 		max_clients: values.max_clients,
 		enable_bpf: values.enable_bpf === '1',
 		enable_conntrack_fallback: values.enable_conntrack_fallback === '1',
-		version: '1.1.2-r5',
+		version: '1.1.2-r6',
 		capabilities: { bpf: true, conntrack_fallback: true },
 		evidence: { collector: { primary_source: 'bpf', effective_connection_collector: 'conntrack_netlink' } }
 	};
@@ -6228,7 +6322,7 @@ function assertConfigFormBehavior(src) {
 	}, makeConfigIfaceStub(), model);
 	asyncChecks.push(validLoadForm.loadValues().then(function(values) {
 		if (values.pageState !== 'ready' || !values.rpc.status.ok ||
-			values.rpc.status.phase !== 'success' || values.status.version !== '1.1.2-r5') {
+			values.rpc.status.phase !== 'success' || values.status.version !== '1.1.2-r6') {
 			fail('configForm.js must accept the complete status contract and retain capability evidence');
 		}
 	}).catch(function(error) {
