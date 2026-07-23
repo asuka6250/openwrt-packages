@@ -274,13 +274,13 @@ function select_dropdown_a(e) {
     (t = e.querySelector("span.open")) && "true" !== t.getAttribute("data-chevron-upgraded") && (t.setAttribute("data-chevron-upgraded", "true"), t.innerHTML = "");
 }
 function select_dropdown_d(e, t) {
-    let n = t.offsetTop, o = n + t.offsetHeight, l = e.scrollTop, i = l + e.clientHeight;
-    n < l ? e.scrollTop = n : o > i && (e.scrollTop = o - e.clientHeight);
+    let n = t.offsetTop, l = n + t.offsetHeight, o = e.scrollTop, i = o + e.clientHeight;
+    n < o ? e.scrollTop = n : l > i && (e.scrollTop = l - e.clientHeight);
 }
 function select_dropdown_c(e, t) {
     let r = e.getBoundingClientRect(), s = getEffectiveDocumentDirection(), a = getViewportInlineSize(), d = window.innerHeight, c = d - r.bottom, u = r.top;
-    if (c < Math.min(32 * t.options.length + 10, 250) && u > c ? e.setAttribute("data-open-direction", "up") : e.setAttribute("data-open-direction", "down"), !e.closest("#modal_overlay .modal")) return void e.removeAttribute("data-fluent-floating");
-    let b = Math.min(32 * t.options.length + 10, 350, 0.5 * d), p = c < b && u > c, f = Math.min(b, Math.max(64, p ? r.top - 8 - 4 : d - r.bottom - 8 - 4)), m = Math.min(r.width, a - 16), v = Math.min(Math.max(8, getRectInlineStart(r, s, a)), a - m - 8), h = p ? Math.max(8, r.top - f - 4) : Math.min(d - 8 - f, r.bottom + 4);
+    if (c < Math.min(32 * t.options.length + 10, 320) && u > c ? e.setAttribute("data-open-direction", "up") : e.setAttribute("data-open-direction", "down"), !e.closest("#modal_overlay .modal, .fluent-mac-overlay-card, [class*='overlay']")) return void e.removeAttribute("data-fluent-floating");
+    let b = Math.min(32 * t.options.length + 10, 320, 0.45 * d), p = c < b && u > c, f = Math.min(b, Math.max(64, p ? u - 8 - 4 : c - 8 - 4)), m = Math.min(r.width, a - 16), v = Math.min(Math.max(8, getRectInlineStart(r, s, a)), a - m - 8), h = p ? Math.max(8, r.top - f - 4) : Math.min(d - 8 - f, r.bottom + 4);
     e.setAttribute("data-open-direction", p ? "up" : "down"), e.setAttribute("data-fluent-floating", "modal"), setInlineCssCustomProperties(e.style, {
         inlineStart: v,
         inlineSize: m
@@ -312,18 +312,18 @@ function select_dropdown_b(n) {
                     t = t.parentElement;
                 }
                 if (!n) return !0;
-                let o = e.cloneNode(!1);
-                o.style.display = "", document.body.appendChild(o);
-                let l = window.getComputedStyle(o), i = "none" === l.display;
-                return document.body.removeChild(o), i;
+                let l = e.cloneNode(!1);
+                l.style.display = "", document.body.appendChild(l);
+                let o = window.getComputedStyle(l), i = "none" === o.display;
+                return document.body.removeChild(l), i;
             }
         } catch (e) {}
         return !1;
     }(n)) return;
-    let o = n.getAttribute("style");
+    let l = n.getAttribute("style");
     n.setAttribute("data-fluent-transformed", "true"), n.style.setProperty("display", "none", "important");
-    let l = jsx("li", {});
-    l.setAttribute("selected", "");
+    let o = jsx("li", {});
+    o.setAttribute("selected", "");
     let i = jsx("ul", {
         class: "dropdown"
     }), r = jsx("span", {
@@ -332,39 +332,39 @@ function select_dropdown_b(n) {
         class: "cbi-dropdown fluent-custom-select",
         children: [
             jsx("ul", {
-                children: l
+                children: o
             }),
             r,
             i
         ]
     });
-    if (s.setAttribute("tabindex", "0"), o) {
-        let e = o.replace(/\bdisplay\s*:\s*[^;]+(;|$)/gi, "").trim();
+    if (s.setAttribute("tabindex", "0"), l) {
+        let e = l.replace(/\bdisplay\s*:\s*[^;]+(;|$)/gi, "").trim();
         e && s.setAttribute("style", e);
     }
     n.disabled && (s.setAttribute("disabled", ""), s.removeAttribute("tabindex"));
     let a = ()=>{
         i.innerHTML = "";
-        let t = "", o = !1;
+        let t = "", l = !1;
         if (Array.from(n.options).forEach((n)=>{
-            let l = jsx("li", {
+            let o = jsx("li", {
                 children: n.text
             });
-            l.setAttribute("data-value", n.value), n.selected && (l.setAttribute("selected", ""), t = n.text, o = !0), n.disabled && l.setAttribute("disabled", ""), i.appendChild(l);
-        }), !o && n.options.length > 0) {
+            o.setAttribute("data-value", n.value), n.selected && (o.setAttribute("selected", ""), t = n.text, l = !0), n.disabled && o.setAttribute("disabled", ""), i.appendChild(o);
+        }), !l && n.options.length > 0) {
             let e = n.options[n.selectedIndex >= 0 ? n.selectedIndex : 0];
             t = e.text;
-            let o = i.querySelector(`li[data-value="${e.value}"]`);
-            o?.setAttribute("selected", "");
+            let l = i.querySelector(`li[data-value="${e.value}"]`);
+            l?.setAttribute("selected", "");
         }
-        l.textContent = t;
+        o.textContent = t;
     };
     a(), n.parentNode?.insertBefore(s, n.nextSibling), s.addEventListener("click", (e)=>{
         if (s.hasAttribute("disabled")) return;
         let t = e.target.closest("ul.dropdown > li");
         if (t) {
-            let o = t.getAttribute("data-value");
-            null === o || t.hasAttribute("disabled") || (n.value = o, n.dispatchEvent(new Event("change", {
+            let l = t.getAttribute("data-value");
+            null === l || t.hasAttribute("disabled") || (n.value = l, n.dispatchEvent(new Event("change", {
                 bubbles: !0
             })), n.dispatchEvent(new Event("input", {
                 bubbles: !0
@@ -386,12 +386,12 @@ function select_dropdown_b(n) {
     };
     document.addEventListener("click", b, !0), s.addEventListener("keydown", (e)=>{
         if (s.hasAttribute("disabled")) return;
-        let t = s.hasAttribute("open"), o = Array.from(i.querySelectorAll("li:not([disabled])")), l = o.findIndex((e)=>e.hasAttribute("selected"));
+        let t = s.hasAttribute("open"), l = Array.from(i.querySelectorAll("li:not([disabled])")), o = l.findIndex((e)=>e.hasAttribute("selected"));
         switch(e.key){
             case "Enter":
             case " ":
                 if (e.preventDefault(), t) {
-                    let e = o[l];
+                    let e = l[o];
                     e && e.click();
                 } else s.click();
                 break;
@@ -400,10 +400,10 @@ function select_dropdown_b(n) {
                 break;
             case "ArrowDown":
                 if (e.preventDefault(), t) {
-                    if (o.length > 0) {
-                        let e = (l + 1) % o.length;
-                        o.forEach((t, o)=>{
-                            if (o === e) {
+                    if (l.length > 0) {
+                        let e = (o + 1) % l.length;
+                        l.forEach((t, l)=>{
+                            if (l === e) {
                                 t.setAttribute("selected", ""), select_dropdown_d(i, t);
                                 let e = t.getAttribute("data-value");
                                 null !== e && (n.value = e, n.dispatchEvent(new Event("change", {
@@ -418,10 +418,10 @@ function select_dropdown_b(n) {
                 break;
             case "ArrowUp":
                 if (e.preventDefault(), t) {
-                    if (o.length > 0) {
-                        let e = (l - 1 + o.length) % o.length;
-                        o.forEach((t, o)=>{
-                            if (o === e) {
+                    if (l.length > 0) {
+                        let e = (o - 1 + l.length) % l.length;
+                        l.forEach((t, l)=>{
+                            if (l === e) {
                                 t.setAttribute("selected", ""), select_dropdown_d(i, t);
                                 let e = t.getAttribute("data-value");
                                 null !== e && (n.value = e, n.dispatchEvent(new Event("change", {
@@ -438,10 +438,10 @@ function select_dropdown_b(n) {
                 t && select_dropdown_u(s);
         }
     }), n.addEventListener("change", ()=>{
-        let e = n.value, t = Array.from(i.querySelectorAll("li")), o = "";
+        let e = n.value, t = Array.from(i.querySelectorAll("li")), l = "";
         t.forEach((t)=>{
-            t.getAttribute("data-value") === e ? (t.setAttribute("selected", ""), o = t.textContent || "") : t.removeAttribute("selected");
-        }), l.textContent = o;
+            t.getAttribute("data-value") === e ? (t.setAttribute("selected", ""), l = t.textContent || "") : t.removeAttribute("selected");
+        }), o.textContent = l;
     });
     let p = new MutationObserver(()=>{
         a();
@@ -958,6 +958,628 @@ function setupMenuSearch(n) {
     });
 }
 
+;// CONCATENATED MODULE: ./web/resources/utils/mac-selector.tsx
+
+let mac_selector_n = [
+    {
+        name: _("Random Local MAC"),
+        prefix: "RANDOM_LOCAL"
+    },
+    {
+        name: "Apple",
+        prefix: "00:1C:42"
+    },
+    {
+        name: "Apple",
+        prefix: "AC:BC:32"
+    },
+    {
+        name: "Intel",
+        prefix: "00:1E:67"
+    },
+    {
+        name: "Intel",
+        prefix: "3C:FD:FE"
+    },
+    {
+        name: "Huawei",
+        prefix: "00:1E:10"
+    },
+    {
+        name: "Huawei",
+        prefix: "70:54:F5"
+    },
+    {
+        name: "Xiaomi",
+        prefix: "18:59:36"
+    },
+    {
+        name: "Xiaomi",
+        prefix: "34:80:B3"
+    },
+    {
+        name: "ASUS",
+        prefix: "04:D4:C4"
+    },
+    {
+        name: "ASUS",
+        prefix: "2C:4D:54"
+    },
+    {
+        name: "TP-Link",
+        prefix: "00:1D:0F"
+    },
+    {
+        name: "TP-Link",
+        prefix: "50:C7:BF"
+    },
+    {
+        name: "Lenovo",
+        prefix: "00:12:FE"
+    },
+    {
+        name: "Dell",
+        prefix: "00:14:22"
+    },
+    {
+        name: "Microsoft",
+        prefix: "00:15:5D"
+    },
+    {
+        name: "Raspberry Pi",
+        prefix: "B8:27:EB"
+    },
+    {
+        name: "Raspberry Pi",
+        prefix: "DC:A6:32"
+    },
+    {
+        name: "Realtek / QEMU",
+        prefix: "52:54:00"
+    },
+    {
+        name: "Cisco",
+        prefix: "00:00:0C"
+    },
+    {
+        name: "Samsung",
+        prefix: "00:12:FB"
+    }
+];
+function mac_selector_a() {
+    return Math.floor(256 * Math.random()).toString(16).padStart(2, "0").toUpperCase();
+}
+function mac_selector_l(l) {
+    let i;
+    if ("true" === l.dataset.fluentMacInit) return;
+    l.dataset.fluentMacInit = "true";
+    let r = l.parentElement;
+    if (!r) return;
+    r.classList.contains("fluent-mac-selector-group") ? i = r : (i = jsx("div", {
+        class: "cbi-input-group fluent-mac-selector-group"
+    }), r.insertBefore(i, l), i.appendChild(l));
+    let c = jsx("button", {
+        type: "button",
+        class: "cbi-button cbi-button-action fluent-mac-edit-btn",
+        title: _("Advanced MAC Selector")
+    });
+    c.addEventListener("click", (i)=>{
+        let r, c, o, d, s, p, u, f, m, b, v;
+        i.preventDefault(), i.stopPropagation(), c = function(e) {
+            if (!e) return null;
+            let t = e.trim().toUpperCase().replace(/[:-]/g, "");
+            if (t.length < 6) return null;
+            let a = t.slice(0, 6), l = `${a.slice(0, 2)}:${a.slice(2, 4)}:${a.slice(4, 6)}`, i = mac_selector_n.find((e)=>e.prefix.toUpperCase() === l);
+            return i ? i.prefix : null;
+        }(r = l.value.trim() || l.placeholder || "00:00:00:00:00:00"), d = jsx("input", {
+            id: o = "fluent-mac-overlay-input",
+            type: "text",
+            class: "cbi-input-text fluent-mac-modal-input",
+            value: r,
+            placeholder: "00:00:00:00:00:00"
+        }), s = jsx("select", {
+            id: "fluent-mac-overlay-vendor-select",
+            class: "cbi-input-select",
+            style: "width: 100%;",
+            children: jsx("option", {
+                value: "",
+                disabled: !0,
+                hidden: !0,
+                selected: !c,
+                children: _("Select vendor prefix...")
+            })
+        }), mac_selector_n.forEach((e)=>{
+            let t = document.createElement("option");
+            t.value = e.prefix, t.textContent = `${e.name} (${"RANDOM_LOCAL" === e.prefix ? "x2:xx:xx" : e.prefix})`, c && e.prefix === c && (t.selected = !0), s.appendChild(t);
+        }), c && (s.value = c), (p = jsx("button", {
+            type: "button",
+            class: "btn cbi-button cbi-button-action fluent-mac-random-btn",
+            children: _("Randomize MAC")
+        })).addEventListener("click", (e)=>{
+            e.stopPropagation(), d.value = function(e) {
+                if (e && "RANDOM_LOCAL" !== e) {
+                    let t = e.trim().toUpperCase().split(/[:-]/);
+                    for(; t.length < 6;)t.push(mac_selector_a());
+                    return t.slice(0, 6).join(":");
+                }
+                let t = [
+                    "2",
+                    "6",
+                    "A",
+                    "E"
+                ], n = Math.floor(16 * Math.random()).toString(16).toUpperCase(), l = t[Math.floor(Math.random() * t.length)], i = [
+                    `${n}${l}`
+                ];
+                for(let e = 0; e < 5; e++)i.push(mac_selector_a());
+                return i.join(":");
+            }(s.value || void 0);
+        }), u = jsx("button", {
+            type: "button",
+            class: "btn cbi-button cbi-button-neutral",
+            children: _("Cancel")
+        }), f = jsx("button", {
+            type: "button",
+            class: "btn cbi-button cbi-button-positive",
+            children: _("Confirm")
+        }), m = jsx("button", {
+            type: "button",
+            class: "fluent-mac-overlay-close",
+            title: _("Close")
+        }), b = jsx("div", {
+            class: "fluent-mac-overlay-backdrop",
+            children: jsxs("div", {
+                class: "fluent-mac-overlay-card",
+                children: [
+                    jsxs("div", {
+                        class: "fluent-mac-overlay-header",
+                        children: [
+                            jsx("h3", {
+                                children: _("Advanced MAC Selector")
+                            }),
+                            m
+                        ]
+                    }),
+                    jsxs("div", {
+                        class: "fluent-mac-overlay-body",
+                        children: [
+                            jsxs("div", {
+                                class: "fluent-mac-field-block",
+                                children: [
+                                    jsx("label", {
+                                        htmlFor: o,
+                                        class: "fluent-mac-label",
+                                        children: _("Current / Pending MAC Address")
+                                    }),
+                                    d
+                                ]
+                            }),
+                            jsxs("div", {
+                                class: "fluent-mac-field-block",
+                                children: [
+                                    jsx("label", {
+                                        htmlFor: "fluent-mac-overlay-vendor-select",
+                                        class: "fluent-mac-label",
+                                        children: _("Preset Vendor / Generator")
+                                    }),
+                                    jsxs("div", {
+                                        class: "fluent-mac-picker-row",
+                                        children: [
+                                            jsx("div", {
+                                                class: "fluent-mac-vendor-picker-wrap",
+                                                children: s
+                                            }),
+                                            p
+                                        ]
+                                    })
+                                ]
+                            })
+                        ]
+                    }),
+                    jsxs("div", {
+                        class: "fluent-mac-overlay-footer",
+                        children: [
+                            u,
+                            f
+                        ]
+                    })
+                ]
+            })
+        }), v = ()=>{
+            b.remove();
+        }, m.addEventListener("click", (e)=>{
+            e.stopPropagation(), v();
+        }), u.addEventListener("click", (e)=>{
+            e.stopPropagation(), v();
+        }), f.addEventListener("click", (e)=>{
+            e.stopPropagation();
+            let t = d.value.trim();
+            t && (l.value = t, l.dispatchEvent(new Event("input", {
+                bubbles: !0
+            })), l.dispatchEvent(new Event("change", {
+                bubbles: !0
+            }))), v();
+        }), b.addEventListener("click", (e)=>{
+            e.target === b && v();
+        }), document.body.appendChild(b);
+    }), i.appendChild(c);
+}
+function setupMacSelector() {
+    document.querySelectorAll('input[id$=".macaddr"]').forEach((e)=>{
+        mac_selector_l(e);
+    }), new MutationObserver((e)=>{
+        e.forEach((e)=>{
+            e.addedNodes.forEach((e)=>{
+                e.nodeType === Node.ELEMENT_NODE && ("INPUT" === e.tagName && e.id && e.id.endsWith(".macaddr") ? mac_selector_l(e) : e.querySelectorAll('input[id$=".macaddr"]').forEach((e)=>{
+                    mac_selector_l(e);
+                }));
+            });
+        });
+    }).observe(document.body, {
+        childList: !0,
+        subtree: !0
+    });
+}
+
+;// CONCATENATED MODULE: ./web/resources/utils/log-viewer.tsx
+
+let log_viewer_l = "fluent-log-wordwrap", log_viewer_n = "fluent-log-autoscroll";
+function log_viewer_o(e) {
+    return "function" == typeof _ ? _(e) : e;
+}
+function log_viewer_r(e) {
+    try {
+        let t = document.createElement("textarea");
+        t.value = e, t.style.position = "fixed", t.style.left = "-9999px", t.style.top = "-9999px", document.body.appendChild(t), t.focus(), t.select();
+        let l = document.execCommand("copy");
+        return document.body.removeChild(t), l;
+    } catch (e) {
+        return !1;
+    }
+}
+function setupLogViewer() {
+    let e = document.getElementById("syslog");
+    e && log_viewer_i(e), new MutationObserver(()=>{
+        let e = document.getElementById("syslog");
+        e && "true" !== e.getAttribute("data-fluent-log-transformed") && log_viewer_i(e);
+    }).observe(document.body, {
+        childList: !0,
+        subtree: !0
+    });
+}
+function log_viewer_i(i) {
+    if ("true" === i.getAttribute("data-fluent-log-transformed")) return;
+    i.setAttribute("data-fluent-log-transformed", "true");
+    let a = "true" === localStorage.getItem(log_viewer_l), s = "false" !== localStorage.getItem(log_viewer_n), c = !1, u = null, d = null, g = jsxs("div", {
+        class: "fluent-log-viewer",
+        children: [
+            jsxs("div", {
+                class: "fluent-log-viewer__header",
+                children: [
+                    jsxs("div", {
+                        class: "fluent-log-viewer__stats",
+                        children: [
+                            jsxs("span", {
+                                class: "fluent-log-viewer__badge fluent-log-viewer__badge--lines",
+                                children: [
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-icon fluent-log-viewer__badge-icon--lines"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-count",
+                                        id: "fluentLogCountLines",
+                                        children: "0"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-label",
+                                        children: log_viewer_o("\u884C")
+                                    })
+                                ]
+                            }),
+                            jsxs("span", {
+                                class: "fluent-log-viewer__badge fluent-log-viewer__badge--errors",
+                                children: [
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-icon fluent-log-viewer__badge-icon--errors"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-count",
+                                        id: "fluentLogCountErrors",
+                                        children: "0"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-label",
+                                        children: log_viewer_o("\u9519\u8BEF")
+                                    })
+                                ]
+                            }),
+                            jsxs("span", {
+                                class: "fluent-log-viewer__badge fluent-log-viewer__badge--warnings",
+                                children: [
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-icon fluent-log-viewer__badge-icon--warnings"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-count",
+                                        id: "fluentLogCountWarnings",
+                                        children: "0"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-label",
+                                        children: log_viewer_o("\u8B66\u544A")
+                                    })
+                                ]
+                            }),
+                            jsxs("span", {
+                                class: "fluent-log-viewer__badge fluent-log-viewer__badge--disconnects",
+                                children: [
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-icon fluent-log-viewer__badge-icon--disconnects"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-count",
+                                        id: "fluentLogCountDisconnects",
+                                        children: "0"
+                                    }),
+                                    jsx("span", {
+                                        class: "fluent-log-viewer__badge-label",
+                                        children: log_viewer_o("\u65AD\u5F00")
+                                    })
+                                ]
+                            })
+                        ]
+                    }),
+                    jsxs("div", {
+                        class: "fluent-log-viewer__toolbar",
+                        children: [
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "wrap",
+                                title: log_viewer_o("\u81EA\u52A8\u6362\u884C"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--wrap"
+                                })
+                            }),
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "autoscroll",
+                                title: log_viewer_o("\u81EA\u52A8\u6EDA\u52A8"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--autoscroll"
+                                })
+                            }),
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "copy",
+                                title: log_viewer_o("\u590D\u5236\u65E5\u5FD7"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--copy"
+                                })
+                            }),
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "download",
+                                title: log_viewer_o("\u4E0B\u8F7D\u65E5\u5FD7"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--download"
+                                })
+                            }),
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "scroll-top",
+                                title: log_viewer_o("\u6EDA\u52A8\u5230\u9876\u90E8"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--scroll-top"
+                                })
+                            }),
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "scroll-bottom",
+                                title: log_viewer_o("\u6EDA\u52A8\u5230\u5E95\u90E8"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--scroll-bottom"
+                                })
+                            }),
+                            jsx("button", {
+                                type: "button",
+                                class: "fluent-log-viewer__tool-btn",
+                                "data-action": "fullscreen",
+                                title: log_viewer_o("\u5168\u5C4F\u67E5\u770B"),
+                                children: jsx("span", {
+                                    class: "fluent-log-viewer__icon fluent-log-viewer__icon--fullscreen"
+                                })
+                            })
+                        ]
+                    })
+                ]
+            }),
+            jsx("div", {
+                class: "fluent-log-viewer__body",
+                children: jsx("div", {
+                    class: "fluent-log-viewer__content"
+                })
+            })
+        ]
+    }), f = g.querySelector("#fluentLogCountLines"), v = g.querySelector("#fluentLogCountErrors"), p = g.querySelector("#fluentLogCountWarnings"), w = g.querySelector("#fluentLogCountDisconnects"), b = g.querySelector(".fluent-log-viewer__body"), m = g.querySelector(".fluent-log-viewer__content"), h = g.querySelector('[data-action="wrap"]'), y = g.querySelector('[data-action="autoscroll"]'), L = g.querySelector('[data-action="copy"]'), C = g.querySelector('[data-action="download"]'), x = g.querySelector('[data-action="scroll-top"]'), S = g.querySelector('[data-action="scroll-bottom"]'), E = g.querySelector('[data-action="fullscreen"]');
+    function q(e, t) {
+        let l = e.getAttribute("title") || "";
+        e.setAttribute("title", t), e.classList.add("fluent-log-viewer__tool-btn--feedback"), setTimeout(()=>{
+            e.setAttribute("title", l), e.classList.remove("fluent-log-viewer__tool-btn--feedback");
+        }, 1500);
+    }
+    function $() {
+        if (!i) return;
+        let { lines: e, errors: t, warnings: l, disconnects: n } = function(e) {
+            let t = e.split(/\r?\n/), l = [], n = 0, o = 0, r = 0, i = 0;
+            for(let e = 0; e < t.length; e++){
+                let a, s, c, u = t[e];
+                if (!u && e === t.length - 1) continue;
+                i++;
+                let d = "default", g = u, f = u.match(/^\[([^\]]+)\]\s+([a-zA-Z0-9_-]+\.([a-zA-Z0-9_-]+))\s*:\s*(?:([a-zA-Z0-9_./-]+(?:\[\d+\])?)\s*:\s*)?(.*)$/);
+                if (f) {
+                    a = f[1], s = f[2];
+                    let e = f[3].toLowerCase();
+                    c = f[4], g = f[5], [
+                        "err",
+                        "error",
+                        "crit",
+                        "alert",
+                        "emerg"
+                    ].includes(e) ? (d = "err", n++) : [
+                        "warn",
+                        "warning"
+                    ].includes(e) ? (d = "warn", o++) : [
+                        "notice",
+                        "info"
+                    ].includes(e) ? d = "notice" === e ? "notice" : "info" : "debug" === e && (d = "debug");
+                } else {
+                    let e = u.match(/^\[\s*([\d.]+)\]\s+(.*)$/);
+                    if (e) {
+                        a = e[1];
+                        let t = (g = e[2]).toLowerCase();
+                        t.includes("cut here") || t.includes("panic") || t.includes("error") || t.includes("failed") ? (d = "err", n++) : (t.includes("warning") || t.includes("warn")) && (d = "warn", o++);
+                    }
+                }
+                let v = /disconnect|disassociat|deauthenticat|Exited normally|Exit before auth/i.test(u);
+                v && r++, l.push({
+                    lineNumber: i,
+                    raw: u,
+                    time: a,
+                    level: s,
+                    levelType: d,
+                    tag: c,
+                    message: g,
+                    isDisconnect: v
+                });
+            }
+            return {
+                lines: l,
+                errors: n,
+                warnings: o,
+                disconnects: r
+            };
+        }(i.value || i.textContent || "");
+        f.textContent = String(e.length), v.textContent = String(t), p.textContent = String(l), w.textContent = String(n);
+        let o = document.createDocumentFragment();
+        e.forEach((e)=>{
+            let t = document.createElement("div");
+            t.className = `fluent-log-viewer__line fluent-log-viewer__line--${e.levelType}${e.isDisconnect ? " fluent-log-viewer__line--disconnect" : ""}`;
+            let l = document.createElement("span");
+            if (l.className = "fluent-log-viewer__line-number", l.textContent = String(e.lineNumber), t.appendChild(l), e.time) {
+                let l = document.createElement("span");
+                l.className = "fluent-log-viewer__line-time", l.textContent = function(e) {
+                    if (/^\s*[\d.]+\s*$/.test(e)) {
+                        let t = parseFloat(e);
+                        return Number.isNaN(t) ? e.trim() : `${t.toFixed(2)}s`;
+                    }
+                    let t = e.match(/(\d{2}:\d{2}:\d{2})/);
+                    if (t) {
+                        let l = {
+                            jan: "01",
+                            feb: "02",
+                            mar: "03",
+                            apr: "04",
+                            may: "05",
+                            jun: "06",
+                            jul: "07",
+                            aug: "08",
+                            sep: "09",
+                            oct: "10",
+                            nov: "11",
+                            dec: "12"
+                        }, n = e.match(/(\d{1,2})\s+([A-Za-z]{3})/i);
+                        if (n) {
+                            let e = n[1].padStart(2, "0"), o = n[2].toLowerCase();
+                            if (l[o]) return `${l[o]}-${e} ${t[1]}`;
+                        }
+                        let o = e.match(/([A-Za-z]{3})\s+(\d{1,2})/i);
+                        if (o) {
+                            let e = o[1].toLowerCase(), n = o[2].padStart(2, "0");
+                            if (l[e]) return `${l[e]}-${n} ${t[1]}`;
+                        }
+                        return t[1];
+                    }
+                    return e;
+                }(e.time), t.appendChild(l);
+            }
+            if (e.level) {
+                let l = document.createElement("span");
+                l.className = `fluent-log-viewer__level fluent-log-viewer__level--${e.levelType}`, l.textContent = e.level, t.appendChild(l);
+            }
+            if (e.tag) {
+                let l = document.createElement("span");
+                l.className = "fluent-log-viewer__tag", l.textContent = `${e.tag}:`, t.appendChild(l);
+            }
+            let n = document.createElement("span");
+            n.className = "fluent-log-viewer__text", n.textContent = e.message, t.appendChild(n), o.appendChild(t);
+        }), m.innerHTML = "", m.appendChild(o), s && requestAnimationFrame(()=>{
+            b.scrollTop = b.scrollHeight;
+        });
+    }
+    a && (h.classList.add("active"), g.classList.add("fluent-log-viewer--wrap")), s && y.classList.add("active"), i.style.display = "none", i.parentNode && i.parentNode.insertBefore(g, i.nextSibling), h.addEventListener("click", ()=>{
+        a = !a, h.classList.toggle("active", a), g.classList.toggle("fluent-log-viewer--wrap", a);
+        try {
+            localStorage.setItem(log_viewer_l, a ? "true" : "false");
+        } catch (e) {}
+    }), y.addEventListener("click", ()=>{
+        s = !s, y.classList.toggle("active", s);
+        try {
+            localStorage.setItem(log_viewer_n, s ? "true" : "false");
+        } catch (e) {}
+        s && requestAnimationFrame(()=>{
+            b.scrollTop = b.scrollHeight;
+        });
+    }), L.addEventListener("click", ()=>{
+        var e;
+        (e = i.value || i.textContent || "", navigator.clipboard && window.isSecureContext ? navigator.clipboard.writeText(e).then(()=>!0).catch(()=>log_viewer_r(e)) : Promise.resolve(log_viewer_r(e))).then((e)=>{
+            e && q(L, log_viewer_o("\u5DF2\u590D\u5236"));
+        });
+    }), C.addEventListener("click", ()=>{
+        let e = i.value || i.textContent || "", t = location.pathname.includes("dmesg"), l = new Date().toISOString().slice(0, 10), n = `${t ? "dmesg" : "syslog"}-${l}.log`, r = new Blob([
+            e
+        ], {
+            type: "text/plain;charset=utf-8"
+        }), a = URL.createObjectURL(r), s = document.createElement("a");
+        s.href = a, s.download = n, document.body.appendChild(s), s.click(), document.body.removeChild(s), URL.revokeObjectURL(a), q(C, log_viewer_o("\u5DF2\u4E0B\u8F7D"));
+    }), x.addEventListener("click", ()=>{
+        b.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+    }), S.addEventListener("click", ()=>{
+        b.scrollTo({
+            top: b.scrollHeight,
+            behavior: "smooth"
+        });
+    }), E.addEventListener("click", ()=>{
+        c = !c, E.classList.toggle("active", c), c ? (u = g.parentNode, d = g.nextSibling, document.body.appendChild(g), g.classList.add("fluent-log-viewer--fullscreen"), document.body.classList.add("fluent-log-fullscreen")) : (u && u.insertBefore(g, d), g.classList.remove("fluent-log-viewer--fullscreen"), document.body.classList.remove("fluent-log-fullscreen"));
+        let e = E.querySelector(".fluent-log-viewer__icon");
+        e && (e.classList.toggle("fluent-log-viewer__icon--fullscreen", !c), e.classList.toggle("fluent-log-viewer__icon--fullscreen-exit", c));
+    }), $(), new MutationObserver(()=>{
+        $();
+    }).observe(i, {
+        childList: !0,
+        characterData: !0,
+        subtree: !0,
+        attributes: !0
+    });
+    let A = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    A && Object.defineProperty(i, "value", {
+        set (e) {
+            A.call(this, e), $();
+        },
+        get () {
+            return Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.get?.call(this);
+        },
+        configurable: !0
+    }), i.addEventListener("input", $), i.addEventListener("change", $);
+}
+
 ;// CONCATENATED MODULE: ./web/resources/menu-fluent.tsx
 
 
@@ -967,14 +1589,16 @@ function setupMenuSearch(n) {
 
 
 
-function menu_fluent_c(e) {
+
+
+function menu_fluent_p(e) {
     document.body.setAttribute("data-sidebar-state", e), document.dispatchEvent(new CustomEvent("fluent-sidebar-state-change"));
 }
-function menu_fluent_u() {
+function menu_fluent_m() {
     let e = localStorage.getItem("fluent-sidebar-state");
     return "collapsed" === e || "expanded" === e ? e : "expanded";
 }
-function menu_fluent_p() {
+function menu_fluent_h() {
     document.querySelectorAll("#mainmenu ul.nav > li > a.menu.popup-open").forEach((e)=>{
         e.classList.remove("popup-open");
     }), document.querySelectorAll("#mainmenu ul.nav > li > ul.slide-menu.popup-open").forEach((e)=>{
@@ -984,7 +1608,7 @@ function menu_fluent_p() {
 const main = baseclass.extend({
     async __init__ () {
         let e = await ui.menu.load();
-        this.render(e), setupSelectionPause(), setupErrorTooltips(), setupFluentSelects(), setupIfaceboxTooltips(), setupThemeFeatures(), setupMenuSearch(e);
+        this.render(e), setupSelectionPause(), setupErrorTooltips(), setupFluentSelects(), setupIfaceboxTooltips(), setupThemeFeatures(), setupMenuSearch(e), setupMacSelector(), setupLogViewer();
     },
     render (e) {
         let t = e, n = "", a = ui.menu.getChildren(e);
@@ -996,19 +1620,19 @@ const main = baseclass.extend({
             }
             t && this.renderTabMenu(t, n);
         }
-        let i = document.querySelectorAll("a.showSide"), l = document.querySelector(".darkMask"), s = document.querySelector(".sidebar-collapse-toggle"), d = ui.createHandlerFn(this, "handleSidebarToggle") ?? (()=>{
+        let i = document.querySelectorAll("a.showSide"), l = document.querySelector(".darkMask"), s = document.querySelector(".sidebar-collapse-toggle"), r = ui.createHandlerFn(this, "handleSidebarToggle") ?? (()=>{
             console.warn("Fluent menu: missing sidebar toggle handler");
-        }), r = ui.createHandlerFn(this, "handleDesktopSidebarToggle") ?? (()=>{
+        }), d = ui.createHandlerFn(this, "handleDesktopSidebarToggle") ?? (()=>{
             console.warn("Fluent menu: missing desktop sidebar toggle handler");
         });
         i.forEach((e)=>{
-            e.addEventListener("click", d);
-        }), l && l.addEventListener("click", d), s && s.addEventListener("click", r), window.innerWidth > 768 ? menu_fluent_c(menu_fluent_u()) : document.body.setAttribute("data-sidebar-state", "expanded"), window.addEventListener("resize", ()=>{
-            this.adjustBrandTextSize(), window.innerWidth > 768 ? menu_fluent_c(menu_fluent_u()) : document.body.setAttribute("data-sidebar-state", "expanded");
+            e.addEventListener("click", r);
+        }), l && l.addEventListener("click", r), s && s.addEventListener("click", d), window.innerWidth > 768 ? menu_fluent_p(menu_fluent_m()) : document.body.setAttribute("data-sidebar-state", "expanded"), window.addEventListener("resize", ()=>{
+            this.adjustBrandTextSize(), window.innerWidth > 768 ? menu_fluent_p(menu_fluent_m()) : document.body.setAttribute("data-sidebar-state", "expanded");
         }), document.addEventListener("click", (e)=>{
             if (window.innerWidth <= 768 || "collapsed" !== document.body.getAttribute("data-sidebar-state")) return;
             let t = e.target, n = document.querySelector("#mainmenu");
-            t && n?.contains(t) || menu_fluent_p();
+            t && n?.contains(t) || menu_fluent_h();
         });
     },
     handleMenuExpand (e) {
@@ -1028,7 +1652,7 @@ const main = baseclass.extend({
                     } else e.style.top = "", SlideAnimations.slideDown(e, "fast");
                     e.querySelectorAll("li > a").forEach((e)=>{
                         e.addEventListener("click", ()=>{
-                            menu_fluent_p();
+                            menu_fluent_h();
                         }, {
                             once: !0
                         });
@@ -1040,15 +1664,15 @@ const main = baseclass.extend({
         }
     },
     renderMainMenu (a, i, l) {
-        let s = (l || 0) + 1, d = l && a.title ? a.title.replace(/ /g, "_") : void 0, r = jsx("ul", {
+        let s = (l || 0) + 1, r = l && a.title ? a.title.replace(/ /g, "_") : void 0, d = jsx("ul", {
             class: l ? "slide-menu" : "nav",
-            "data-parent": d || void 0
+            "data-parent": r || void 0
         }), o = ui.menu.getChildren(a);
         if (0 === o.length || s > 2) return jsx(Fragment, {});
         for(let n = 0; n < o.length; n++){
-            let l = o[n], d = L.env.dispatchpath[s] === l.name && L.env.dispatchpath[s - 1] === a.name, c = this.renderMainMenu(l, `${i}/${l.name}`, s), u = c.children.length > 0, p = u ? "slide" : null, m = u ? "menu" : "item";
-            d && (r.classList.add("active"), p = p ? `${p} active` : "null active");
-            let h = d ? `${m} active` : m, v = jsxs("li", {
+            let l = o[n], r = L.env.dispatchpath[s] === l.name && L.env.dispatchpath[s - 1] === a.name, c = this.renderMainMenu(l, `${i}/${l.name}`, s), u = c.children.length > 0, p = u ? "slide" : null, m = u ? "menu" : "item";
+            r && (d.classList.add("active"), p = p ? `${p} active` : "null active");
+            let h = r ? `${m} active` : m, f = jsxs("li", {
                 class: p ?? void 0,
                 children: [
                     jsxs("a", {
@@ -1069,34 +1693,34 @@ const main = baseclass.extend({
                     c
                 ]
             });
-            r.appendChild(v);
+            d.appendChild(f);
         }
         if (1 === s) {
             let e = document.querySelector("#mainmenu");
-            e && (e.appendChild(r), e.style.display = "", this.adjustBrandTextSize());
+            e && (e.appendChild(d), e.style.display = "", this.adjustBrandTextSize());
         }
-        return r;
+        return d;
     },
     renderTabMenu (t, a, i) {
-        let l = document.querySelector("#tabmenu"), s = (i || 0) + 1, d = jsx("ul", {
+        let l = document.querySelector("#tabmenu"), s = (i || 0) + 1, r = jsx("ul", {
             class: "tabs"
-        }), r = ui.menu.getChildren(t), o = null;
-        if (0 === r.length) return jsx(Fragment, {});
-        for(let t = 0; t < r.length; t++){
-            let n = r[t], i = L.env.dispatchpath[s + 2] === n.name, l = i ? " active" : "", c = jsx("li", {
+        }), d = ui.menu.getChildren(t), o = null;
+        if (0 === d.length) return jsx(Fragment, {});
+        for(let t = 0; t < d.length; t++){
+            let n = d[t], i = L.env.dispatchpath[s + 2] === n.name, l = i ? " active" : "", c = jsx("li", {
                 class: `tabmenu-item-${n.name}${l}`,
                 children: jsx("a", {
                     href: L.url(a, n.name),
                     children: _(n.title || "")
                 })
             });
-            d.appendChild(c), i && (o = n);
+            r.appendChild(c), i && (o = n);
         }
-        if (l && (l.appendChild(d), l.style.display = "", o)) {
+        if (l && (l.appendChild(r), l.style.display = "", o)) {
             let e = this.renderTabMenu(o, `${a}/${o.name}`, s);
             e.children.length > 0 && l.appendChild(e);
         }
-        return d;
+        return r;
     },
     adjustBrandTextSize () {
         let e = document.querySelector(".sidenav-header .brand-text");
@@ -1122,7 +1746,7 @@ const main = baseclass.extend({
     handleDesktopSidebarToggle (e) {
         if (e.preventDefault(), e.stopPropagation(), window.innerWidth <= 768) return;
         let t = "collapsed" == ("collapsed" === document.body.getAttribute("data-sidebar-state") ? "collapsed" : "expanded") ? "expanded" : "collapsed";
-        menu_fluent_p(), localStorage.setItem("fluent-sidebar-state", t), menu_fluent_c(t), "expanded" === t && this.adjustBrandTextSize();
+        menu_fluent_h(), localStorage.setItem("fluent-sidebar-state", t), menu_fluent_p(t), "expanded" === t && this.adjustBrandTextSize();
     }
 });
 
