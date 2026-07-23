@@ -171,7 +171,7 @@ return baseclass.extend({
             id: "sidebar-toggle-btn",
             class: "sidebar-toggle",
             type: "button",
-            "aria-label": _("Toggle sidebar"),
+            "aria-label": _("Navigation"),
           },
           [
             E("span", { class: "icon-collapse" }, [
@@ -394,10 +394,14 @@ return baseclass.extend({
    * to 'device' once the header toggle has written an explicit mode.
    * DOM is built lazily on first open; page load binds one trigger click
    * and one keydown listener.
-   * The theme ships no translations of its own — all palette strings are
-   * existing LuCI msgids, except Light/Dark which have no msgid anywhere
-   * in LuCI (dark variants ship as separate theme packages, and package
-   * names are untranslated): they stay English literals wrapped in _().
+   * Translation caveat: the dispatcher load_catalog()s the whole
+   * /usr/lib/lua/luci/i18n dir into one flat table, so a msgid resolves
+   * only if some *installed* package defines it. The theme ships no
+   * catalog, so every string here is an existing msgid: luci-base ones
+   * are guaranteed, and 'Type to filter…' comes from
+   * luci-app-package-manager, a dependency of the default luci
+   * collection. Light/Dark are the sole holdouts — no LuCI pot defines
+   * them, so they stay English until someone gives the theme a po.
    */
   initPalette(branch, branchUrl) {
     const trigger = document.getElementById("cmdk-trigger");
@@ -557,6 +561,7 @@ return baseclass.extend({
       if (row && !row.classList.contains("is-selected")) this._palSelect(row);
     });
 
+    // All four labels are luci-base msgids, so they are always localized.
     const footer = E("div", { class: "cmdk-footer" }, [
       E("span", { class: "cmdk-hint" }, [
         E("kbd", {}, ["↑"]),
@@ -580,12 +585,7 @@ return baseclass.extend({
         "aria-label": _("Navigation"),
       },
       [
-        E("div", { class: "cmdk-inputrow" }, [
-          this.palInput,
-          clear,
-          E("kbd", { class: "cmdk-esc" }, ["esc"]),
-          cancel,
-        ]),
+        E("div", { class: "cmdk-inputrow" }, [this.palInput, clear, cancel]),
         this.palList,
         footer,
       ],
@@ -708,8 +708,6 @@ return baseclass.extend({
         page.group ? E("span", { class: "cmdk-sep" }, ["›"]) : "",
         E("span", { class: "cmdk-title" }, this._palMark(page.title, ranges)),
         E("span", { class: "cmdk-right" }, [
-          // The dispatch path anchors the row's right edge with real,
-          // language-neutral data (Quick-Open manner) instead of dead space.
           E("code", { class: "cmdk-path" }, [page.path]),
           E("kbd", { class: "cmdk-enter" }, ["↵"]),
         ]),
@@ -742,11 +740,11 @@ return baseclass.extend({
       [
         this._iconFile(cmd.iconFile, 15),
         E("span", { class: "cmdk-title" }, this._palMark(cmd.title, ranges)),
-        E("span", { class: "cmdk-right" }, [
-          active
-            ? E("span", { class: "cmdk-check", "aria-hidden": "true" })
-            : E("kbd", { class: "cmdk-enter" }, ["↵"]),
-        ]),
+        active
+          ? E("span", { class: "cmdk-check", "aria-hidden": "true" })
+          : E("span", { class: "cmdk-right" }, [
+              E("kbd", { class: "cmdk-enter" }, ["↵"]),
+            ]),
       ],
     );
     row.addEventListener("click", () => {
