@@ -24,18 +24,24 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.sha }}
         run: |
           BASE_VERSION=$(sed -n 's/^PKG_VERSION:=//p' package/luci-theme-fluent/Makefile)
-          SHORT_SHA=$(printf '%.7s' "$SHA")
+          TIMESTAMP=$(date -u +'%Y%m%d%H%M')
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            VERSION="${BASE_VERSION}-pr${PR_NUMBER}-${SHORT_SHA}"
+            VERSION="${BASE_VERSION}_p${PR_NUMBER}"
           else
-            VERSION="${BASE_VERSION}-dev-${SHORT_SHA}"
+            VERSION="${BASE_VERSION}_p${TIMESTAMP}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Using CI version ${VERSION}"
 
+      - name: Sync version files
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${VERSION}/" package/luci-theme-fluent/Makefile
+          sed -i "s/^  \"version\": \"[^\"]*\",/  \"version\": \"${VERSION}\",/" package.json
+          grep '^PKG_VERSION:=' package/luci-theme-fluent/Makefile
+          grep '^  "version":' package.json
 
       - name: Pack prepared source
         run: tar --exclude=.git -czf "$RUNNER_TEMP/ci-source.tar.gz" .
