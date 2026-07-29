@@ -237,7 +237,7 @@ function successRpc(at) {
 
 function normalizedResult(marker, at) {
 	return {
-		status: { marker: marker, version: '1.1.3-r2' },
+		status: { marker: marker, version: '1.1.4-r3' },
 		clients: { clients: [] },
 		interfaces: { interfaces: [] },
 		uci: {},
@@ -250,7 +250,7 @@ async function testIndependentRpcSettlement(context, fmt) {
 	let tick = 1000;
 	const clock = function() { tick += 10; return tick; };
 	const rpc = {
-		status: function() { return Promise.resolve({ version: '1.1.3-r2' }); },
+		status: function() { return Promise.resolve({ version: '1.1.4-r3' }); },
 		clients: function() { return Promise.reject(new Error('clients down')); },
 		interfaces: function() { return Promise.resolve({ interfaces: [ { name: 'br-lan' } ] }); },
 		uciGet: function() { return Promise.reject(new Error('uci down')); }
@@ -299,6 +299,215 @@ async function testIndependentRpcSettlement(context, fmt) {
 	assert.strictEqual(malformed.rpc.clients.error.code, 'INVALID_RESPONSE');
 }
 
+async function testLiveSamplePairing(context, fmt) {
+	let statusSampleMs = 1000;
+	let clientSampleMs = 1000;
+	let interfaceSampleMs = 1000;
+	let coveragePct = 55;
+	let clientRate = 111;
+	let interfaceRate = 777;
+	let emptyClients = false;
+	let interfaceSampleQueue = [];
+	let collector = 'bpf';
+	const rpc = {
+		status: function() {
+			const rateEvidence = collector === 'nss_ecm_bpf'
+				? {
+					effective_collector: collector,
+					ecm_bpf: { sample_ms: statusSampleMs },
+					ecm_bpf_rate_window: { window_end_ms: statusSampleMs }
+				} : {
+					effective_collector: collector,
+					bpf: { last_complete_snapshot_ms: statusSampleMs }
+				};
+			return Promise.resolve({
+				version: '1.1.4-r3',
+				coverage: { quality: 'ok', tx_pct: coveragePct, rx_pct: coveragePct },
+				evidence: rateEvidence
+			});
+		},
+		clients: function() {
+			const rateEvidence = collector === 'nss_ecm_bpf'
+				? {
+					effective_collector: collector,
+					ecm_bpf: { sample_ms: clientSampleMs },
+					ecm_bpf_rate_window: { window_end_ms: clientSampleMs }
+				} : { effective_collector: collector };
+			return Promise.resolve({
+				clients: emptyClients ? [] : [ {
+					collector_mode: collector, sample_ms: clientSampleMs,
+					tx_bps: clientRate, rx_bps: clientRate
+				} ],
+				evidence: rateEvidence
+			});
+		},
+		interfaces: function() {
+			const sampledAt = interfaceSampleQueue.length
+				? interfaceSampleQueue.shift() : interfaceSampleMs;
+			return Promise.resolve({
+				monotonic_ms: sampledAt,
+				interfaces: [ {
+					name: 'br-lan', sample_ms: sampledAt,
+					rx_bps: interfaceRate, tx_bps: interfaceRate
+				} ]
+			});
+		},
+		uciGet: function() { return Promise.resolve({}); }
+	};
+	const overview = loadOverview(context, fmt, rpc);
+	let tick = 10000;
+	const clock = function() { return ++tick; };
+
+	const first = await overview.loadAll(null, clock);
+	assert.strictEqual(first.livePair.sampleMs, 1000);
+	assert.strictEqual(first.livePair.aligned, true);
+	assert.strictEqual(first.livePair.coverageSampleMs, 1000);
+	assert.strictEqual(first.status.coverage.tx_pct, 55);
+	assert.strictEqual(first.clients.clients[0].tx_bps, 111);
+	assert.strictEqual(first.interfaces.interfaces[0].rx_bps, 777);
+
+	statusSampleMs = 1500;
+	clientSampleMs = 1500;
+	interfaceSampleMs = 1500;
+	interfaceSampleQueue = [ 1600, 1500 ];
+	coveragePct = 60;
+	clientRate = 150;
+	interfaceRate = 850;
+	collector = 'nss_ecm_bpf';
+	const recoveredSplit = await overview.loadAll(first, clock);
+	assert.strictEqual(recoveredSplit.livePair.sampleMs, 1500);
+	assert.strictEqual(recoveredSplit.livePair.aligned, true);
+	assert.strictEqual(recoveredSplit.status.coverage.tx_pct, 60);
+	assert.strictEqual(recoveredSplit.clients.clients[0].tx_bps, 150);
+	assert.strictEqual(recoveredSplit.interfaces.interfaces[0].rx_bps, 850);
+	assert.strictEqual(interfaceSampleQueue.length, 0,
+		'a one-round RPC boundary split must be re-read inside the same refresh cycle');
+	collector = 'bpf';
+
+	statusSampleMs = 2000;
+	clientSampleMs = 2000;
+	interfaceSampleMs = 3000;
+	coveragePct = 66;
+	clientRate = 222;
+	interfaceRate = 999;
+	const straddled = await overview.loadAll(first, clock);
+	assert.strictEqual(straddled.status, first.status,
+		'a metric RPC boundary split must retain the complete previous status snapshot');
+	assert.strictEqual(straddled.status.coverage, first.status.coverage,
+		'a status/interface RPC boundary split must retain the previous coverage batch');
+	assert.strictEqual(straddled.clients, first.clients,
+		'a metric RPC boundary split must retain the previous client batch');
+	assert.strictEqual(straddled.interfaces, first.interfaces,
+		'a metric RPC boundary split must retain the previous interface batch');
+	assert.strictEqual(straddled.status.coverage.tx_pct, 55,
+		'retaining a metric set must never rewrite the previous coverage value');
+	assert.strictEqual(straddled.clients.clients[0].tx_bps, 111,
+		'retaining a metric set must never rewrite the previous client rate');
+	assert.strictEqual(straddled.interfaces.interfaces[0].rx_bps, 777,
+		'retaining a metric set must never rewrite the previous interface rate');
+	assert.strictEqual(straddled.livePair.retained, true);
+	assert.strictEqual(straddled.livePair.pendingCoverageSampleMs, 2000);
+	assert.strictEqual(straddled.livePair.pendingClientSampleMs, 2000);
+	assert.strictEqual(straddled.livePair.pendingInterfaceSampleMs, 3000);
+
+	statusSampleMs = 3000;
+	clientSampleMs = 3000;
+	coveragePct = 77;
+	const aligned = await overview.loadAll(straddled, clock);
+	assert.strictEqual(aligned.livePair.sampleMs, 3000);
+	assert.strictEqual(aligned.livePair.aligned, true);
+	assert.strictEqual(aligned.livePair.retained, false);
+	assert.strictEqual(aligned.status.coverage.tx_pct, 77,
+		'the next matching coverage batch must publish its untouched backend value');
+	assert.strictEqual(aligned.clients.clients[0].tx_bps, 222,
+		'the next matching client batch must publish its untouched backend rate');
+	assert.strictEqual(aligned.interfaces.interfaces[0].rx_bps, 999,
+		'the next matching interface batch must publish its untouched backend rate');
+
+	statusSampleMs = 5000;
+	clientSampleMs = 4000;
+	interfaceSampleMs = 4000;
+	coveragePct = 88;
+	clientRate = 333;
+	interfaceRate = 1111;
+	const coverageStraddled = await overview.loadAll(aligned, clock);
+	assert.strictEqual(coverageStraddled.status.coverage.tx_pct, 77);
+	assert.strictEqual(coverageStraddled.clients.clients[0].tx_bps, 222);
+	assert.strictEqual(coverageStraddled.interfaces.interfaces[0].rx_bps, 999);
+	assert.strictEqual(coverageStraddled.livePair.pendingCoverageSampleMs, 5000);
+	assert.strictEqual(coverageStraddled.livePair.pendingClientSampleMs, 4000);
+	assert.strictEqual(coverageStraddled.livePair.pendingInterfaceSampleMs, 4000);
+
+	const loadStatus = rpc.status;
+	rpc.status = function() { return Promise.reject(new Error('status down')); };
+	const failedStatus = await overview.loadAll(coverageStraddled, clock);
+	assert.strictEqual(failedStatus.status, coverageStraddled.status,
+		'a failed status RPC after a boundary split must not pair old coverage with new rates');
+	assert.strictEqual(failedStatus.clients, coverageStraddled.clients);
+	assert.strictEqual(failedStatus.interfaces, coverageStraddled.interfaces);
+	assert.strictEqual(failedStatus.livePair.retained, true);
+	rpc.status = loadStatus;
+
+	statusSampleMs = 4000;
+	const coherent = await overview.loadAll(failedStatus, clock);
+	assert.strictEqual(coherent.status.coverage.tx_pct, 88);
+	assert.strictEqual(coherent.clients.clients[0].tx_bps, 333);
+	assert.strictEqual(coherent.interfaces.interfaces[0].rx_bps, 1111);
+	assert.strictEqual(coherent.livePair.sampleMs, 4000);
+
+	statusSampleMs = 6000;
+	clientSampleMs = 6000;
+	interfaceSampleMs = 7000;
+	coveragePct = 99;
+	const coldStraddle = await overview.loadAll(null, clock);
+	assert.strictEqual(coldStraddle.status.coverage, null);
+	assert.deepStrictEqual(Array.from(coldStraddle.clients.clients), []);
+	assert.deepStrictEqual(Array.from(coldStraddle.interfaces.interfaces), []);
+	assert.strictEqual(coldStraddle.livePair.retained, false,
+		'a cold start must not expose any part of a mismatched metric set');
+
+	emptyClients = true;
+	statusSampleMs = 8000;
+	interfaceSampleMs = 8000;
+	const empty = await overview.loadAll(coherent, clock);
+	assert.deepStrictEqual(Array.from(empty.clients.clients), []);
+	assert.strictEqual(empty.interfaces.interfaces[0].sample_ms, 8000);
+	assert.strictEqual(empty.status.coverage.tx_pct, 99);
+	assert.strictEqual(empty.livePair.sampleMs, 8000,
+		'a successful empty-client response must not block a new empty live batch');
+
+	emptyClients = false;
+	rpc.status = function() {
+		return Promise.resolve({
+			coverage: { quality: 'ok', tx_pct: 91, rx_pct: 91 },
+			evidence: {
+				effective_collector: 'nss_ecm_bpf',
+				ecm_bpf: { sample_ms: 10000 },
+				ecm_bpf_rate_window: { window_end_ms: 9000 }
+			}
+		});
+	};
+	rpc.clients = function() {
+		return Promise.resolve({
+			clients: [ {
+				collector_mode: 'nss_ecm_bpf', sample_ms: 9000,
+				tx_bps: 900, rx_bps: 900
+			} ],
+			evidence: {
+				effective_collector: 'nss_ecm_bpf',
+				ecm_bpf: { sample_ms: 10000 },
+				ecm_bpf_rate_window: { window_end_ms: 9000 }
+			}
+		});
+	};
+	interfaceSampleMs = 9000;
+	const heldPublishedWindow = await overview.loadAll(empty, clock);
+	assert.strictEqual(heldPublishedWindow.livePair.sampleMs, 9000);
+	assert.strictEqual(heldPublishedWindow.livePair.aligned, true);
+	assert.strictEqual(heldPublishedWindow.clients.clients[0].tx_bps, 900,
+		'ECM+BPF alignment must use the published shared rate window instead of the newer raw collection clock');
+}
+
 function fakeTimers() {
 	let nextId = 1;
 	const entries = new Map();
@@ -338,8 +547,9 @@ async function testControllerLifecycle(context, fmt) {
 	let busyRefreshes = 0;
 	let calls = 0;
 	let deferred = makeDeferred();
+	let now = 500;
 	const state = Object.assign(normalizedResult('initial', 100), {
-		prefs: { paused: false, refreshMs: 3000 },
+		prefs: { paused: false, refreshMs: 3000, nssRefreshMs: 8000 },
 		refreshLive: function() { refreshes++; },
 		refreshBusy: function() { busyRefreshes++; },
 		loading: false,
@@ -349,12 +559,32 @@ async function testControllerLifecycle(context, fmt) {
 		load: function() { calls++; return deferred.promise; },
 		timerApi: timers,
 		eventTarget: target,
-		now: function() { return 500; }
+		now: function() { return now; }
 	});
 
 	controller.schedule();
 	assert.strictEqual(timers.count(), 1);
 	assert.strictEqual(timers.firstDelay(), 3000);
+	state.status = {
+		capabilities: { nss: true },
+		evidence: { effective_collector: 'bpf' }
+	};
+	controller.schedule();
+	assert.strictEqual(timers.count(), 1);
+	assert.strictEqual(timers.firstDelay(), 3000,
+		'pure BPF must keep the selected refresh cadence even on an NSS device');
+	state.status.evidence.effective_collector = 'nss_ecm_node';
+	controller.schedule();
+	assert.strictEqual(timers.firstDelay(), 8000,
+		'ECM must use the independently selected NSS refresh cadence');
+	state.status.evidence.effective_collector = 'nss_ecm_bpf';
+	controller.schedule();
+	assert.strictEqual(timers.firstDelay(), 8000,
+		'ECM+BPF must use the independently selected NSS refresh cadence');
+	state.status = normalizedResult('initial', 100).status;
+	controller.schedule();
+	assert.strictEqual(timers.firstDelay(), 3000,
+		'non-NSS status pages must retain the saved refresh preference');
 	const automatic = controller.reload(false);
 	assert.strictEqual(state.loading, true);
 	assert.strictEqual(state.manualBusy, false);
@@ -367,12 +597,15 @@ async function testControllerLifecycle(context, fmt) {
 	assert.strictEqual(timers.count(), 0);
 	await Promise.resolve();
 	assert.strictEqual(calls, 1);
+	now = 1250;
 	deferred.resolve(normalizedResult('fresh', 500));
 	await automatic;
 	assert.strictEqual(state.status.marker, 'fresh');
 	assert.strictEqual(state.loading, false);
 	assert.strictEqual(state.manualBusy, false);
 	assert.strictEqual(timers.count(), 1);
+	assert.strictEqual(timers.firstDelay(), 2250,
+		'RPC time must be deducted from the refresh period instead of extending it');
 
 	state.prefs.paused = true;
 	controller.stopTimer();
@@ -452,7 +685,7 @@ function loadShellAndRefresh(context, fmt) {
 		},
 		fmt,
 		{ detailHref: function(pathname, key) { return pathname + '?client=' + encodeURIComponent(key); } },
-		{ FULL_VERSION: '1.1.3-r2' },
+		{ FULL_VERSION: '1.1.4-r3' },
 		{
 			hideIpv6RangesValue: function(value) { return value || ''; },
 			displayIpsForClient: function(values) { return Array.isArray(values) ? values : []; }
@@ -499,12 +732,17 @@ function testPaginationAndUiStates(context, fmt) {
 	assert.strictEqual(fmt.loadPrefs().pageSize, 25);
 	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ pageSize: 50 }));
 	assert.strictEqual(fmt.loadPrefs().pageSize, 50);
+	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ nssRefreshMs: 8000 }));
+	assert.strictEqual(fmt.loadPrefs().nssRefreshMs, 8000);
+	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ nssRefreshMs: 3000 }));
+	assert.strictEqual(fmt.loadPrefs().nssRefreshMs, 2000,
+		'unsupported legacy NSS cadence must normalize to the safe two-second default');
 
 	const modules = loadShellAndRefresh(context, fmt);
 	let refreshCount = 0;
 	const clients = Array.from({ length: 30 }, function(_value, index) { return client(index + 1); });
 	const state = {
-		status: { version: '1.1.3-r2', coverage: { quality: 'idle' } },
+		status: { version: '1.1.4-r3', coverage: { quality: 'idle' } },
 		clients: { clients: clients },
 		interfaces: { interfaces: [ { name: 'br-lan', role: 'lan', rx_bps: 100, tx_bps: 200 } ] },
 		rpc: successRpc(100000),
@@ -532,6 +770,37 @@ function testPaginationAndUiStates(context, fmt) {
 	};
 	const built = modules.shell.buildShell(state);
 	state.refs = built.refs;
+	const nssState = Object.assign({}, state, {
+		status: {
+			capabilities: { nss: true },
+			evidence: { effective_collector: 'nss_ecm_bpf' }
+		},
+		prefs: Object.assign({}, state.prefs, { nssRefreshMs: 8000 })
+	});
+	const nssBuilt = modules.shell.buildShell(nssState);
+	assert.strictEqual(nssBuilt.refs.intervalSel.disabled, false);
+	assert.deepStrictEqual(
+		Array.from(nssBuilt.refs.intervalSel.children).map(textOf),
+		[ '2s', '4s', '8s', '10s' ],
+		'ECM pages must expose only the four NSS-safe refresh cadences');
+	modules.refresh.refreshIntervalControl(nssState, nssBuilt.refs, nssState.status);
+	assert.strictEqual(nssBuilt.refs.intervalSel.value, '8000');
+	nssBuilt.refs.intervalSel.value = '4000';
+	nssBuilt.refs.intervalSel.listeners.change({ target: nssBuilt.refs.intervalSel });
+	assert.strictEqual(nssState.prefs.nssRefreshMs, 4000);
+	assert.strictEqual(nssState.prefs.refreshMs, 3000,
+		'NSS selection must not overwrite the BPF refresh preference');
+	nssState.status.evidence.effective_collector = 'bpf';
+	modules.refresh.refreshIntervalControl(nssState, nssBuilt.refs, nssState.status);
+	assert.strictEqual(nssBuilt.refs.intervalSel.disabled, false,
+		'pure BPF must unlock the selector even when NSS capability remains true');
+	assert.strictEqual(nssBuilt.refs.intervalSel.children.length, 5);
+	nssState.status.evidence.effective_collector = 'nss_ecm_node';
+	modules.refresh.refreshIntervalControl(nssState, nssBuilt.refs, nssState.status);
+	assert.strictEqual(nssBuilt.refs.intervalSel.disabled, false);
+	assert.strictEqual(nssBuilt.refs.intervalSel.children.length, 4);
+	assert.strictEqual(nssBuilt.refs.intervalSel.value, '4000',
+		'automatic recovery to ECM must restore the independent NSS preference');
 	state.refreshLive = function() { refreshCount++; modules.refresh.refreshLive(state); };
 	state.refreshLive();
 	const toolbarRight = findByClass(built.root, 'lanspeed-toolbar-right');
@@ -545,7 +814,7 @@ function testPaginationAndUiStates(context, fmt) {
 	assert.strictEqual(findAllByClass(built.root, 'lanspeed-freshness-status').length, 0);
 	assert.strictEqual(state.refs.servicePill, undefined);
 	assert.strictEqual(state.refs.freshnessPill, undefined);
-	assert.strictEqual(state.refs.meta.textContent, '后端 1.1.3-r2 · luci 1.1.3-r2');
+	assert.strictEqual(state.refs.meta.textContent, '后端 1.1.4-r3 · luci 1.1.4-r3');
 	assert.ok(!state.refs.meta.textContent.includes('检查于'));
 	assert.strictEqual(state.pageCount, 3);
 	assert.strictEqual(state.refs.root.attrs['aria-busy'], 'false');
@@ -556,6 +825,10 @@ function testPaginationAndUiStates(context, fmt) {
 	state.refreshLive();
 	assert.strictEqual(state.refs.tbody.children[0], stableFirstRow,
 		'live refresh must preserve a stable client row so its hover state does not flash');
+	assert.ok(textOf(stableFirstRow).includes(fmt.formatRate(987654, 'bit')),
+		'a changed live rate must render the real backend value immediately without interpolation');
+	assert.strictEqual(findByClass(stableFirstRow, 'lanspeed-live-rate'), null,
+		'rate rendering must not introduce animation-only DOM');
 
 	state.refs.pageNext.listeners.click({ preventDefault: function() {} });
 	assert.strictEqual(state.page, 2);
@@ -654,11 +927,12 @@ async function main() {
 	const context = createContext();
 	const fmt = loadFormat(context);
 	await testIndependentRpcSettlement(context, fmt);
+	await testLiveSamplePairing(context, fmt);
 	await testControllerLifecycle(context, fmt);
 	testRenderWiresLiveRefresh(context, fmt);
 	testPaginationAndUiStates(context, fmt);
 	console.log('validate-lanspeed-status: PASS');
-	console.log('  independent RPC settlement, retained data, hard failure, single-flight refresh');
+	console.log('  independent RPC settlement, paired sample clocks, hard failure, single-flight refresh');
 	console.log('  timer lifecycle, destroy invalidation, pagination, keyboard, ARIA, and empty states');
 }
 
