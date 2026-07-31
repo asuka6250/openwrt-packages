@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: luci-theme-fluent\n"
-"POT-Creation-Date: 2026-07-31 10:28+0800\n"
+"POT-Creation-Date: 2026-07-31 10:43+0800\n"
 "PO-Revision-Date: \n"
 "Last-Translator: castillofrancodamian\n"
 "Language-Team: LuCI Theme Fluent\n"
@@ -114,7 +114,7 @@ msgid "Checking for updates..."
 msgstr "Buscando actualizaciones..."
 
 msgid "Choose color"
-msgstr "Elige el color"
+msgstr "Elegir color"
 
 msgid ""
 "Choose the document direction for authenticated and login pages. Automatic "
@@ -267,7 +267,7 @@ msgid "Fluent theme settings"
 msgstr "Configuración del tema Fluent"
 
 msgid "Follow system"
-msgstr "Seguir el del sistema"
+msgstr "Seguir el sistema"
 
 msgid "Force dark mode"
 msgstr "Forzar modo oscuro"
@@ -385,10 +385,10 @@ msgid "Next"
 msgstr "Siguiente"
 
 msgid "Nightly build available (reinstallation check)."
-msgstr "Versión de desarrollo disponible (verificación de reinstalación)."
+msgstr "Versión Nightly disponible (comprobación de reinstalación)."
 
 msgid "Nightly Channel (Prerelease)"
-msgstr "Canal en desarrollo (Lanzamiento anticipado)"
+msgstr "Canal Nightly (Lanzamiento anticipado)"
 
 msgid ""
 "No matching package asset found for your system architecture in this "
@@ -585,7 +585,7 @@ msgid "Triggering installation on router..."
 msgstr "Iniciando la instalación en el enrutador..."
 
 msgid "Update channel"
-msgstr "Actualizar canal"
+msgstr "Canal de actualización"
 
 msgid "Update failed"
 msgstr "La actualización falló"
@@ -634,7 +634,7 @@ msgid "Word wrap"
 msgstr "Ajuste de línea"
 
 msgid "You can create a new token at"
-msgstr "Puedes crear un nuevo token en"
+msgstr "Puedes crear un nuevo token en:"
 
 msgid "Your theme is up to date!"
 msgstr "¡Tu tema está actualizado!"

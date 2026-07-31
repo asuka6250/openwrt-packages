@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: luci-theme-fluent\n"
-"POT-Creation-Date: 2026-07-31 10:28+0800\n"
+"POT-Creation-Date: 2026-07-31 10:43+0800\n"
 "PO-Revision-Date: \n"
 "Last-Translator: TranslateGemma\n"
 "Language-Team: LuCI Theme Fluent\n"
@@ -146,7 +146,7 @@ msgid "Continue"
 msgstr "계속"
 
 msgid "Control height"
-msgstr "높이 조절"
+msgstr "컨트롤 높이"
 
 msgid ""
 "Controls the font weight used by main navigation labels and related theme "
@@ -246,7 +246,7 @@ msgid "Follow system"
 msgstr "시스템 설정 따르기"
 
 msgid "Force dark mode"
-msgstr "강제 다크 모드 적용"
+msgstr "다크 모드 강제 적용"
 
 msgid "Force light mode"
 msgstr "라이트 모드 강제 적용"
@@ -353,10 +353,10 @@ msgid "Next"
 msgstr "다음"
 
 msgid "Nightly build available (reinstallation check)."
-msgstr "매일 빌드 사용 가능 (재설치 확인)."
+msgstr "Nightly 빌드를 사용할 수 있습니다 (재설치 확인)."
 
 msgid "Nightly Channel (Prerelease)"
-msgstr "개발 버전 채널 (미리 출시)"
+msgstr "Nightly 채널 (사전 공개)"
 
 msgid ""
 "No matching package asset found for your system architecture in this "
@@ -412,7 +412,7 @@ msgid "Randomize MAC"
 msgstr "MAC 주소 무작위 변경"
 
 msgid "Reload Web Interface"
-msgstr "웹 인터페이스 재시작"
+msgstr "웹 인터페이스 새로 고침"
 
 msgid "Replace native select elements with the theme's custom dropdown widget."
 msgstr "네이티브 선택 요소를 테마의 사용자 정의 드롭다운 위젯으로 대체합니다."
@@ -445,7 +445,7 @@ msgid "Select vendor prefix..."
 msgstr "벤더 접두사 선택..."
 
 msgid "Semibold"
-msgstr "굵게"
+msgstr "세미볼드"
 
 msgid ""
 "Sets the base interface font size in pixels. Most theme text scales from "
@@ -455,7 +455,7 @@ msgstr ""
 "범위: 12-18px."
 
 msgid "Show top loading bar"
-msgstr "상단 로딩 표시줄 숨기기"
+msgstr "상단 로딩 표시줄 표시"
 
 msgid "Sidebar background"
 msgstr "사이드바 배경"
@@ -574,7 +574,7 @@ msgid "Word wrap"
 msgstr "단어 줄 바꿈"
 
 msgid "You can create a new token at"
-msgstr "새 토큰을 다음에서 생성할 수 있습니다:"
+msgstr "새 토큰은 다음에서 생성할 수 있습니다:"
 
 msgid "Your theme is up to date!"
 msgstr "귀하의 테마는 최신 버전입니다!"
