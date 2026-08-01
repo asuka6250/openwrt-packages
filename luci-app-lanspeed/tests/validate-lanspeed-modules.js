@@ -628,7 +628,7 @@ function assertProductDesignSystem() {
 	const bootstrapStatusCss = loadStyleLeaf('statusStyleBootstrap.js').CSS;
 	[
 		'align-items:stretch',
-		'grid-template-columns:repeat(5,minmax(0,1fr))',
+		'grid-template-columns:repeat(4,minmax(0,1fr))',
 		'grid-template-rows:.9rem 1.85rem minmax(1rem,auto)',
 		'border-top:2px solid var(--lanspeed-accent)',
 		'border-left-color:var(--lanspeed-border-strong)',
@@ -798,8 +798,8 @@ function assertAuroraNativeVisualSystem() {
 		fail('statusStyleAurora.js must render header metadata as plain supporting text instead of a pill');
 
 	const metricsBody = ruleBody(statusCss, '.lanspeed-theme-aurora .lanspeed-metrics');
-	if (!/grid-template-columns\s*:\s*repeat\(5\s*,/.test(metricsBody))
-		fail('statusStyleAurora.js must retain five overview metric columns on wide screens');
+	if (!/grid-template-columns\s*:\s*repeat\(4\s*,/.test(metricsBody))
+		fail('statusStyleAurora.js must retain four overview metric columns on wide screens');
 	const metricBody = ruleBody(statusCss, '.lanspeed-theme-aurora .lanspeed-metric{');
 	if (propertyValue(metricBody, 'display') !== 'flex' ||
 	    propertyValue(metricBody, 'flex-direction') !== 'column' ||
@@ -808,9 +808,9 @@ function assertAuroraNativeVisualSystem() {
 	}
 
 	const diagnostic1100Css = mediaSlice(diagnosticsResponsiveCss, 1100, 900);
-	if (!diagnostic1100Css.includes('.lanspeed-diagnostics-pipeline{grid-template-columns:repeat(2,minmax(0,1fr))') ||
-	    !diagnostic1100Css.includes('.lanspeed-diagnostic-stage:nth-child(3){padding-left:0}')) {
-		fail('diagnostics responsive layout must realign the four-stage pipeline at 1100px');
+	if (diagnostic1100Css.includes('.lanspeed-diagnostics-pipeline{grid-template-columns:repeat(2,minmax(0,1fr))') ||
+	    diagnostic1100Css.includes('.lanspeed-diagnostic-stage:nth-child(3)')) {
+		fail('diagnostics responsive layout must keep the three-stage pipeline intact until mobile width');
 	}
 	const diagnostic900Css = mediaSlice(diagnosticsResponsiveCss, 900, 700);
 	if (!diagnostic900Css.includes('.lanspeed-diagnostic-stage-evidence{grid-template-columns:minmax(0,1fr)}')) {
@@ -1103,9 +1103,9 @@ function assertArgonAlignmentContracts() {
 
 	[
 		'.lanspeed-theme-argon :is(.lanspeed-header,.lanspeed-details>summary){padding:.95rem 1.25rem .8rem}',
-		'.lanspeed-theme-argon .lanspeed-metrics{grid-template-columns:repeat(5,minmax(0,1fr));',
+		'.lanspeed-theme-argon .lanspeed-metrics{grid-template-columns:repeat(4,minmax(0,1fr));',
 		'@media (max-width:1100px){.lanspeed-theme-argon .lanspeed-metrics{',
-		'.lanspeed-theme-argon .lanspeed-metric:last-child{grid-column:1/-1}',
+		'grid-template-columns:repeat(2,minmax(0,1fr))',
 		'.lanspeed-theme-argon .lanspeed-sort-button{height:auto!important',
 		'.lanspeed-theme-argon .lanspeed-toolbar label{font-size:.95rem;line-height:1.5rem}',
 		'.lanspeed-root.lanspeed-theme-argon .lanspeed-active-only>input[type="checkbox"]{',
@@ -2902,6 +2902,8 @@ function assertClientDetailRefreshBehavior(src) {
 		sortDir: 'desc',
 		sortCustom: false,
 		prefs: { refreshMs: 1000, unit: 'bit' },
+		status: { evidence: { platform: { profile: 'nss_aarch64' } } },
+		nssPlatform: true,
 		loading: false,
 		locationLabelFor: function(ip) {
 			return ip === '198.51.100.53' ? '美国' : '保留/未知';
@@ -2966,13 +2968,69 @@ function assertClientDetailRefreshBehavior(src) {
 	    refs.table.hidden || !refs.empty.hidden || !refs.error.hidden) {
 		fail('clientDetailRefresh.js must render identity/meta, real summaries, and destination groups with highest download speed first by default');
 	}
-	if (!footer.includes('连接数据') || !footer.includes('Conntrack Netlink') ||
+		if (!footer.includes('连接数据') || !footer.includes('Conntrack Netlink') ||
 	    !footer.includes('显示 2 / 共 2 条') ||
 	    !footer.includes('每 1 秒自动刷新') ||
 	    !footer.includes('国家/地区及中国省份按 IP 推测，由浏览器查询并缓存')) {
-		fail('clientDetailRefresh.js footer must report source/count/refresh meanings and disclose browser-cached IP inference');
-	}
-	if (JSON.stringify(locationRequests[0]) !== JSON.stringify([
+			fail('clientDetailRefresh.js footer must report source/count/refresh meanings and disclose browser-cached IP inference');
+		}
+		const classifiedResponse = JSON.parse(JSON.stringify(fixture));
+		classifiedResponse.traffic_classification = {
+			state: 'aligned', window_start_ms: 120000, window_end_ms: 126000,
+			comparison_window_ms: 6000,
+			tx: { state: 'aligned', edge_bps: 95000000, nss_bps: 80000000, slow_bps: 10000000, unclassified_bps: 5000000, coverage_pct: 95 },
+			rx: { state: 'aligned', edge_bps: 59000000, nss_bps: 50000000, slow_bps: 5000000, unclassified_bps: 4000000, coverage_pct: 93 }
+		};
+		state.response = classifiedResponse;
+		refresh.render(state);
+		if (refs.classificationCard.hidden || refs.classificationState.textContent !== '已对齐' ||
+		    refs.classificationTxDirectionState.textContent !== '已对齐' ||
+		    refs.classificationTxEdge.textContent !== '95.00 Mbps' ||
+		    refs.classificationTxNss.textContent !== '80.00 Mbps' ||
+		    refs.classificationRxSlow.textContent !== '5.00 Mbps' ||
+		    refs.classificationTxUnknown.textContent !== '5.00 Mbps' ||
+		    refs.classificationTxCoverage.textContent !== '95%' ||
+		    !refs.classificationWindow.textContent.includes('6 s')) {
+			fail('client detail classification card must render aligned N/S/U and coverage without adding them to total rate');
+		}
+		classifiedResponse.traffic_classification = {
+			state: 'domain_mismatch', comparison_window_ms: 6000,
+			tx: { state: 'domain_mismatch', edge_bps: 95000000, nss_bps: 80000000, slow_bps: 10000000 },
+			rx: { state: 'domain_mismatch', edge_bps: 59000000, nss_bps: 50000000, slow_bps: 5000000 }
+		};
+		refresh.render(state);
+		if (refs.classificationState.textContent !== '字节域不匹配' ||
+		    refs.classificationTxUnknown.textContent !== '—' ||
+		    refs.classificationRxCoverage.textContent !== '—') {
+			fail('domain mismatch must retain observed N/S while omitting fabricated U and coverage');
+		}
+		classifiedResponse.traffic_classification = {
+			state: 'map_loss', tx: { state: 'map_loss' }, rx: { state: 'map_loss' }
+		};
+		refresh.render(state);
+		if (refs.classificationState.textContent !== '映射表数据丢失' ||
+		    refs.classificationTxCoverage.textContent !== '—') {
+			fail('map loss must remain explicit and must not render a zero classification coverage');
+		}
+		state.response = fixture;
+		refresh.render(state);
+		if (!refs.classificationCard.hidden)
+			fail('old detail responses without traffic_classification must keep the optional card hidden');
+		const x86State = Object.assign({}, state, {
+			response: classifiedResponse,
+			status: { evidence: { platform: { profile: 'x86_tc_bpf' } } },
+			nssPlatform: false
+		});
+		const x86Built = buildClientDetailShellForRefresh(x86State);
+		x86State.refs = x86Built.refs;
+		refresh.render(x86State);
+		if (x86Built.refs.classificationCard ||
+		    findFakeElement(x86Built.root, 'lanspeed-classification-card') ||
+		    fakeElementText(x86Built.root).includes('流量分类') ||
+		    fakeElementText(x86Built.root).includes('NSS已识别')) {
+			fail('x86 client detail must not construct classification DOM even when the response carries forged NSS fields');
+		}
+		if (JSON.stringify(locationRequests[0]) !== JSON.stringify([
 		'2001:db8:ffff::20', '198.51.100.53'
 	])) {
 		fail('clientDetailRefresh.js must request geolocation only for the deduplicated groups on the rendered page');
@@ -3383,6 +3441,7 @@ function assertClientDetailShellInteraction(src) {
 		);
 	const calls = { back: [], protocol: [], filter: [], sort: [], reload: [], interval: [], paused: [] };
 	const viewState = {
+		nssPlatform: true,
 		prefs: { refreshMs: 3000, paused: false },
 		refreshChoices: [ { value: 1000, label: '1s' }, { value: 3000, label: '3s' } ],
 		back: function() { calls.back.push(Array.from(arguments)); },
@@ -3403,19 +3462,20 @@ function assertClientDetailShellInteraction(src) {
 	    !rootClasses.includes('lanspeed-connection-detail') || themedRoot !== built.root) {
 		fail('clientDetailShell.js root must reuse cbi-map/lanspeed-root, add the detail class and receive theme detection');
 	}
-	const sections = findFakeElementsByClass(built.root, 'cbi-section');
-	if (sections.length !== 2 || sections.some(function(section) {
-		return !built.root.children.includes(section);
-	}) || !findFakeElement(built.root, 'lanspeed-connection-identity-card') ||
-	    !findFakeElement(built.root, 'lanspeed-connections-card')) {
-		fail('clientDetailShell.js must render exactly two main sections for identity and connections');
-	}
-	if (findFakeElementsByClass(built.root, 'lanspeed-header').length !== 2 ||
-	    findFakeElementsByClass(built.root, 'lanspeed-body').length !== 2 ||
-	    findFakeElementsByClass(built.root, 'lanspeed-toolbar').length !== 1 ||
-	    findFakeElementsByClass(built.root, 'lanspeed-table').length !== 1 ||
-	    findFakeElementsByClass(built.root, 'big').length) {
-		fail('clientDetailShell.js must reuse the compact status header/body/toolbar/table structure without metric cards');
+		const sections = findFakeElementsByClass(built.root, 'cbi-section');
+		if (sections.length !== 3 || sections.some(function(section) {
+			return !built.root.children.includes(section);
+		}) || !findFakeElement(built.root, 'lanspeed-connection-identity-card') ||
+		    !findFakeElement(built.root, 'lanspeed-classification-card') ||
+		    !findFakeElement(built.root, 'lanspeed-connections-card')) {
+			fail('clientDetailShell.js must render three peer sections for identity, classification and connections');
+		}
+		if (findFakeElementsByClass(built.root, 'lanspeed-header').length !== 3 ||
+		    findFakeElementsByClass(built.root, 'lanspeed-body').length !== 3 ||
+		    findFakeElementsByClass(built.root, 'lanspeed-toolbar').length !== 1 ||
+		    findFakeElementsByClass(built.root, 'lanspeed-table').length !== 2 ||
+		    findFakeElementsByClass(built.root, 'big').length) {
+			fail('clientDetailShell.js must reuse compact peer header/body/table structures without metric cards');
 	}
 
 	const allowedSharedClasses = new Set([
@@ -3428,9 +3488,10 @@ function assertClientDetailShellInteraction(src) {
 	]);
 	walkFakeElements(built.root, function(node) {
 		String(node.attrs && node.attrs.class || '').split(/\s+/).filter(Boolean).forEach(function(className) {
-			if (!allowedSharedClasses.has(className) &&
-			    !className.startsWith('lanspeed-connection-') &&
-			    className !== 'lanspeed-connections-card') {
+				if (!allowedSharedClasses.has(className) &&
+				    !className.startsWith('lanspeed-connection-') &&
+				    !className.startsWith('lanspeed-classification-') &&
+				    className !== 'lanspeed-connections-card') {
 				fail(`clientDetailShell.js must prefix its new class ${className}`);
 			}
 		});
@@ -3438,21 +3499,36 @@ function assertClientDetailShellInteraction(src) {
 
 	const refs = built.refs;
 	[
-		'error', 'back', 'clientName', 'clientMeta', 'connectionState', 'summary',
-		'summaryTargets', 'summaryConnections', 'summaryUpdated', 'protocolAll',
-		'protocolTcp', 'protocolUdp', 'filter', 'intervalSel', 'refresh', 'pause',
-		'sortHeaders', 'table', 'tbody',
+			'error', 'back', 'clientName', 'clientMeta', 'connectionState', 'summary',
+			'summaryTargets', 'summaryConnections', 'summaryUpdated', 'protocolAll',
+			'protocolTcp', 'protocolUdp', 'filter', 'intervalSel', 'refresh', 'pause',
+			'classificationCard', 'classificationState', 'classificationWindow',
+			'classificationTxDirectionState', 'classificationRxDirectionState',
+			'classificationTxEdge', 'classificationRxEdge',
+			'classificationTxNss', 'classificationRxNss', 'classificationTxSlow',
+			'classificationRxSlow', 'classificationTxUnknown', 'classificationRxUnknown',
+			'classificationTxCoverage', 'classificationRxCoverage',
+			'sortHeaders', 'table', 'tbody',
 		'empty', 'footer'
 	].forEach(function(name) {
 		if (!refs[name]) fail(`clientDetailShell.js refs must expose ${name}`);
 	});
 	if (!refs.table || !refs.tbody) return;
+	const x86Built = shell.buildShell(Object.assign({}, viewState, { nssPlatform: false }));
+	if (findFakeElementsByClass(x86Built.root, 'cbi-section').length !== 2 ||
+	    findFakeElement(x86Built.root, 'lanspeed-classification-card') ||
+	    x86Built.refs.classificationCard ||
+	    fakeElementText(x86Built.root).includes('流量分类') ||
+	    fakeElementText(x86Built.root).includes('NSS已识别')) {
+		fail('clientDetailShell.js must build only identity and connections sections for x86 TC-BPF');
+	}
 
 	const copy = fakeElementText(built.root);
 	[
 		'返回客户端列表', 'LAN Speed 状态 / 客户端连接详情', '无法加载连接详情',
 		'客户端身份', '正在加载客户端身份…', 'MAC 与 IP 信息将在加载后显示',
-		'等待数据', '连接摘要', '目标 IP 数', '连接数', '更新时间',
+			'等待数据', '连接摘要', '目标 IP 数', '连接数', '更新时间',
+			'流量分类', '方向状态', 'Edge 同窗总速率', 'NSS已识别', 'CPU慢路径已识别', '未分类', '分类覆盖率',
 		'当前连接', '全部', 'TCP', 'UDP', '立即刷新', '目标 IP', '国家/地区', '目标端口',
 		'协议', '状态', '上行', '下行', '暂无连接', '连接数据加载后会显示来源、刷新间隔和 IP 位置说明。'
 	].forEach(function(text) {
@@ -3581,6 +3657,10 @@ function assertFormatActiveWindow(src) {
 		fail('format.js must expose isActiveClient(client, nowMs, config)');
 		return;
 	}
+	if (typeof fmt.isNssActiveClient !== 'function' || typeof fmt.isNssActivityClient !== 'function') {
+		fail('format.js must expose the NSS-specific active-client policy');
+		return;
+	}
 	if (typeof fmt.activeConfig !== 'function') {
 		fail('format.js must expose activeConfig(status, overview)');
 		return;
@@ -3605,6 +3685,23 @@ function assertFormatActiveWindow(src) {
 	}
 	if (fmt.sumTotals(clients, { activeWindowMs: 10001, activeMinBps: 1 }).active !== 2) {
 		fail('format.js sumTotals must honor configured active window');
+	}
+	const nssClient = {
+		collector_mode: 'nss_ecm_bpf', sample_ms: 20000, last_seen: 1, tx_bps: 100, rx_bps: 0
+	};
+	if (!fmt.isNssActivityClient(nssClient) || !fmt.isNssActiveClient(nssClient, 20000) ||
+		!fmt.isActiveClient(nssClient, 20000)) {
+		fail('format.js must keep a nonzero NSS batch active despite an old kernel event timestamp');
+	}
+	const edgeClient = {
+		collector_mode: 'access_edge', sample_ms: 20000, last_seen: 1, tx_bps: 100, rx_bps: 0
+	};
+	if (!fmt.isNssActivityClient(edgeClient) || !fmt.isActiveClient(edgeClient, 20000)) {
+		fail('format.js must treat an Access Edge total as a published NSS-platform rate batch');
+	}
+	nssClient.tx_bps = 0;
+	if (fmt.isNssActiveClient(nssClient, 20000) || fmt.isActiveClient(nssClient, 20000)) {
+		fail('format.js must mark a zero-rate NSS batch inactive');
 	}
 	if (fmt.activeConfig({ active_client_window_ms: 15000, active_client_min_bps: 4096 }).activeWindowMs !== 15000) {
 		fail('format.js activeConfig must read status.active_client_window_ms');
@@ -3812,6 +3909,40 @@ function assertStatusRefreshSortingInteraction(src) {
 			JSON.stringify([ 'map_read_failed', 'counter_anomaly' ])) {
 			fail('statusRefresh.js must render connection-only rows as information and keep only actionable client warnings');
 		}
+	}
+	if (typeof mod.rateMetaCells !== 'function') {
+		fail('statusRefresh.js must expose rate metadata rendering for validation');
+	} else {
+		const edgeCells = mod.rateMetaCells({
+			tx: { source: 'edge_port', coverage: 'partial' },
+			rx: { source: 'edge_port', coverage: 'partial' },
+			attachment: { kind: 'ethernet', ifname: 'lan2', trust: 'observed_exclusive' },
+			classification: { state: 'aligned', tx_coverage_pct: 96, rx_coverage_pct: 94 },
+			stale: false
+		});
+		const edgeText = edgeCells.map(fakeElementText).join(' · ');
+		if (!edgeText.includes('Edge-Port') || !edgeText.includes('Partial') ||
+		    !edgeText.includes('lan2') || !edgeText.includes('NSS分类覆盖率 94%')) {
+			fail('status client metadata must show owner, total coverage, attachment and compact NSS coverage');
+		}
+		const unknownCells = mod.rateMetaCells({
+			tx: { source: 'future_owner', coverage: 'degraded' },
+			rx: { source: 'future_owner', coverage: 'degraded' },
+			classification: { state: 'domain_mismatch' }, stale: false
+		});
+		if (!unknownCells.map(fakeElementText).join(' ').includes('其他来源') ||
+		    unknownCells.some(function(cell) {
+			    return fakeElementText(cell).includes('NSS分类覆盖率');
+		    })) {
+			fail('unknown sources need a generic label and missing U/coverage must not become a zero badge');
+		}
+		const directionalStaleCells = mod.rateMetaCells({
+			tx: { source: 'edge_port', coverage: 'full', stale: true },
+			rx: { source: 'edge_port', coverage: 'full' },
+			stale: false
+		});
+		if (!directionalStaleCells.map(fakeElementText).join(' ').includes('部分过期'))
+			fail('status client metadata must preserve per-direction stale overrides');
 	}
 	if (typeof mod.reconcileClientRows !== 'function') {
 		fail('statusRefresh.js must expose keyed client-row reconciliation for validation');
@@ -4460,6 +4591,10 @@ function assertWarningAliases(src) {
 	    vocab.warningText('bpf_optional_package_missing').includes('可选 BPF 软件包')) {
 		fail('vocab.js must keep the legacy BPF warning ID but describe the package as mandatory');
 	}
+	const conntrackUnavailable = vocab.warningText('conntrack_unavailable');
+	if (!conntrackUnavailable.includes('客户端总速率') || /NSS|ECM|Access Edge/.test(conntrackUnavailable)) {
+		fail('vocab.js must keep conntrack-unavailable guidance valid for both x86 and NSS profiles');
+	}
 	if (vocab.warningText('openclash_detected') === 'openclash detected' ||
 	    vocab.warningText('software_flow_offload_enabled') === 'software flow offload enabled' ||
 	    vocab.warningText('fullcone_detected') === 'fullcone detected' ||
@@ -4666,7 +4801,7 @@ function assertViewRequires(src) {
 
 function assertCacheAwareViewEntry(src, moduleName, label) {
 	if (!/^\s*['"]require\s+view['"]\s*;/m.test(src) ||
-	    !src.includes("var RESOURCE_VERSION = 'lanspeed-1.1.4-r3';") ||
+	    !src.includes("var RESOURCE_VERSION = 'lanspeed-1.1.5-r8';") ||
 	    !src.includes('var previousVersion = L.env.resource_version;') ||
 	    !src.includes('L.env.resource_version = RESOURCE_VERSION;') ||
 	    !src.includes(`L.require('${moduleName}')`) ||
@@ -4674,7 +4809,7 @@ function assertCacheAwareViewEntry(src, moduleName, label) {
 	    !src.includes('return view.extend({') ||
 	    !src.includes('return module.load();') ||
 	    !src.includes('return pageModule.render(data);')) {
-		fail(`${label} must load ${moduleName} through the 1.1.4 resource cache boundary`);
+		fail(`${label} must load ${moduleName} through the 1.1.5 resource cache boundary`);
 	}
 	if (src.includes('buildShell(') || src.includes('refreshLive(') || src.includes('loadAll()')) {
 		fail(`${label} must remain a cache-aware entry and not duplicate page logic`);
@@ -5024,6 +5159,10 @@ function assertStatusViewSourceOnlyState(src) {
 	}
 	if (!src.includes("return 'ECM'") || !src.includes("return 'ECM+BPF'")) {
 		fail('LAN Speed status modules must expose distinct ECM and ECM+BPF collector labels');
+	}
+	if (!src.includes("mode === 'access_edge'") || !src.includes("自动精准") ||
+	    !src.includes("accessEdgeOwnsCurrentRate(status) ? 'access_edge'")) {
+		fail('LAN Speed status header must identify active automatic Access Edge instead of presenting its classifier as the total-rate owner');
 	}
 	if (!src.includes("return 'CT-Netlink'")) {
 		fail('LAN Speed status modules must keep conntrack netlink as a clear collector label');
@@ -5559,6 +5698,8 @@ function assertStatusShellModule(src) {
 	    !src.includes('refs.ifacesBody') || !src.includes('ifacesCard')) {
 		fail('lanspeed/statusShell.js must preserve the interface throughput details');
 	}
+	if (src.includes('当前网速覆盖') || src.includes('refs.mCoverage'))
+		fail('lanspeed/statusShell.js must not render the removed overview coverage card');
 	if (src.includes('运行诊断') || src.includes('diagnosticStatusCard') ||
 	    src.includes('lanspeed-diagnostic-') || src.includes('diagnosticsCard')) {
 		fail('lanspeed/statusShell.js must not render the dedicated diagnostics page inside realtime status');
@@ -5653,15 +5794,11 @@ function assertStatusRefreshModule(src) {
 	    !src.includes("_('%d 告警').format(specificWarnings.length)")) {
 		fail('statusRefresh.js must fold connection-only details into the collector tooltip without rendering another label');
 	}
-	if (!src.includes("var measuredLowTraffic = covQuality === 'low_traffic'") ||
-	    !src.includes("covQuality === 'pending' || covQuality === 'counter_skew'") ||
-	    !src.includes('covQuality === \'ok\' || retainedPending || measuredLowTraffic') ||
-	    !src.includes('LAN 流量较低，暂不计算覆盖率') ||
-	    !src.includes('LAN 无活动流量') ||
-	    !src.includes("covQuality === 'counter_skew'") ||
-	    !src.includes('客户端与 LAN 计数批次错位，等待重新采样') ||
-	    !src.includes("covQuality === 'unsupported'")) {
-		fail('statusRefresh.js must distinguish low traffic from a truly idle LAN');
+	if (!src.includes("String(status && status.rate_collector_mode || '') === 'auto'") ||
+	    !src.includes("String(status && status.access_edge_mode || '') === 'active'") ||
+	    !src.includes("? 'access_edge' :") || src.includes('refs.mCoverage') ||
+	    src.includes('refreshLegacyCoverage') || src.includes('refreshAccessEdgeCoverage')) {
+		fail('statusRefresh.js must identify Access Edge without rendering the removed overview coverage metric');
 	}
 	if (!src.includes("'class': 'lanspeed-connection-link'") ||
 	    !src.includes('clientConnections.detailHref(window.location.pathname, c.identity_key)') ||
@@ -5694,7 +5831,7 @@ function assertDiagnosticsStyleModule(src) {
 	[
 		'.lanspeed-diagnostics-root .lanspeed-header{display:flex',
 		'.lanspeed-diagnostics-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))',
-		'.lanspeed-diagnostics-pipeline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))',
+		'.lanspeed-diagnostics-pipeline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))',
 		'.lanspeed-diagnostic-stage{', '.lanspeed-diagnostics-health-group{',
 		'.lanspeed-diagnostics-table-wrap{', '.lanspeed-diagnostic-alert,',
 		'.lanspeed-diagnostics-report-preview{'
@@ -5728,10 +5865,11 @@ function assertDiagnosticsShellModule(src) {
 	    !src.includes('buildPipelineSection(refs)') ||
 	    !src.includes('buildHealthSection(refs)') ||
 	    !src.includes('buildSupportSection(refs, viewState)') ||
-	    !src.includes("stage(refs, 'freshness'") ||
-	    !src.includes("stage(refs, 'quality'") ||
-	    !src.includes("stage(refs, 'path'") ||
-	    !src.includes("stage(refs, 'connections'") ||
+	    !src.includes("stage(refs, 'rate'") ||
+	    !src.includes("stage(refs, 'edge'") ||
+	    !src.includes("stage(refs, 'classification'") ||
+	    !src.includes("refs.rpcDetails = E('details'") ||
+	    !src.includes("refs.reportDetails = E('details'") ||
 	    !src.includes('refs.btnCopy') ||
 	    !src.includes('refs.btnRestart') ||
 	    !src.includes('lanspeed-diagnostics-restart-feedback') ||
@@ -5743,7 +5881,7 @@ function assertDiagnosticsShellModule(src) {
 		fail('lanspeed/diagnosticsShell.js must own the independent diagnostics page DOM');
 	}
 	if ((src.match(/'class': 'cbi-section/g) || []).length !== 4 ||
-	    src.includes('lanspeed-diagnostic-card')) {
+	    src.includes('lanspeed-diagnostic-card') || src.includes("stage(refs, 'integrity'")) {
 		fail('lanspeed/diagnosticsShell.js must expose four peer task sections without nested cards');
 	}
 }
@@ -5751,8 +5889,9 @@ function assertDiagnosticsShellModule(src) {
 function assertDiagnosticsRefreshModule(src) {
 	if (!src.includes('refreshStatusCards: refreshStatusCards') ||
 	    !src.includes('renderRpcChecks: renderRpcChecks') ||
-	    !src.includes('diagnosticsModel.qualityState(viewState, viewState.progress)') ||
-	    !src.includes('diagnosticsModel.pathStateWithRpc(') ||
+	    !src.includes('diagnosticsModel.rateOwnerStateWithRpc(viewState)') ||
+	    !src.includes('diagnosticsModel.accessEdgeStateWithRpc(viewState)') ||
+	    !src.includes('diagnosticsModel.classificationStateWithRpc(viewState)') ||
 	    !src.includes('diagnosticsModel.connectionStateWithRpc(') ||
 	    !src.includes('diagnosticsModel.interfaceStateWithRpc(viewState)') ||
 	    !src.includes('diagnosticsModel.warningGroups(status, health, rpcData, diagnostics)') ||
@@ -5764,8 +5903,12 @@ function assertDiagnosticsRefreshModule(src) {
 	    !src.includes('renderWarnings(refs, viewState.status') ||
 	    !src.includes("'data-label': _('结果')") ||
 	    !src.includes('lsVersion.FULL_VERSION')) {
-		fail('lanspeed/diagnosticsRefresh.js must render RPC, quality, path, interface, connection, version and graded warning state');
+		fail('lanspeed/diagnosticsRefresh.js must render total-rate, Access Edge, classification, RPC and health states');
 	}
+	if (!src.includes("rateEvidence[_('客户端采集覆盖率')]") || !src.includes("rateEvidence[_('范围')]") ||
+	    !src.includes("classificationEvidence[_('覆盖率')]") ||
+	    src.includes('diagnosticsModel.integrityStateWithRpc(viewState)') || src.includes('rate.description, rate.meta'))
+		fail('lanspeed/diagnosticsRefresh.js must render a concise total-rate and classification summary');
 }
 
 function assertDiagnosticsModelModule(src) {
@@ -5773,9 +5916,13 @@ function assertDiagnosticsModelModule(src) {
 		'RPC_LABELS: RPC_LABELS',
 		'assessProgress: assessProgress',
 		'qualityState: qualityState',
-		'dataPathState: dataPathState',
-		'connectionState: connectionState',
-		'interfaceState: interfaceState',
+			'rateOwnerStateWithRpc: rateOwnerStateWithRpc',
+			'accessEdgeStateWithRpc: accessEdgeStateWithRpc',
+			'classificationStateWithRpc: classificationStateWithRpc',
+			'integrityStateWithRpc: integrityStateWithRpc',
+			'dataPathState: dataPathState',
+			'connectionState: connectionState',
+			'interfaceState: interfaceState',
 		'versionState: versionState',
 		'probeFailureBundle: probeFailureBundle',
 		'rpcReportErrorText: rpcReportErrorText',
@@ -5785,13 +5932,13 @@ function assertDiagnosticsModelModule(src) {
 		if (!src.includes(marker))
 			fail(`lanspeed/diagnosticsModel.js must expose ${marker}`);
 	});
-	if (!src.includes('[0-9a-f]{2}[:-]') ||
-	    !src.includes("'[MAC]'") ||
-	    !src.includes("replace(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g, '[IP]')") ||
-	    !src.includes("'[HOST]'") ||
-	    !src.includes('function rpcReportErrorText') ||
-	    !src.includes('function probeFailureBundle') ||
-	    !src.includes('if (!progressRpcOk(rpc, key)) return;') ||
+		if (!src.includes('[0-9a-f]{2}[:-]') ||
+		    !src.includes("'[MAC]'") ||
+		    !src.includes("replace(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g, '[IP]')") ||
+		    !src.includes("'[HOST]'") ||
+		    !src.includes('function rpcReportErrorText') ||
+		    !src.includes('function probeFailureBundle') ||
+		    !src.includes('if (!progressRpcOk(rpc, key)) return;') ||
 	    !src.includes('evidence && health.evidence.probe_failures') ||
 	    !src.includes("quality === 'low_traffic'") ||
 	    !src.includes('低流量实测：上行 %s · 下行 %s') ||
@@ -5799,6 +5946,19 @@ function assertDiagnosticsModelModule(src) {
 	    !src.includes("badge = _('重新对齐')") ||
 	    !src.includes("_('隐私说明')")) {
 		fail('lanspeed/diagnosticsModel.js must parse structured probe failures and redact copied reports');
+	}
+	if (!src.includes("status && status.rate_collector_mode || '') === 'auto'") ||
+	    !src.includes("status && status.access_edge_mode || '') === 'active'") ||
+	    !src.includes("source: 'access_edge'") ||
+	    !src.includes('客户端数据接口没有返回当前精准总速率覆盖')) {
+		fail('lanspeed/diagnosticsModel.js must assess coverage from the currently effective rate configuration');
+	}
+	if (!src.includes('每个方向只使用一个总速率来源（owner）') ||
+	    !src.includes('NSS已识别与CPU慢路径已识别只用于分类') ||
+	    !src.includes('未分类只在同窗口、同字节口径时计算') ||
+	    !src.includes("map_loss === true") ||
+	    !src.includes("classification_domain_mismatch")) {
+		fail('lanspeed/diagnosticsModel.js must diagnose the precise-rate and verifiable-classification scheme without summing E/N/S');
 	}
 }
 
@@ -5918,6 +6078,11 @@ function assertConfigFormModule(src) {
 	    !src.includes('markDirty(refs.viewState)')) {
 		fail('configForm.js must report daemon, range and default-value edits to the native unsaved indicator');
 	}
+	if (!src.includes("当前运行：总速率 精准接入点 · 分类 %s · 连接 %s") ||
+	    !src.includes("nss_ecm_bpf: _('NSS + CPU 路径（ECM+BPF）')") ||
+	    !src.includes("conntrack_netlink: _('内核连接接口')")) {
+		fail('configForm.js must translate the effective runtime configuration into user-facing traffic meanings');
+	}
 	if (!src.includes("E('tr', { 'class': 'lanspeed-range-row' }, [")) {
 		fail('configForm.js must identify the multi-control IPv6 range row for theme-specific alignment');
 	}
@@ -5944,8 +6109,9 @@ function assertConfigModelRewrite(src) {
 	const model = loadConfigModelModule(src);
 	const required = [
 		'refresh_interval_ms', 'active_client_window_ms', 'active_client_min_bps',
-		'overview_window_samples', 'rate_collector_mode', 'conn_collector_mode',
-		'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges',
+			'overview_window_samples', 'rate_collector_mode', 'conn_collector_mode',
+			'access_edge_mode',
+			'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges',
 		'collector_mode', 'max_clients', 'ifname', 'interface_include',
 		'interface_exclude', 'observe', 'enable_bpf', 'enable_conntrack_fallback'
 	];
@@ -5953,6 +6119,22 @@ function assertConfigModelRewrite(src) {
 		required.some(name => !model.FIELDS.some(field => field.name === name))) {
 		fail('configModel.js must own every persisted LAN Speed UCI field');
 		return;
+	}
+	const readableLabels = Object.fromEntries(model.FIELDS.map(field => [ field.name, field.label ]));
+	if (String(readableLabels.rate_collector_mode) !== '客户端网速模式' ||
+		String(readableLabels.access_edge_mode) !== '客户端总速率' ||
+		String(readableLabels.enable_bpf) !== '启用 CPU 流量检测（BPF）') {
+		fail('configModel.js must present user-facing meanings instead of internal collector terminology');
+	}
+	if (Object.prototype.hasOwnProperty.call(readableLabels, 'dedicated_port'))
+		fail('configModel.js must remove the obsolete dedicated-port field from the visible contract');
+	if (JSON.stringify(model.REMOVED_UCI_FIELDS) !== JSON.stringify([ 'dedicated_port' ]))
+		fail('configModel.js must keep removed UCI fields explicit for compatibility cleanup');
+	if (model.DEFAULTS.access_edge_mode !== 'active' ||
+		JSON.stringify(model.ACCESS_EDGE_MODES.map(item => String(item.label))) !== JSON.stringify([
+			'关闭精准检测', '仅后台验证（不用于显示）', '精准总速率（推荐）'
+		])) {
+		fail('configModel.js automatic defaults and total-rate choices must make precise mode the clear recommendation');
 	}
 	if (model.parseInteger('1000ms', model.LIMITS.refresh_interval_ms).valid ||
 		model.parseInteger('499', model.LIMITS.refresh_interval_ms).valid ||
@@ -5965,30 +6147,67 @@ function assertConfigModelRewrite(src) {
 	}
 	const invalid = model.normalize({
 		refresh_interval_ms: 'oops', hide_ipv6_ranges: 'not-a-cidr',
-		ifname: [ 'bad name' ], enable_bpf: 'maybe'
+		ifname: [ 'bad name' ],
+		access_edge_mode: 'guess', enable_bpf: 'maybe'
 	});
 	if (invalid.valid || !invalid.errors.refresh_interval_ms ||
-		!invalid.errors.hide_ipv6_ranges || !invalid.errors.ifname || !invalid.errors.enable_bpf) {
+		!invalid.errors.hide_ipv6_ranges || !invalid.errors.ifname ||
+		!invalid.errors.access_edge_mode ||
+		!invalid.errors.enable_bpf) {
 		fail('configModel.js must return field-scoped errors for malformed UCI values');
 	}
+	const edge = model.normalize({ access_edge_mode: 'active' });
+	if (!edge.valid || edge.values.access_edge_mode !== 'active' ||
+		Object.prototype.hasOwnProperty.call(edge.values, 'dedicated_port'))
+		fail('configModel.js must keep Access Edge independent from the removed direct-port declaration');
 	const removedMode = model.normalize({ rate_collector_mode: 'conntrack_ecm_sync' });
 	if (removedMode.valid || removedMode.values.rate_collector_mode !== 'auto' ||
 	    removedMode.errors.rate_collector_mode !== 'enum_required')
 		fail('configModel.js must reject removed NSS rate modes instead of aliasing them');
-	const rateModes = model.modeChoices('rate', { capabilities: {} }, model.DEFAULTS)
+	const rateModes = model.modeChoices('rate', {
+		evidence: { platform: { profile: 'nss_aarch64' } }, capabilities: {}
+	}, model.DEFAULTS)
 		.map(choice => choice.value);
 	if (JSON.stringify(rateModes) !== JSON.stringify([
 		'auto', 'bpf', 'nss_ecm_node', 'nss_ecm_bpf'
 	]))
 		fail('configModel.js must expose automatic plus pure BPF, ECM, and ECM+BPF in order');
-	const x86RateModes = model.modeChoices('rate', { capabilities: { nss: false } }, model.DEFAULTS)
+	const rateLabels = model.modeChoices('rate', {
+		evidence: { platform: { profile: 'nss_aarch64' } }, capabilities: {}
+	}, model.DEFAULTS)
+		.map(choice => String(choice.label));
+	if (JSON.stringify(rateLabels) !== JSON.stringify([
+		'自动精准（推荐）', '仅 CPU 路径（BPF）', '仅 NSS 加速（ECM）',
+		'NSS + CPU 路径（ECM+BPF）'
+	]))
+		fail('configModel.js rate choices must explain which traffic each manual mode can see');
+	const x86Status = {
+		evidence: { platform: { profile: 'x86_tc_bpf' } }, capabilities: { nss: false }
+	};
+	const x86RateModes = model.modeChoices('rate', x86Status, model.DEFAULTS)
 		.map(choice => choice.value);
 	if (JSON.stringify(x86RateModes) !== JSON.stringify([ 'auto', 'bpf' ]))
 		fail('configModel.js must hide ECM and ECM+BPF on a known non-NSS/x86 platform');
-	const staleX86Mode = model.modeChoices('rate', { capabilities: { nss: false } },
+	const x86ConnectionLabels = model.modeChoices('connection', {
+		evidence: { platform: { profile: 'x86_tc_bpf' } }, capabilities: {}
+	}, model.DEFAULTS).map(choice => String(choice.label));
+	if (JSON.stringify(x86ConnectionLabels) !== JSON.stringify([
+		'自动（CT-Netlink 推荐）', '内核连接接口（Netlink）', '兼容连接接口（Procfs）'
+	]))
+		fail('configModel.js must not reuse the x86 TC-BPF rate label for connection details');
+	const staleX86Mode = model.modeChoices('rate', x86Status,
 		Object.assign({}, model.DEFAULTS, { rate_collector_mode: 'nss_ecm_bpf' }));
 	if (!staleX86Mode.some(choice => choice.value === 'nss_ecm_bpf' && choice.disabled))
 		fail('configModel.js must retain a stale NSS selection only as a disabled repair value on x86');
+	const unknownRate = model.modeChoices('rate', {}, model.DEFAULTS);
+	if (model.platformProfile({}) !== 'unknown' || model.isX86Platform({}) ||
+	    model.isNssPlatform({}) || String(unknownRate[0].label) !== '自动' ||
+	    unknownRate.some(choice => choice.value === 'nss_ecm_node' || choice.value === 'nss_ecm_bpf'))
+		fail('configModel.js must keep an unknown platform fail-closed without mislabelling it as x86');
+	if (model.platformProfile({ evidence: { platform: {
+		target_arch: 'aarch64', nss_compiled: true
+	} }, capabilities: { nss: false } }) !== 'nss_aarch64')
+		fail('configModel.js must derive the compiled NSS profile independently of transient NSS probe state');
 	const gated = model.validate({
 		rate_collector_mode: 'bpf', conn_collector_mode: 'auto', enable_bpf: '0',
 		enable_conntrack_fallback: '1'
@@ -6029,6 +6248,12 @@ function assertConfigModelRewrite(src) {
 	}), { ifname: [ 'br-lan' ] });
 	if (JSON.stringify(presentPatch.unset) !== JSON.stringify([ 'ifname' ]))
 		fail('configModel.js must unset only owned list options that were actually present');
+	const removedPortPatch = model.buildUciPatch(model.DEFAULTS, {
+		dedicated_port: [ 'lan2', 'lan3' ]
+	});
+	if (JSON.stringify(removedPortPatch.unset) !== JSON.stringify([ 'dedicated_port' ]) ||
+		Object.prototype.hasOwnProperty.call(removedPortPatch.set, 'dedicated_port'))
+		fail('configModel.js must clean the removed dedicated-port option on the next save');
 	if (!src.includes('legacy-enum') || !src.includes('compatibility: true') ||
 		!src.includes('MAX_INTERFACE_NAMES'))
 		fail('configModel.js must explicitly identify compatibility fields and interface limits');
@@ -6152,13 +6377,14 @@ function makeConfigFormState(model, overrides) {
 		'overview_window_samples', 'max_clients' ];
 	const booleans = [ 'show_client_status', 'show_ipv6', 'hide_private_ipv6',
 		'enable_bpf', 'enable_conntrack_fallback' ];
-	const editable = [ 'rate_collector_mode', 'conn_collector_mode', 'enable_bpf',
+	const editable = [ 'rate_collector_mode', 'access_edge_mode',
+		'conn_collector_mode', 'enable_bpf',
 		'enable_conntrack_fallback', 'refresh_interval_ms', 'overview_window_samples',
 		'max_clients', 'active_client_window_ms', 'active_client_min_bps',
 		'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges' ];
 	const inputs = {};
 	numbers.forEach(function(name) { inputs[name] = fakeElement('input', { value: String(values[name]) }); });
-	[ 'rate_collector_mode', 'conn_collector_mode' ].forEach(function(name) {
+	[ 'rate_collector_mode', 'access_edge_mode', 'conn_collector_mode' ].forEach(function(name) {
 		inputs[name] = fakeElement('select', { value: values[name] });
 		inputs[name].value = values[name];
 	});
@@ -6216,7 +6442,9 @@ function makeConfigFormState(model, overrides) {
 		initialIfaceOriginal: Object.assign({}, cloneConfigRecord(ifaceOriginal), {
 			present: Object.assign({}, ifaceOriginal.present)
 		}),
-		runtimeStatus: overrides.runtimeStatus || {},
+		runtimeStatus: overrides.runtimeStatus || {
+			evidence: { platform: { profile: 'nss_aarch64' } }
+		},
 		ifcfgLoaded: overrides.ifcfgLoaded !== false,
 		ifcfgDirty: Boolean(overrides.ifcfgDirty),
 		ifcfgState: overrides.ifcfgState || null,
@@ -6447,9 +6675,14 @@ function assertConfigFormRewrite(src) {
 		fail('configForm.js must never revert the whole package or bypass the LuCI UCI cache');
 	}
 	[ 'refresh_interval_ms', 'overview_window_samples', 'max_clients', 'enable_bpf',
-		'enable_conntrack_fallback', 'interface_exclude' ].forEach(name => {
+		'enable_conntrack_fallback', 'access_edge_mode', 'interface_exclude' ].forEach(name => {
 		if (!src.includes(name)) fail(`configForm.js must preserve ${name} in the owned data contract`);
 	});
+	if (!src.includes("values.dedicated_port = uci.get('lanspeed', 'main', 'dedicated_port')") ||
+		src.includes("rowFor(viewState, 'dedicated_port'") ||
+		src.includes('refs.inputs.dedicated_port') ||
+		!src.includes('FIELD_NAMES.concat(REMOVED_UCI_FIELDS)'))
+		fail('configForm.js must migrate the removed dedicated-port option without rendering or editing it');
 	if (src.includes('lanspeed-compatibility') || src.includes('compatibilityBlock') ||
 		src.includes('清空兼容排除项'))
 		fail('configForm.js must not expose internal compatibility fields as a second configuration workflow');
@@ -6463,8 +6696,9 @@ function matchingConfigStatus(values) {
 		mode: 'Full',
 		confidence: 'high',
 		warnings: [],
-		rate_collector_mode: values.rate_collector_mode,
-		conn_collector_mode: values.conn_collector_mode,
+			rate_collector_mode: values.rate_collector_mode,
+			access_edge_mode: values.access_edge_mode,
+			conn_collector_mode: values.conn_collector_mode,
 		refresh_interval_ms: values.refresh_interval_ms,
 		active_client_window_ms: values.active_client_window_ms,
 		active_client_min_bps: values.active_client_min_bps,
@@ -6472,9 +6706,12 @@ function matchingConfigStatus(values) {
 		max_clients: values.max_clients,
 		enable_bpf: values.enable_bpf === '1',
 		enable_conntrack_fallback: values.enable_conntrack_fallback === '1',
-		version: '1.1.4-r3',
+		version: '1.1.5-r8',
 		capabilities: { bpf: true, conntrack_fallback: true },
-		evidence: { collector: { primary_source: 'bpf', effective_connection_collector: 'conntrack_netlink' } }
+		evidence: {
+			platform: { profile: 'nss_aarch64' },
+			collector: { primary_source: 'bpf', effective_connection_collector: 'conntrack_netlink' }
+		}
 	};
 }
 
@@ -6499,11 +6736,23 @@ function assertConfigFormBehavior(src) {
 	}, makeConfigIfaceStub(), model);
 	asyncChecks.push(validLoadForm.loadValues().then(function(values) {
 		if (values.pageState !== 'ready' || !values.rpc.status.ok ||
-			values.rpc.status.phase !== 'success' || values.status.version !== '1.1.4-r3') {
+			values.rpc.status.phase !== 'success' || values.status.version !== '1.1.5-r8') {
 			fail('configForm.js must accept the complete status contract and retain capability evidence');
 		}
 	}).catch(function(error) {
 		fail('configForm.js valid-status load behavior failed: ' + (error && error.stack || error));
+	}));
+	const legacyLoadForm = loadConfigFormModule(src, makeConfigUci(model, { initial: {
+		dedicated_port: [ 'lan2', 'lan3' ]
+	} }), { status: function() { return Promise.resolve({}); } }, makeConfigIfaceStub(), model);
+	asyncChecks.push(legacyLoadForm.loadValues().then(function(values) {
+		if (JSON.stringify(values.raw.dedicated_port) !== JSON.stringify([ 'lan2', 'lan3' ]) ||
+			Object.prototype.hasOwnProperty.call(values, 'dedicated_port') ||
+			Object.prototype.hasOwnProperty.call(values.values || {}, 'dedicated_port')) {
+			fail('configForm.js must retain a legacy dedicated-port value only in raw migration data');
+		}
+	}).catch(function(error) {
+		fail('configForm.js legacy migration load behavior failed: ' + (error && error.stack || error));
 	}));
 	const invalidUci = makeConfigUci(model);
 	const invalidIface = makeConfigIfaceStub();
@@ -6534,23 +6783,63 @@ function assertConfigFormBehavior(src) {
 		}
 	}));
 
-	const stagedUci = makeConfigUci(model);
+	const profileGuardForm = loadConfigFormModule(src, makeConfigUci(model),
+		{ status: function() { return Promise.resolve({}); } }, makeConfigIfaceStub(), model);
+	const unknownProfileState = makeConfigFormState(model, {
+		values: { rate_collector_mode: 'nss_ecm_bpf', access_edge_mode: 'shadow' },
+		runtimeStatus: {}
+	});
+	const unknownProfilePlan = profileGuardForm.prepareSave(unknownProfileState);
+	if (unknownProfilePlan.values.rate_collector_mode !== 'nss_ecm_bpf' ||
+	    Object.prototype.hasOwnProperty.call(unknownProfilePlan.patch.set, 'access_edge_mode') ||
+	    unknownProfilePlan.patch.unset.indexOf('access_edge_mode') !== -1) {
+		fail('configForm.js must preserve NSS mode and Access Edge UCI when the runtime platform is temporarily unknown');
+	}
+	const x86ProfileState = makeConfigFormState(model, {
+		values: {
+			rate_collector_mode: 'nss_ecm_bpf', access_edge_mode: 'active',
+			interface_include: [ 'br-lan' ]
+		},
+		runtimeStatus: { evidence: { platform: { profile: 'x86_tc_bpf' } } }
+	});
+	const x86ProfilePlan = profileGuardForm.prepareSave(x86ProfileState);
+	if (x86ProfilePlan.values.rate_collector_mode !== 'bpf' ||
+	    x86ProfilePlan.values.access_edge_mode !== 'off' ||
+	    x86ProfilePlan.patch.set.rate_collector_mode !== 'bpf' ||
+	    Object.prototype.hasOwnProperty.call(x86ProfilePlan.patch.set, 'access_edge_mode') ||
+	    x86ProfilePlan.patch.unset.indexOf('access_edge_mode') === -1) {
+		fail('configForm.js must normalize forged NSS settings only for an explicit x86 profile');
+	}
+
+	const stagedUci = makeConfigUci(model, { initial: {
+		dedicated_port: [ 'lan2', 'lan3' ]
+	} });
 	const stagedIface = makeConfigIfaceStub();
-	const stagedForm = loadConfigFormModule(src, stagedUci, { status: function() { return Promise.resolve({}); } }, stagedIface, model);
+	const stagedForm = loadConfigFormModule(src, stagedUci,
+		{ status: function() { return Promise.resolve({}); } }, stagedIface, model);
 	const stagedState = makeConfigFormState(model, { localDirty: true });
+	stagedState.originalRaw.dedicated_port = [ 'lan2', 'lan3' ];
 	stagedState.daemonRefs.inputs.refresh_interval_ms.value = '2000';
+	stagedState.daemonRefs.inputs.access_edge_mode.value = 'active';
 	asyncChecks.push(stagedForm.saveAll(stagedState).then(function(result) {
 		if (!result || !result.ok || !result.staged || !stagedState.hasStagedSave ||
 			stagedState.configSaving || stagedState.ifaceBusy ||
 			String(stagedUci.remote.refresh_interval_ms) !== '2000' ||
+			stagedUci.remote.access_edge_mode !== 'active' ||
+			Object.prototype.hasOwnProperty.call(stagedUci.remote, 'dedicated_port') ||
+			!stagedUci.calls.some(function(call) {
+				return call[0] === 'unset' && call[1] === 'dedicated_port';
+			}) ||
 			stagedState.saveState !== 'staged') {
-			fail('configForm.js Save must stage valid values, unlock controls and expose the staged state');
+			fail('configForm.js Save must stage Access Edge and other valid values, unlock controls and expose the staged state');
 		}
 		return stagedForm.resetAll(stagedState);
 	}).then(function(result) {
 		const saves = stagedUci.calls.filter(function(call) { return call[0] === 'save'; });
 		if (!result || !result.ok || !result.staged || stagedState.hasStagedSave ||
 			String(stagedUci.remote.refresh_interval_ms) !== '1000' || saves.length !== 2 ||
+			stagedUci.remote.access_edge_mode !== 'active' ||
+			Object.prototype.hasOwnProperty.call(stagedUci.remote, 'dedicated_port') ||
 			stagedState.daemonRefs.inputs.refresh_interval_ms.value !== '1000') {
 			fail('configForm.js Reset must stage an owned-field reversal after Save without applying');
 		}
@@ -6601,6 +6890,7 @@ function assertConfigFormBehavior(src) {
 	}));
 
 	const rollbackUci = makeConfigUci(model, {
+		initial: { dedicated_port: [ 'lan2' ] },
 		saveBehaviors: [
 			function(api) {
 				api.commit();
@@ -6613,6 +6903,7 @@ function assertConfigFormBehavior(src) {
 	const rollbackForm = loadConfigFormModule(src, rollbackUci,
 		{ status: function() { return Promise.resolve({}); } }, makeConfigIfaceStub(), model);
 	const rollbackState = makeConfigFormState(model);
+	rollbackState.originalRaw.dedicated_port = [ 'lan2' ];
 	rollbackState.daemonRefs.inputs.refresh_interval_ms.value = '3000';
 	asyncChecks.push(rollbackForm.saveAll(rollbackState).then(function() {
 		fail('configForm.js must report the original staging failure after compensating rollback');
@@ -6621,6 +6912,7 @@ function assertConfigFormBehavior(src) {
 		if (!String(error && error.message || error).includes('partial save failed') ||
 			!String(error && error.message || error).includes('本页字段已回滚') || saves.length !== 2 ||
 			String(rollbackUci.remote.refresh_interval_ms) !== '1000' ||
+			JSON.stringify(rollbackUci.remote.dedicated_port) !== JSON.stringify([ 'lan2' ]) ||
 			rollbackUci.remote.foreign_option !== 'external-after-failure' ||
 			rollbackState.configSaving || rollbackState.saveState !== 'error') {
 			fail('configForm.js failed Save must compensate only owned fields and preserve unrelated staged values');

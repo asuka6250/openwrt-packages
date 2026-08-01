@@ -317,6 +317,7 @@ function validateFixture(fixture) {
     'evidence',
     'refresh_interval_ms',
     'rate_collector_mode',
+    'access_edge_mode',
     'conn_collector_mode',
     'version',
     'capabilities'
@@ -688,6 +689,7 @@ function validateUci(config) {
     "option active_client_min_bps '1'",
     "option overview_window_samples '240'",
     "option rate_collector_mode 'auto'",
+    "option access_edge_mode 'active'",
     "option conn_collector_mode 'auto'",
     "option show_client_status '0'",
     "option show_ipv6 '1'",
@@ -713,6 +715,8 @@ function validateUci(config) {
     defaultAssignments.includes("list interface_include 'br-lan'") &&
     defaultAssignments.includes("list observe 'wan'"),
   'default interfaces must collect br-lan, observe wan and leave every other interface off');
+  assert(!/^\s*list dedicated_port /m.test(config),
+    'default config must not declare a dedicated client port without administrator intent');
 
   for (const removed of [
     'option enabled ',
@@ -747,6 +751,59 @@ assert(methodFixtures.reload.version === packageVersion,
   `reload fixture version must match net/lanspeedd/Makefile (${packageVersion})`);
 assertSchemaRequired(schema, 'status', ['mode', 'confidence', 'warnings', 'evidence', 'refresh_interval_ms', 'version', 'capabilities']);
 assertSchemaRequired(schema, 'client', ['mac', 'identity_key', 'zone', 'interface', 'ips', 'hostname', 'rx_bps', 'tx_bps', 'last_seen', 'collector_mode', 'confidence', 'warnings']);
+assert(schema.$defs.client.properties.rate_meta.$ref === '#/$defs/clientRateMeta',
+  'schema client.rate_meta must reuse the typed clientRateMeta contract');
+assert(!schema.$defs.client.required.includes('rate_meta'),
+  'schema client.rate_meta must remain optional for old producers and consumers');
+assertSchemaRequired(schema, 'clientRateMeta', [
+  'version', 'scope', 'tx', 'rx', 'generation', 'stale', 'reason_codes'
+]);
+assertSchemaRequired(schema, 'rateDirectionMeta', ['source', 'coverage']);
+assertSchemaRequired(schema, 'rateAttachment', ['kind', 'trust']);
+assert(schema.$defs.attachmentTrust.enum.includes('associated_station'),
+  'schema attachment trust must accept the Wi-Fi associated_station producer value');
+validateValue(schema, schema.$defs.rateAttachment, {
+  kind: 'wifi',
+  ifname: 'phy1-ap0',
+  trust: 'associated_station'
+}, 'Wi-Fi associated station attachment');
+assertSchemaRequired(schema, 'rateClassificationSummary', ['state']);
+assertSchemaRequired(schema, 'trafficClassification', ['state', 'tx', 'rx']);
+assertSchemaRequired(schema, 'trafficClassificationDirection', ['state']);
+assert(sameStringSet(Object.keys(schema.$defs.trafficClassificationDirection.properties), [
+  'state', 'edge_bps', 'nss_bps', 'slow_bps', 'unclassified_bps', 'coverage_pct'
+]) && schema.$defs.trafficClassificationDirection.additionalProperties === false,
+'trafficClassificationDirection must expose one direction state plus optional comparison E/N/S/U/coverage fields');
+validateValue(schema, schema.$defs.trafficClassification, {
+  state: 'counter_skew',
+  window_start_ms: 117000,
+  window_end_ms: 123000,
+  comparison_window_ms: 6000,
+  tx: { state: 'counter_skew', edge_bps: 90000000, nss_bps: 80000000, slow_bps: 15000000 },
+  rx: { state: 'aligned', edge_bps: 60000000, nss_bps: 50000000, slow_bps: 5000000,
+    unclassified_bps: 5000000, coverage_pct: 91 }
+}, 'directional traffic classification detail');
+validateValue(schema, schema.$defs.clientRateMeta, {
+  version: 1,
+  scope: 'all_frames',
+  tx: { source: 'edge_port', coverage: 'partial', byte_domain: 'l2_no_fcs',
+    sample_ms: 123000, window_ms: 900, stale: false },
+  rx: { source: 'edge_port', coverage: 'partial', byte_domain: 'l2_no_fcs' },
+  attachment: { kind: 'ethernet', ifname: 'lan2', trust: 'observed_exclusive' },
+  generation: 17,
+  window_ms: 1000,
+  sample_ms: 123456,
+  stale: true,
+  reason_codes: [],
+  classification: {
+    state: 'counter_skew',
+    tx_state: 'aligned',
+    sample_ms: 123000,
+    window_ms: 2000,
+    comparison_window_ms: 6000,
+    tx_coverage_pct: 96
+  }
+}, 'client rate_meta example');
 assertSchemaRequired(schema, 'health', ['mode', 'confidence', 'capabilities', 'conflicts', 'warnings', 'evidence']);
 assertSchemaRequired(schema, 'reload', ['ok', 'mode', 'warnings', 'evidence', 'version']);
 assertSchemaRequired(schema, 'interface', ['name', 'role', 'status']);
@@ -790,7 +847,7 @@ assertSchemaExactObject(schema, 'clientConnectionSummary', [
   'interface',
   'zone'
 ]);
-assertSchemaExactObject(schema, 'client_connections', [
+const clientConnectionFields = [
   'available',
   'sample_ms',
   'client',
@@ -801,8 +858,14 @@ assertSchemaExactObject(schema, 'client_connections', [
   'conn_source',
   'conn_semantics',
   'connections',
-  'warnings'
-]);
+  'warnings',
+  'traffic_classification'
+];
+assert(sameStringSet(Object.keys(schema.$defs.client_connections.properties), clientConnectionFields) &&
+  sameStringSet(schema.$defs.client_connections.required,
+    clientConnectionFields.filter((field) => field !== 'traffic_classification')) &&
+  schema.$defs.client_connections.additionalProperties === false,
+'client_connections must expose optional traffic_classification without weakening its existing required fields');
 assert(Array.isArray(schema.$defs.client_connections.properties.client.anyOf) &&
   sameStringSet(
     schema.$defs.client_connections.properties.client.anyOf.map((entry) => entry.$ref || entry.type),
@@ -816,6 +879,13 @@ assert(schema.$defs.status.properties.active_client_window_ms.minimum === 1000, 
 assert(schema.$defs.status.properties.active_client_min_bps.minimum === 1, 'schema must reject/clamp active_client_min_bps below 1bps');
 assert(schema.$defs.status.properties.collector_mode.$ref === '#/$defs/collectorMode', 'schema status.collector_mode must reuse collectorMode enum');
 assert(schema.$defs.status.properties.rate_collector_mode.$ref === '#/$defs/rateCollectorMode', 'schema status.rate_collector_mode must reuse rateCollectorMode enum');
+assert(JSON.stringify(schema.$defs.status.properties.access_edge_mode.enum) === JSON.stringify(['off', 'shadow', 'active']),
+  'schema status.access_edge_mode must expose only off/shadow/active');
+assert(!Object.prototype.hasOwnProperty.call(schema.$defs.status.properties, 'dedicated_ports'),
+  'schema status must not expose removed dedicated_ports runtime configuration');
+assert(JSON.stringify(schema.$defs.attachmentTrust.enum) ===
+  JSON.stringify(['associated_station', 'observed_exclusive', 'shared', 'unknown']),
+  'schema attachment trust must not retain a manual declared-direct override');
 assert(schema.$defs.status.properties.conn_collector_mode.$ref === '#/$defs/connCollectorMode', 'schema status.conn_collector_mode must reuse connCollectorMode enum');
 assert(schema.$defs.collectorMode.enum.includes('auto'), 'schema must allow status.collector_mode=auto');
 assert(schema.$defs.collectorMode.enum.includes('bpf'), 'schema must allow status.collector_mode=bpf');
