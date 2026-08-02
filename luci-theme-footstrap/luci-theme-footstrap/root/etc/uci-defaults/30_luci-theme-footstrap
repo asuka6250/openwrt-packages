@@ -1,0 +1,108 @@
+#!/bin/sh
+
+# FRESH INSTALL OR UPGRADE? A fresh install may activate this theme; an upgrade must NEVER change
+# the theme the user is on. The guard used to be `[ "$PKG_UPGRADE" = 1 ]` alone — apk never sets
+# that and neither does postinst, so only dev-sync.sh (which exports it by hand) ever took the
+# upgrade branch: on a real router the guard was DEAD, and an upgrade that found an empty
+# mediaurlbase would activate this theme behind the user's back. The marker file is the state that
+# really tells the two apart — it exists iff this script has completed at least once.
+FS_MARKER=/usr/share/luci-theme-footstrap/.installed
+if [ "$PKG_UPGRADE" = 1 ] || [ -f "$FS_MARKER" ]; then
+	PKG_UPGRADE=1
+else
+	PKG_UPGRADE=0
+fi
+
+# Every theme name this package has EVER registered — delete them all; the ONE surviving entry
+# is re-added below (layout, mode and palette are client-side toggles in the Appearance popover,
+# so they are not theme entries). The Makefile's postrm must delete the same set (it runs when
+# this file is already gone, so it cannot source it) and the two lists had already drifted into a
+# different ORDER — which is how one of them would quietly lose a name. Only the assignment is
+# pinned: the Makefile writes `$$t` where this writes `$t`.
+# @mirror theme/legacy-names
+LEGACY_THEMES="Footstrap FootstrapDark FootstrapLight FootstrapTop FootstrapTopDark FootstrapTopLight FootstrapSidebar FootstrapOnTop"
+# @endmirror
+for t in $LEGACY_THEMES; do
+	uci -q delete "luci.themes.$t"
+done
+
+# The ONE theme entry: sidebar and top bar are one template morphed by :root[data-layout].
+uci set luci.themes.Footstrap=/luci-static/footstrap
+
+# Normalise the active theme. Every legacy media path below is now neither registered in
+# luci.themes nor on disk, so an install left pointing at one is stranded: the Design page does
+# not list it (it cannot be switched away from) and its media dir 404s. They all map onto the one
+# surviving path. Non-footstrap themes are left alone; a fresh install defaults to footstrap.
+#
+# MIGRATION — a router that was on the top-nav theme must STAY on the top bar. The layout lives
+# in the browser (localStorage 'fs-layout') and a shell script cannot write that, so carry it
+# server-side: footstrap_layout is the router's DEFAULT layout, which head.ut stamps onto
+# <html data-layout> and the client's own choice then overrides. Set only when the old path says
+# top-nav, and only if unset, so a re-run never clobbers a deliberate change.
+cur=$(uci -q get luci.main.mediaurlbase)
+new=$cur
+case "$cur" in
+	# was on the top-nav theme (incl. its legacy dark/light variants) -> keep the bar
+	/luci-static/footstrap-top*)
+		[ -n "$(uci -q get luci.main.footstrap_layout)" ] || \
+			uci set luci.main.footstrap_layout=top
+		new=/luci-static/footstrap ;;
+	# any other footstrap path (incl. the legacy -dark/-light) -> the sidebar default
+	/luci-static/footstrap*)          new=/luci-static/footstrap ;;
+	"") [ "$PKG_UPGRADE" = 1 ] || new=/luci-static/footstrap ;;
+esac
+
+# Last-resort guard against a blank UI: whatever stays active must be on disk — media dir AND
+# ucode template. If a partial upgrade or a hand-edited mediaurlbase points at neither, fall back
+# to stock bootstrap (a plain UI beats no UI); skipped if bootstrap is not installed either.
+#
+# SCOPED TO OUR OWN THEME, and the scoping is the point: `new` defaults to whatever the router
+# already had, so without the case this guard judged OTHER PEOPLE'S themes — installing footstrap
+# would inspect an active luci-theme-argon and, if its template dir was not named after its media
+# basename (or it was mid-upgrade), quietly rewrite mediaurlbase to bootstrap.
+case "$new" in
+	/luci-static/footstrap*)
+		theme=${new##*/}
+		if [ ! -d "/www/luci-static/$theme" ] ||
+		   [ ! -f "/usr/share/ucode/luci/template/themes/$theme/header.ut" ]; then
+			[ -d /www/luci-static/bootstrap ] &&
+			[ -f /usr/share/ucode/luci/template/themes/bootstrap/header.ut ] &&
+				new=/luci-static/bootstrap
+		fi
+		;;
+esac
+
+[ "$new" = "$cur" ] || uci set luci.main.mediaurlbase="$new"
+
+uci commit luci
+
+# Appearance "Save as default" writes the router-wide axis defaults into /etc/config/footstrap
+# through the scoped uci ACL (config 'footstrap' only). The rpcd uci `set` backend the browser
+# calls needs the section to ALREADY EXIST, so guarantee it here — the shipped conffile carries it,
+# but a router that installed a footstrap predating this feature has no such file. `uci set` refuses
+# to CREATE the config file (only the section within one), so touch it first. Idempotent.
+[ -f /etc/config/footstrap ] || touch /etc/config/footstrap
+if ! uci -q get footstrap.settings >/dev/null 2>&1; then
+	uci set footstrap.settings=footstrap
+	uci commit footstrap
+fi
+
+# Login/page background upload (Appearance -> Background image). cgi-upload writes the image to
+# /etc/footstrap/login-bg (a fixed, ACL-scoped path — kept in /etc so it survives a package upgrade
+# and, via lib/upgrade/keep.d, a sysupgrade). uhttpd serves only /www, so a symlink there exposes it
+# at /luci-static/footstrap/bg (uhttpd follows symlinks). Both are recreated on every install/upgrade
+# (postinst re-runs this script) and are idempotent; /www is repopulated from firmware on sysupgrade,
+# so recreating the symlink here rather than shipping it is what makes it reliable on both filesystems.
+mkdir -p /etc/footstrap 2>/dev/null
+[ -d /www/luci-static/footstrap ] && ln -sf /etc/footstrap/login-bg /www/luci-static/footstrap/bg 2>/dev/null
+
+# these caches embed theme paths — drop them so the switch applies on the next request
+rm -f /tmp/luci-indexcache* 2>/dev/null
+rm -rf /tmp/luci-modulecache 2>/dev/null
+
+# Write the marker LAST, so a run that dies half-way is still a fresh install next
+# time rather than an upgrade.
+mkdir -p "$(dirname "$FS_MARKER")" 2>/dev/null
+: > "$FS_MARKER" 2>/dev/null
+
+exit 0
