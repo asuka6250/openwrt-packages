@@ -65,6 +65,8 @@ FULL_REPOS=(
     # ["https://github.com/kenzok8/openwrt-daede.git"]=""
     ["https://github.com/kenzok8/openwrt-clashoo.git"]=""
     ["https://github.com/LazuliKao/luci-theme-fluent.git"]=""
+    ["https://github.com/VizzleTF/luci-theme-footstrap"]=""
+    ["https://github.com/rchen14b/luci-theme-glass"]=""
 )
 
 # ---------------------------------------------------
