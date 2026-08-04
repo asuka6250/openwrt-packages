@@ -35,39 +35,104 @@ printf '\n=== luci-theme-footstrap installer ===\n\n'
 . /etc/openwrt_release
 ok "Detected: ${DISTRIB_DESCRIPTION:-OpenWrt}"
 
-if command -v apk >/dev/null 2>&1; then PM=apk
-elif command -v opkg >/dev/null 2>&1; then PM=opkg
+if command -v apk >/dev/null 2>&1; then PM=apk; INDEX=packages.adb
+elif command -v opkg >/dev/null 2>&1; then PM=opkg; INDEX=Packages.gz
 else err "Neither apk nor opkg found."; exit 1; fi
 ok "Package manager: $PM"
 
-# --- version --------------------------------------------------------------
-# The feed publishes per OpenWrt minor, so the branch comes from the router.
-# SNAPSHOT and anything unparseable have no branch to install from.
-BRANCH=$(printf '%s' "${DISTRIB_RELEASE:-}" | cut -d. -f1,2)
-case "$BRANCH" in
-	[0-9][0-9].[0-9][0-9]) ;;
-	*) err "footstrap needs a release build of OpenWrt 24.10 or newer (got '${DISTRIB_RELEASE:-unknown}')."; exit 1 ;;
-esac
-MAJ=${BRANCH%%.*}; MIN=${BRANCH##*.}
-if [ "$MAJ" -lt 24 ] || { [ "$MAJ" -eq 24 ] && [ "$MIN" -lt 10 ]; }; then
-	err "footstrap requires OpenWrt 24.10 or newer (detected $DISTRIB_RELEASE)."
-	exit 1
-fi
-
-# --- feed -----------------------------------------------------------------
-# keep.d is not bookkeeping: sysupgrade wipes the keys and the repository list unless
-# something claims them, and the theme would come back unupgradable.
+# Read before the branch rather than beside the feed entry, because a router that names
+# no branch picks one by asking the feed which branch carries this architecture.
 if [ "$PM" = apk ]; then
 	ARCH=$(cat /etc/apk/arch) || { err "Cannot read /etc/apk/arch."; exit 1; }
-	if [ ! -f /etc/apk/keys/owfeed-packages.pem ]; then
+else
+	ARCH="${DISTRIB_ARCH:-}"
+	[ -n "$ARCH" ] || { err "DISTRIB_ARCH is empty in /etc/openwrt_release."; exit 1; }
+fi
+
+# --- version --------------------------------------------------------------
+# The feed publishes per OpenWrt minor, so the branch comes from the router. SNAPSHOT
+# and anything unparseable name none, and are served the newest branch of their own
+# package format instead — see FALLBACK_BRANCHES_* below for why that is sound here.
+FALLBACK_BRANCHES_APK="25.12"
+FALLBACK_BRANCHES_OPKG="24.10"
+
+# The feed has no snapshot channel, and not by omission: the two lines owfeed-packages
+# serves ARE the package-format split (apk from 25.12, ipk on 24.10), not a build of the
+# theme per release. A snapshot has no branch of its own to install from, so it gets the
+# newest one its package manager can read.
+#
+# What makes that sound for THIS package and not in general: it is noarch and
+# `+luci-base` is its whole dependency list, so nothing in it was compiled against the
+# branch it is fetched from. A package carrying a binary, or a versioned dependency,
+# must not take this path.
+#
+# Newest first, and each candidate is probed rather than assumed: a branch listed here
+# before it is published — or one that does not carry this router's architecture — falls
+# through to the next instead of writing a repository entry that 404s on every update.
+# The probe's bytes are discarded on purpose. Existence is all it asks, and the index it
+# found is still verified by the package manager against the key pinned above, so a host
+# that lies here buys a feed entry that then fails to verify rather than an install.
+newest_feed_branch() {	# <candidates> -> the first branch that answers
+	for _branch in $1; do
+		if fetch "$FEED_HOST/releases/$_branch/$ARCH/$INDEX" /dev/null 2>/dev/null; then
+			printf '%s' "$_branch"
+			return 0
+		fi
+	done
+	return 1
+}
+
+BRANCH=$(printf '%s' "${DISTRIB_RELEASE:-}" | cut -d. -f1,2)
+case "$BRANCH" in
+[0-9][0-9].[0-9][0-9])
+	MAJ=${BRANCH%%.*}; MIN=${BRANCH##*.}
+	if [ "$MAJ" -lt 24 ] || { [ "$MAJ" -eq 24 ] && [ "$MIN" -lt 10 ]; }; then
+		err "footstrap requires OpenWrt 24.10 or newer (detected $DISTRIB_RELEASE)."
+		exit 1
+	fi
+	;;
+*)
+	info "'${DISTRIB_RELEASE:-unknown}' names no feed branch; asking the feed for the newest one..."
+	if [ "$PM" = apk ]; then CANDIDATES="$FALLBACK_BRANCHES_APK"; else CANDIDATES="$FALLBACK_BRANCHES_OPKG"; fi
+	BRANCH=$(newest_feed_branch "$CANDIDATES") || {
+		err "The feed carries no $PM branch for $ARCH (router reports '${DISTRIB_RELEASE:-unknown}')."
+		err "Install the release asset by hand instead:"
+		err "  https://github.com/VizzleTF/luci-theme-footstrap/releases/latest"
+		exit 1
+	}
+	ok "No branch of its own, so the $BRANCH branch it is — the theme is noarch and needs only luci-base."
+	;;
+esac
+
+# --- feed -----------------------------------------------------------------
+# keep.d is not bookkeeping: sysupgrade wipes the key unless something claims it, and
+# the theme would come back unupgradable. The repository line itself needs no entry —
+# both managers' customfeeds files are conffiles of the manager (`apk-mbedtls` and
+# `opkg`), and sysupgrade backs up every conffile whose checksum has moved. It listed
+# them anyway until this was measured, and `build_list_of_backup_overlay_files` was
+# already dropping the duplicate.
+if [ "$PM" = apk ]; then
+	# customfeeds.list rather than a file of our own under repositories.d/. apk reads
+	# every *.list in that directory, so both work for installing — but LuCI's package
+	# manager reads exactly three paths (`repositories`, `distfeeds.list`,
+	# `customfeeds.list`, in its rpcd ACL and hardcoded in its view), so a feed in any
+	# other file is invisible in "Configure APK" and cannot be edited or removed there.
+	# It is also the file OpenWrt ships for this ("add your custom package feeds here")
+	# and the apk counterpart of the opkg branch's customfeeds.conf below.
+	APK_LIST=/etc/apk/repositories.d/customfeeds.list
+	if ! grep -q "$FEED_HOST" "$APK_LIST" 2>/dev/null; then
 		info "Adding the $FEED_NAME feed..."
 		apk add --quiet ca-bundle libustream-mbedtls >/dev/null 2>&1 || true
 		mkdir -p /etc/apk/keys /etc/apk/repositories.d /lib/upgrade/keep.d
 		fetch "$FEED_HOST/owfeed-packages.pem" /etc/apk/keys/owfeed-packages.pem
 		printf '%s/releases/%s/%s/packages.adb\n' "$FEED_HOST" "$BRANCH" "$ARCH" \
-			> /etc/apk/repositories.d/owfeed-packages.list
-		printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
-			/etc/apk/repositories.d/owfeed-packages.list > /lib/upgrade/keep.d/owfeed-packages
+			>> "$APK_LIST"
+		printf '%s\n' /etc/apk/keys/owfeed-packages.pem > /lib/upgrade/keep.d/owfeed-packages
+		# Installers before this one wrote their own file, which apk still reads: left
+		# in place it is the same repository configured twice, in one file the admin
+		# can see and one they cannot. Removed by name and only after the line above
+		# landed, so the feed is never briefly absent.
+		rm -f /etc/apk/repositories.d/owfeed-packages.list
 		ok "Feed added: $FEED_HOST/releases/$BRANCH/$ARCH"
 	else
 		info "The $FEED_NAME feed is already configured."
@@ -76,7 +141,6 @@ if [ "$PM" = apk ]; then
 	# `apk add` resolves to the newest version in the feed, so a second run upgrades.
 	apk add "$PKG"
 else
-	ARCH="$DISTRIB_ARCH"
 	if ! grep -q "$FEED_NAME" /etc/opkg/customfeeds.conf 2>/dev/null; then
 		info "Adding the $FEED_NAME feed..."
 		opkg update >/dev/null 2>&1 || true
@@ -85,8 +149,7 @@ else
 		fetch "$FEED_HOST/$FEED_KEY_OPKG" "/etc/opkg/keys/$FEED_KEY_OPKG"
 		printf 'src/gz %s %s/releases/%s/%s\n' "$FEED_NAME" "$FEED_HOST" "$BRANCH" "$ARCH" \
 			>> /etc/opkg/customfeeds.conf
-		printf '%s\n' "/etc/opkg/keys/$FEED_KEY_OPKG" /etc/opkg/customfeeds.conf \
-			> /lib/upgrade/keep.d/owfeed-packages
+		printf '%s\n' "/etc/opkg/keys/$FEED_KEY_OPKG" > /lib/upgrade/keep.d/owfeed-packages
 		ok "Feed added: $FEED_HOST/releases/$BRANCH/$ARCH"
 	else
 		info "The $FEED_NAME feed is already configured."

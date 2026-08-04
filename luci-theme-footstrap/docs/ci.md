@@ -246,13 +246,40 @@ nothing can drift.
 ## Installation and the trust chain
 
 `install.sh` does one thing: it adds the owfeed-packages feed (key, repository entry, and a
-`keep.d` entry so a sysupgrade does not lose it) and installs the theme from there. `apk upgrade` /
-`opkg upgrade` carries it forward afterwards, which is the whole reason to install from a feed
-rather than from a file.
+`keep.d` entry so a sysupgrade does not lose the key) and installs the theme from there.
+`apk upgrade` / `opkg upgrade` carries it forward afterwards, which is the whole reason to install
+from a feed rather than from a file.
 
 ```sh
 wget -qO- https://github.com/VizzleTF/luci-theme-footstrap/releases/latest/download/install.sh | sh
 ```
+
+**The repository line goes into the manager's own customfeeds file**, `customfeeds.list` for apk and
+`customfeeds.conf` for opkg — not into a file of the theme's own. apk reads every `*.list` under
+`repositories.d/`, so a private file installs and upgrades just as well; what it cannot do is be
+seen. LuCI's package manager reads exactly three apk paths — `repositories`,
+`repositories.d/distfeeds.list`, `repositories.d/customfeeds.list` — in its rpcd ACL *and* hardcoded
+in `package-manager.js`, so a feed anywhere else is absent from "Configure APK" and cannot be edited
+or removed there. An installer from before this wrote `repositories.d/owfeed-packages.list`, which
+is why the apk branch deletes that file after appending — the same repository configured twice, once
+where the admin can see it and once where they cannot, is worse than either. Neither customfeeds
+file needs a `keep.d` entry: both are conffiles of their manager (`apk-mbedtls`, `opkg`), sysupgrade
+backs up every conffile whose checksum has moved, and `build_list_of_backup_overlay_files` was
+already dropping the duplicate entry the script used to add.
+
+**A snapshot router is served the newest release branch.** The feed publishes one branch per
+OpenWrt minor and has no snapshot channel — owfeed-packages lists exactly two release lines and they
+*are* the package-format split (apk from 25.12, ipk on 24.10), not a build of the theme per release.
+So `SNAPSHOT`, which parses to no branch, gets the newest branch its own package manager can read:
+`FALLBACK_BRANCHES_APK` / `_OPKG` in the script, probed newest-first against
+`releases/<branch>/<arch>/<index>` rather than assumed, so a branch listed before it is published —
+or one that does not carry this router's architecture — falls through instead of writing a
+repository entry that 404s on every update. What makes it sound here and not in general: the theme
+is noarch and `+luci-base` is its whole dependency list, so nothing in it was compiled against the
+branch it comes from. The probe's bytes are discarded; the index it found is still verified below.
+When no candidate answers, the script refuses and points at the release asset — measured in an
+`openwrt/rootfs:x86-64` snapshot container (`apk add` from the 25.12 branch, no `--allow-untrusted`,
+theme registered) and with `/etc/apk/arch` forced to a name the feed does not carry.
 
 **What verifies the bytes is the package manager**, against the feed key pinned in the script:
 apk checks the index against `owfeed-packages.pem`, opkg against usign key `9040356b214084da`. The
