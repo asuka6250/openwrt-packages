@@ -14,7 +14,6 @@ luci-theme-footstrap/
   build-css.sh
   styles/
     00-header.css      banner + the single @layer declaration
-    01-fonts.css       @font-face, unlayered
     02-tokens.css      @layer tokens   private --fs-* tier + the --*-color-* export tier
     03-palettes.css    @layer tokens   palettes (tokens only)
     base/              @layer base     widget defaults the views count on
@@ -239,10 +238,12 @@ so any difference was caused by the CSS.
 
 Two traps in the method itself:
 
-- **Web fonts.** Both sheets declare the same `@font-face`. Swapping the `<link>` restarts font
-  matching, and a snapshot taken before the font is ready measures fallback metrics — every width
-  on the page shifts by a pixel or two and drowns the real diff (291 false differences on the
-  firewall page). Wait for `document.fonts.ready` before each snapshot.
+- **Web fonts.** Neither sheet ships one any more, but a machine with Manrope or JetBrains Mono
+  installed still resolves them, and any page-supplied `@font-face` restarts font matching when the
+  `<link>` is swapped. A snapshot taken before matching settles measures fallback metrics — every
+  width on the page shifts by a pixel or two and drowns the real diff (291 false differences on the
+  firewall page, back when the faces were bundled). Wait for `document.fonts.ready` before each
+  snapshot.
 - **`admin/status/overview` polls and redraws itself**, so it shows ~18 differences even with
   identical CSS on both sides. Run a control pass (A = B) to learn each page's noise floor.
 
@@ -316,12 +317,16 @@ source for `gzip|content-encoding|deflate|zlib|brotli` returns exactly one hit, 
   cost of FOUC on a cold load, a `<noscript>` fallback, and zero gain warm. Not done.)
 - **Splitting into a critical and a deferred sheet** trades the wrong way: cold FCP 336 → 276 ms,
   but warm **108 → 180 ms** — and an admin browses with a warm cache.
-- **Dropping the font preloads**: −24 ms FCP at the cost of FOUT. Not worth it.
+- **Dropping the font preloads**: −24 ms FCP at the cost of FOUT. Overtaken by 0.12.1, which
+  dropped the webfonts themselves — there is no preload and no FOUT left to trade.
 - **`content-visibility` for long tables**: empty. Real router tables are short (Startup 46 rows,
   Processes 34) and a full layout pass costs 2–3 ms.
 
-**Where the time actually is.** A cold load is ~700 KB, of which ours is ~160 KB (stylesheet plus
-JS), the LuCI core ~474 KB and fonts ~45 KB. FCP is set by the sheet as a whole, but cutting the
+**Where the time actually is.** Re-measured after the webfonts left, on the owlab 25.12.4 stand
+with the packaged artefacts (mangled sheet, terser'd JS), overview page, five cold contexts,
+medians: **691 KB over 56 requests**, of which ours is **187 KB** (121 774 B stylesheet plus
+69 593 B of JS), the LuCI core 485 KB, the document 18 KB and **fonts 0 KB**. The core figure is
+this stand's package set, not a floor. FCP is set by the sheet as a whole, but cutting the
 sheet by 10% is ~10 ms — to move FCP visibly you would have to halve it, and as shown above there
 is nothing to halve. A warm SPA transition costs **9 ms against 96 ms** for a full load: the
 theme's main optimisation is already done, and it lives in the router
