@@ -116,6 +116,7 @@ run_node_check() {
 		"$SCRIPT_DIR/validate-lanspeed-packaging.js" \
 		"$SCRIPT_DIR/validate-lanspeed-diagnostics.js" \
 		"$SCRIPT_DIR/validate-lanspeed-status.js" \
+		"$SCRIPT_DIR/validate-lanspeed-client-control.js" \
 		"$SCRIPT_DIR/validate-lanspeed-ubus-lifecycle.js" \
 		"$SCRIPT_DIR/validate-release-version.js" \
 		"$SCRIPT_DIR/validate-lanspeed-geo.js" \
@@ -201,6 +202,12 @@ run_unit() {
 		"$rust_cargo_path" test \
 		--manifest-path "$ROOT/net/lanspeedd/rust/Cargo.toml" \
 		-p lanspeed-openwrt-sys --locked --offline -- --test-threads=1 || return $?
+	run_logged "rust-lanspeedd-no-openwrt" env \
+		PATH="$rust_toolchain_bin:$PATH" \
+		RUSTC="$rustc_bin" \
+		"$rust_cargo_path" check \
+		--manifest-path "$ROOT/net/lanspeedd/rust/Cargo.toml" \
+		-p lanspeedd --lib --no-default-features --locked --offline || return $?
 	run_logged "rust-workspace" env \
 		PATH="$rust_toolchain_bin:$PATH" \
 		RUSTC="$rustc_bin" \
@@ -229,13 +236,17 @@ run_unit() {
 	run_logged "packaging" node "$SCRIPT_DIR/validate-lanspeed-packaging.js" || return $?
 	run_logged "diagnostics" node "$SCRIPT_DIR/validate-lanspeed-diagnostics.js" || return $?
 	run_logged "lanspeed-status" node "$SCRIPT_DIR/validate-lanspeed-status.js" || return $?
+	run_logged "lanspeed-client-control" node "$SCRIPT_DIR/validate-lanspeed-client-control.js" || return $?
 	run_logged "ubus-lifecycle" node "$SCRIPT_DIR/validate-lanspeed-ubus-lifecycle.js" || return $?
-	run_logged "release-version" env RUST_CARGO="$rust_cargo_path" \
+	run_logged "release-version" env \
+		PATH="$rust_toolchain_bin:$PATH" \
+		RUSTC="$rustc_bin" \
+		RUST_CARGO="$rust_cargo_path" \
 		node "$SCRIPT_DIR/validate-release-version.js" || return $?
 	run_logged "lanspeed-geo" node "$SCRIPT_DIR/validate-lanspeed-geo.js" || return $?
 	run_logged "lanspeed-modules" node "$SCRIPT_DIR/validate-lanspeed-modules.js" || return $?
 	run_logged "build-sdk" sh "$SCRIPT_DIR/validate-build-sdk.sh" || return $?
-	append_unit_evidence "coverage=rust_workspace openwrt_sys_host openwrt_feature_pure_rust openwrt_sys_ubus_tests contract identity collector lifecycle probes diagnostics realtime_status lanspeed-geo lanspeed-modules build-sdk"
+	append_unit_evidence "coverage=rust_workspace lanspeedd_no_openwrt openwrt_sys_host openwrt_feature_pure_rust openwrt_sys_ubus_tests contract identity collector lifecycle probes diagnostics realtime_status lanspeed-geo lanspeed-modules build-sdk"
 	append_unit_evidence "completed=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 	append_unit_evidence "END unit run_id=$RUN_ID"
 	if [ "$LANSPEED_TEST_OUTPUT_OWNED" -eq 1 ]; then
