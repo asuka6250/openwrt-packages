@@ -10,6 +10,11 @@
 
 const CONFIG_IMPORT_PATH = "/tmp/aurora_config_import.tmp";
 
+// LuCI 客户端渲染的表单控件没有 name 属性，真实 input/select 挂的是
+// id="widget.<cbid>"；按 name 查找永远落空且被 if 守卫静默吞掉。
+const themeFormField = (key) =>
+  document.getElementById("widget.cbid.aurora.theme." + key);
+
 const FEED_HOST = "openwrt.eamonxg.fun";
 const MANIFEST_URL = `https://${FEED_HOST}/manifest.json`;
 const MANIFEST_CACHE_KEY = "aurora.manifest";
@@ -103,16 +108,18 @@ const callPrepareFont = rpc.declare({
   object: "luci.aurora",
   method: "prepare_font",
   params: ["sans", "mono", "sans_stack"],
-  expect: {
-    "": { result: -1, error: "RPC call failed (timeout or transport error)" },
-  },
+  // result -1 marks a dead call (rpcd timeout or transport error). No message
+  // is carried here: this literal would be evaluated at load time, before
+  // LuCI's translation catalogue exists, so the wording lives at the call
+  // site where _() is safe to use.
+  expect: { "": { result: -1 } },
 });
 
 const callGetFontStatus = rpc.declare({
   object: "luci.aurora",
   method: "get_font_status",
   params: ["job_id"],
-  expect: { "": { state: "missing", error: "RPC call failed" } },
+  expect: { "": { state: "missing" } },
 });
 
 const callUploadFont = rpc.declare({
@@ -1566,6 +1573,128 @@ const ensureColorGroupStyles = () => {
   );
 };
 
+/* The Page Backgrounds component's own layout. It used to live in
+   luci-theme-aurora as patches/admin-system-aurora.css, loaded on demand by
+   that theme's header.ut when the page path matched the filename. Install this
+   app under any other theme -- shadcn has the same patch mechanism but not this
+   file -- and the sheet simply never arrived: .bg-preview lost
+   position/height/overflow, and the eight absolutely positioned layers inside
+   it resolved against the initial containing block and covered the page. The
+   layout of this app's own widget is this app's job, so it travels with the
+   view now and the theme owns nothing about this page.
+
+   Design A: the two background targets sit side by side as always-visible
+   picker cards (select in the card head, mini preview below); one shared slider
+   pane under the pair follows whichever card is active. No tab ever hides the
+   other target's state.
+
+   Every theme value is a fallback chain -- Aurora token, then the nearest
+   shadcn/generic name, then something derived from currentColor -- because a
+   bare var(--hairline) under a theme that never heard of it drops the whole
+   declaration, which is how the borders vanished too. */
+const ensureBgCardStyles = () => {
+  if (document.getElementById("aurora-bg-card-styles")) return;
+  document.head.appendChild(
+    E(
+      "style",
+      { id: "aurora-bg-card-styles" },
+      `
+.bg-duo,
+.bg-pane,
+[data-bg-target] {
+  --bgp-line: var(--hairline, var(--border, color-mix(in srgb, currentColor 18%, transparent)));
+  --bgp-subtle: var(--text-subtle, var(--muted-foreground, color-mix(in srgb, currentColor 60%, transparent)));
+  --bgp-muted: var(--text-muted, var(--muted-foreground, color-mix(in srgb, currentColor 65%, transparent)));
+  --bgp-control: var(--control-bg, var(--input, color-mix(in srgb, currentColor 8%, transparent)));
+  --bgp-surface: var(--surface, var(--background, Canvas));
+  --bgp-bg: var(--bg, var(--background, Canvas));
+  --bgp-text: var(--text, var(--foreground, CanvasText));
+  --bgp-brand: var(--brand, var(--primary, currentColor));
+  --bgp-radius: var(--radius-base, var(--radius, .5rem));
+}
+[data-bg-target].cbi-value {
+  display: block;
+}
+[data-bg-target] > .cbi-value-title {
+  display: none;
+}
+/* 双卡并排;窄屏落回单列 */
+.bg-duo {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+  max-width: 760px;
+}
+@media (width < 680px) {
+  .bg-duo {
+    grid-template-columns: 1fr;
+  }
+}
+.bg-duo [data-bg-target].cbi-value {
+  background: var(--bgp-surface);
+  border: 2px solid var(--bgp-line);
+  border-radius: calc(var(--bgp-radius) * 1.8);
+  cursor: pointer;
+  margin: 0;
+  padding: .8rem;
+  transition: border-color .15s;
+}
+.bg-duo [data-bg-target].on {
+  border-color: var(--bgp-brand);
+}
+.bg-card-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: .6rem;
+}
+.bg-card-title {
+  font-size: .95rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+/* The one rule the whole component stands on: the preview's layers are
+   absolute, so it has to be the positioned, sized, clipping ancestor. */
+.bg-preview {
+  background: var(--bgp-bg);
+  border: 1px solid var(--bgp-line);
+  border-radius: var(--bgp-radius);
+  height: 130px;
+  overflow: hidden;
+  position: relative;
+}
+/* 共享滑杆面板:跟随选中的卡 */
+.bg-pane {
+  margin-top: 1rem;
+  max-width: 620px;
+}
+.bg-srow {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(6.5em, max-content) 1fr 3.2em;
+  margin-top: 10px;
+}
+.bg-srow label {
+  font-size: .9rem;
+  white-space: nowrap;
+}
+.bg-srow input[type="range"] {
+  accent-color: var(--bgp-brand);
+  width: 100%;
+}
+.bg-srow output {
+  color: var(--bgp-muted);
+  font-size: .85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+`,
+    ),
+  );
+};
+
 const enhanceColorTokenGroups = (root) => {
   ensureColorGroupStyles();
   const rows = Array.from(root.querySelectorAll("[data-aurora-color-group]"));
@@ -2035,9 +2164,9 @@ return view.extend({
     const m = new form.Map("aurora");
 
     const themeVersion =
-      installedVersions?.theme?.installed_version || "Unknown";
+      installedVersions?.theme?.installed_version || _("Unknown");
     const configVersion =
-      installedVersions?.config?.installed_version || "Unknown";
+      installedVersions?.config?.installed_version || _("Unknown");
 
     let so;
     const viewCtx = this;
@@ -2228,7 +2357,7 @@ return view.extend({
                                 );
                                 window.location.reload();
                               } else {
-                                const errorMsg = ret?.error || "Unknown error";
+                                const errorMsg = ret?.error || _("Unknown error");
                                 ui.addNotification(
                                   null,
                                   E(
@@ -2304,7 +2433,9 @@ return view.extend({
                               null,
                               E(
                                 "p",
-                                _("Error: %s").format(ret?.error || "Unknown"),
+                                _("Error: %s").format(
+                                  ret?.error || _("Unknown"),
+                                ),
                               ),
                               "error",
                             );
@@ -3010,7 +3141,11 @@ return view.extend({
       return callPrepareFont(selected.sans, selected.mono, selected.sansStack)
         .then((res) => {
           if (!res || res.result !== 0) {
-            throw new Error(res?.error || _("unknown error"));
+            throw new Error(
+              res?.result === -1
+                ? _("The router did not respond. Please try again.")
+                : res?.error || _("Unknown error"),
+            );
           }
 
           pollFontCache(res.job_id, 20, selected);
@@ -3123,7 +3258,7 @@ return view.extend({
                   E(
                     "p",
                     _("Failed to delete: %s").format(
-                      ret?.error || "Unknown",
+                      ret?.error || _("Unknown"),
                     ),
                   ),
                   "error",
@@ -3251,37 +3386,37 @@ return view.extend({
       const img = layer("inset:0;background-size:cover;background-position:center;");
       const hint = layer(
         "inset:0;display:flex;align-items:center;justify-content:center;" +
-          "color:var(--text-subtle);font-size:.85em;",
+          "color:var(--bgp-subtle);font-size:.85em;",
       );
       hint.textContent = _("No background selected");
       const parts = [img, hint];
 
       let scrim, canvas, card, topbar, loginCard;
       if (previewKind === "admin") {
-        scrim = layer("inset:0;background:var(--bg);");
+        scrim = layer("inset:0;background:var(--bgp-bg);");
         canvas = layer(
           "inset:27% 5% 5% 5%;border-radius:8px;" +
-            "background:color-mix(in srgb, var(--bg) 55%, transparent);",
+            "background:color-mix(in srgb, var(--bgp-bg) 55%, transparent);",
         );
         card = layer(
           "left:13%;right:13%;top:40%;border-radius:8px;padding:8px 12px;" +
-            "font-size:11px;border:1px solid var(--hairline);color:var(--text);",
+            "font-size:11px;border:1px solid var(--bgp-line);color:var(--bgp-text);",
         );
         card.textContent = "Aa 123 · OpenWrt";
         topbar = layer(
           "top:0;left:0;right:0;height:30px;display:flex;align-items:center;" +
-            "gap:8px;padding:0 10px;font-size:10px;color:var(--text);" +
-            "border-bottom:1px solid var(--hairline);",
+            "gap:8px;padding:0 10px;font-size:10px;color:var(--bgp-text);" +
+            "border-bottom:1px solid var(--bgp-line);",
         );
         topbar.textContent = "☰ OpenWrt";
         parts.push(scrim, canvas, card, topbar);
       } else {
-        scrim = layer("inset:0;background:var(--bg);opacity:0;");
+        scrim = layer("inset:0;background:var(--bgp-bg);opacity:0;");
         parts.push(scrim);
         loginCard = layer(
           "left:27%;right:27%;top:22%;bottom:22%;border-radius:10px;" +
-            "background:var(--surface);border:1px solid var(--hairline);" +
-            "box-shadow:0 8px 24px #0004;padding:10px 12px;color:var(--text);" +
+            "background:var(--bgp-surface);border:1px solid var(--bgp-line);" +
+            "box-shadow:0 8px 24px #0004;padding:10px 12px;color:var(--bgp-text);" +
             "font-size:11px;",
         );
         loginCard.appendChild(E("div", {}, "Aa 123"));
@@ -3290,7 +3425,7 @@ return view.extend({
             E("div", {
               style:
                 "height:9px;margin-top:6px;border-radius:5px;" +
-                "background:var(--control-bg);border:1px solid var(--hairline);",
+                "background:var(--bgp-control);border:1px solid var(--bgp-line);",
             }),
           ),
         );
@@ -3313,15 +3448,17 @@ return view.extend({
           scrim.style.opacity = String(v.scrim / 100);
           if (previewKind === "admin") {
             topbar.style.background =
-              "color-mix(in srgb, var(--bg) " + v.alpha + "%, transparent)";
+              "color-mix(in srgb, var(--bgp-bg) " + v.alpha + "%, transparent)";
             topbar.style.backdropFilter = topbar.style.webkitBackdropFilter =
               "blur(" + v.blur + "px) saturate(150%)";
             card.style.background =
-              "color-mix(in srgb, var(--surface) " + v.alpha + "%, transparent)";
+              "color-mix(in srgb, var(--bgp-surface) " +
+              v.alpha +
+              "%, transparent)";
             return;
           }
           loginCard.style.background =
-            "color-mix(in srgb, var(--surface) " + v.alpha + "%, transparent)";
+            "color-mix(in srgb, var(--bgp-surface) " + v.alpha + "%, transparent)";
           loginCard.style.backdropFilter =
             loginCard.style.webkitBackdropFilter =
               "blur(" + v.blur + "px) saturate(150%)";
@@ -3387,6 +3524,7 @@ return view.extend({
 
       const _renderBg = bgSo.render.bind(bgSo);
       bgSo.render = function (option_index, section_id, in_table) {
+        ensureBgCardStyles();
         return _renderBg(option_index, section_id, in_table).then((el) => {
           el.dataset.bgTarget = key;
           const field = el.querySelector(".cbi-value-field") || el;
@@ -3439,7 +3577,7 @@ return view.extend({
             };
             preview.el.addEventListener("dragover", (e) => {
               e.preventDefault();
-              preview.el.style.outline = "2px dashed var(--brand)";
+              preview.el.style.outline = "2px dashed var(--bgp-brand)";
             });
             preview.el.addEventListener("dragleave", () => {
               preview.el.style.outline = "";
@@ -3457,8 +3595,6 @@ return view.extend({
             return m ? m[1] : "";
           };
           const vals = {};
-          const hiddenInput = (tkey) =>
-            document.querySelector('[name="cbid.aurora.theme.' + tkey + '"]');
           // 角色由键名后缀推断(_alpha/_blur/_scrim),login/main 两组键共用
           // 同一段预览联动;无滑杆的实例落到中性默认(不透明、无模糊、无遮罩)。
           const paneDiv = E("div", { "data-bg-pane": key });
@@ -3494,7 +3630,7 @@ return view.extend({
             slider.addEventListener("input", () => {
               vals[tkey] = +slider.value;
               valEl.textContent = slider.value + unit;
-              const hid = hiddenInput(tkey);
+              const hid = themeFormField(tkey);
               if (hid) {
                 // 拖回默认值 = 回到"未设置":不写键,主题 fallback 接管。
                 // 这也是砍掉"恢复默认"按钮的底气——默认位置就是重置。
@@ -3518,9 +3654,7 @@ return view.extend({
           if (select) {
             select.addEventListener("change", function () {
               refresh();
-              const lqipEl = document.querySelector(
-                '[name="cbid.aurora.theme.' + lqipKey + '"]',
-              );
+              const lqipEl = themeFormField(lqipKey);
               if (!this.value) {
                 if (lqipEl) lqipEl.value = "";
                 return;
@@ -3744,12 +3878,8 @@ return view.extend({
           ["struct_login_bg", "struct_login_bg_lqip"],
           ["struct_main_bg", "struct_main_bg_lqip"],
         ].forEach(([key, lqipKey]) => {
-          const bgInput = mapNode.querySelector(
-            '[name="cbid.aurora.theme.' + key + '"]',
-          );
-          const lqipInput = mapNode.querySelector(
-            '[name="cbid.aurora.theme.' + lqipKey + '"]',
-          );
+          const bgInput = themeFormField(key);
+          const lqipInput = themeFormField(lqipKey);
           if (!bgInput || !lqipInput) return;
 
           if (pending && pendingKey === key) {
