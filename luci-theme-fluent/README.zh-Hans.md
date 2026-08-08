@@ -17,18 +17,10 @@
 
 **简体中文** | [English](./README.md)
 
-[功能特性](#功能特性) • [界面预览](#界面预览) • [快速上手](#快速上手) • [配置](#配置) • [构建](#构建) • [项目结构](#项目结构) • [开发指南](#开发指南) • [致谢](#致谢)
+[功能特性](#功能特性) • [界面预览](#界面预览) • [快速上手](#快速上手) • [配置](#配置) • [开发指南](#开发指南) • [致谢](#致谢)
 </div>
 
 ## 界面预览
-
-<p align="center">
-  <img src="./screenshots/zh-Hans/overview_theme_comparison.png" alt="主题对比总览" width="100%" />
-</p>
-
-<p align="center">
-  <img src="./screenshots/zh-Hans/login_theme_comparison.png" alt="登录页主题对比" width="100%" />
-</p>
 
 <p align="center">
   <img src="./screenshots/zh-Hans/showcase_banner.png" alt="展示横幅" width="100%" />
@@ -36,6 +28,14 @@
 
 <p align="center">
   <img src="./screenshots/zh-Hans/showcase_mobile_promo.png" alt="移动端展示" width="100%" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/zh-Hans/overview_theme_comparison.png" alt="主题对比总览" width="100%" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/zh-Hans/login_theme_comparison.png" alt="登录页主题对比" width="100%" />
 </p>
 
 ## 功能特性
@@ -68,8 +68,8 @@ wget -qO- https://raw.githubusercontent.com/LazuliKao/luci-theme-fluent/main/ins
 ### 手动安装
 
 1. 打开发布页面,下载与你的系统匹配的软件包:
-   - 正式版:https://github.com/LazuliKao/luci-theme-fluent/releases
-   - 每日构建版:https://github.com/LazuliKao/luci-theme-fluent/releases/tag/nightly
+   - 正式版:<https://github.com/LazuliKao/luci-theme-fluent/releases>
+   - 每日构建版:<https://github.com/LazuliKao/luci-theme-fluent/releases/tag/nightly>
 2. 将下载的文件上传到路由器,例如 `/tmp/` 目录。
 3. 使用对应的包管理器进行安装:
 
@@ -85,24 +85,32 @@ apk add --allow-untrusted /tmp/luci-theme-fluent-*.apk
 
 你可以通过以下两种方式之一将本软件包添加到 OpenWrt 编译系统中：
 
-#### 方法一：直接克隆到 `package` 目录
+#### 方法一：克隆仓库并复制软件包目录
+
 ```bash
-cd openwrt/package
-git clone https://github.com/LazuliKao/luci-theme-fluent.git
+cd openwrt
+git clone --depth=1 https://github.com/LazuliKao/luci-theme-fluent.git /tmp/luci-theme-fluent
+# OpenWrt 要求软件包目录直接位于 `package/` 下。
+cp -a /tmp/luci-theme-fluent/package/luci-theme-fluent package/
 ```
 
 #### 方法二：添加到 feeds
+
 在 `feeds.conf.default` 中添加以下行：
+
 ```text
 src-git fluent https://github.com/LazuliKao/luci-theme-fluent.git
 ```
+
 然后更新并安装 feed：
+
 ```bash
 ./scripts/feeds update fluent
 ./scripts/feeds install -a -p fluent
 ```
 
 添加软件包后，在 `menuconfig` 中进行配置和选择：
+
 ```bash
 make menuconfig
 ```
@@ -120,34 +128,40 @@ make menuconfig
 
 设置界面实现位于 `src/web/resources/view/fluent-config.tsx`。
 
-## 构建
+## 开发指南
 
-### 根目录脚本
+### 安装依赖
+
+在仓库根目录执行一次。
 
 ```bash
 pnpm install
-pnpm run build
-pnpm run watch
-pnpm run lint
-pnpm run i18n:build
 ```
 
-### 源码目录脚本
+### 常用命令
+
+以下命令均应在仓库根目录执行：
 
 ```bash
-cd src
-pnpm install
+# 构建 CSS 和 LuCI JavaScript/TSX 资源。
 pnpm run build
+# 监听源码变化并自动重新构建资源。
 pnpm run watch
+# 使用 Biome 检查软件包网页资源和 LuCI 资源。
+pnpm run lint
+# 对 `src` 中的 TypeScript 项目执行类型检查。
 pnpm run typecheck
+# 提取并构建翻译；需要在 `.env` 中设置 `OPENAI_API_KEY`。
+pnpm run i18n:build
 ```
 
 ### 输出路径
 
 - CSS:`package/luci-theme-fluent/htdocs/luci-static/fluent/css/fluent.css`
 - JS:`package/luci-theme-fluent/htdocs/luci-static/resources/`
+这些 CSS 和 JavaScript 文件由构建生成，请勿直接编辑。
 
-## 项目结构
+### 项目结构
 
 ```text
 luci-theme-fluent/
@@ -160,7 +174,7 @@ luci-theme-fluent/
 └── package.json
 ```
 
-## 开发指南
+### 源码布局
 
 - `src/scss/fluent.scss` 是 Sass 的主入口文件。
 - `src/scss/components/` 存放可复用的组件样式。

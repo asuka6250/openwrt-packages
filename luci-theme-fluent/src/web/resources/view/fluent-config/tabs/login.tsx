@@ -1,14 +1,5 @@
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      video: JSXElement<HTMLVideoElement>;
-    }
-  }
-}
-
 const form = L.form;
 const rpc = L.rpc;
-const dom = L.dom;
 const fs = L.fs;
 const ui = L.ui;
 
@@ -63,18 +54,18 @@ const createBackgroundPreview = (filename: string): HTMLElement => {
   const url = `${BACKGROUND_URL}${encodeURIComponent(filename)}`;
 
   if (extension === "mp4" || extension === "webm") {
-    return (<video class="fluent-bg-preview fluent-bg-preview-video" muted playsInline preload="metadata" src={url} />) as HTMLElement;
+    return <video class="fluent-bg-preview fluent-bg-preview-video" muted playsInline preload="metadata" src={url} />;
   }
 
-  return (<div class="fluent-bg-preview" style={`background-image:url('${url.replace(/'/g, "%27")}')`} />) as HTMLElement;
+  return <div class="fluent-bg-preview" style={`background-image:url('${url.replace(/'/g, "%27")}')`} />;
 };
 
 const renderNodeContent = (node: HTMLElement, children: Node | HTMLElement | DocumentFragment | (Node | HTMLElement | DocumentFragment)[]): void => {
-  (dom as unknown as typeof LuCI.dom).content(node, children);
+  dom.content(node, children);
 };
 
-const CBIWallpaperManager = (form.DummyValue as unknown as typeof LuCI.baseclass).extend({
-  renderWidget: function (_section_id: string, _option_index: number, _cfgvalue: string) {
+const CBIWallpaperManager = form.DummyValue.extend({
+  renderWidget: (_section_id: string, _option_index: number, _cfgvalue: string) => {
     const statusEl = (<div class="cbi-value-description fluent-bg-status">Ready to upload or remove custom backgrounds.</div>) as HTMLElement;
     const hintEl = (<div class="fluent-bg-hint">Supported formats: JPG, PNG, GIF, WEBP, MP4, WEBM.</div>) as HTMLElement;
     const uploadButton = (
@@ -207,7 +198,7 @@ const CBIWallpaperManager = (form.DummyValue as unknown as typeof LuCI.baseclass
 
     return <div class="fluent-bg-manager">{[statusEl, hintEl, actionsEl, listEl]}</div>;
   },
-}) as unknown as typeof LuCI.form.DummyValue;
+});
 
 export const registerLoginTab = (section: LuCI.form.TypedSection): void => {
   section.tab("login", _("Login page"), _("Customize the login page background, card opacity, and blur radius for light and dark modes."));
