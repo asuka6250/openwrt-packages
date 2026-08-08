@@ -49,14 +49,18 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     'alt="Tablet Overview"': 'alt="平板端概览"',
     'alt="Mobile Overview"': 'alt="移动端概览"',
     "<title>luci-theme-fluent Mobile Showcase</title>": "<title>luci-theme-fluent 移动端效果图</title>",
-    "<h1>FluentUI Mobile Experience</h1>": "<h1>FluentUI 移动端体验</h1>",
+    "<h1>Fluent Theme Mobile Experience</h1>": "<h1>FluentUI 移动端体验</h1>",
     "<p>Optimized, responsive, and elegant mobile interface for OpenWrt LuCI</p>": "<p>专为 OpenWrt LuCI 优化的响应式、优雅的移动端界面</p>",
     "Intuitive Navigation": "直观导航",
     "Slide-out sidebar drawer designed for quick and easy mobile access": "专为快速便捷的移动端访问设计的侧边栏抽屉",
     "Responsive Layout": "响应式布局",
     "Adaptive controls and tables optimized for single-handed touch interactions": "针对单手触摸交互优化的自适应控件和表格",
-    "Lightweight & Fast": "轻量且快速",
-    "Hardware-accelerated animations and minimal overhead for mobile browsers": "硬件加速动画和极低的移动端浏览器开销",
+    "Ultra-Lightweight": "超轻量设计",
+    "Under 200KB package and less than 1MB compiled assets for minimal storage footprint": "安装包小于 200KB 且编译后资源小于 1MB，最大程度减少存储占用",
+    "Rich Customization": "深度个性化",
+    "40+ settings including brand colors, background videos, blur, and custom CSS": "40+ 自定义配置项，支持主题色、登录视频背景、毛玻璃模糊度以及自定义 CSS",
+    "Configure layout, brand colors, login backdrops, and custom CSS easily via UCI settings": "通过 UCI 轻松配置布局、主题色、登录背景以及自定义 CSS",
+    "Responsive by design · Desktop to mobile": "响应式设计 · 从桌面到移动端",
     'alt="Mobile Sidebar Open"': 'alt="移动端侧边栏展开"',
     'alt="Mobile System Settings"': 'alt="移动端系统设置"',
     'alt="Mobile Software Management"': 'alt="移动端软件管理"',
@@ -123,7 +127,7 @@ async function generateMobilePromo() {
   console.log("Generating mobile promo banner using Playwright...");
 
   // Verify that required screenshot files exist
-  const requiredFiles = ["mobile_sidebar_open.png", "mobile_system_settings.png", "mobile_software_management.png"];
+  const requiredFiles = ["mobile_dark_sidebar_open.png", "mobile_dark_system_settings.png", "mobile_dark_software_management.png"];
   for (const file of requiredFiles) {
     const filePath = path.join(screenshotsDir, file);
     if (!fs.existsSync(filePath)) {
