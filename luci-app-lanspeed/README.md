@@ -2,7 +2,7 @@
 
 > 本仓库所有代码及文档（包括本 README）均由 AI 生成。
 > 
-`luci-app-lanspeed` 为 ImmortalWrt / OpenWrt 提供 LAN 客户端实时速率、连接详情、运行诊断与配置页面。当前版本为 `1.1.6-r1`。
+`luci-app-lanspeed` 为 ImmortalWrt / OpenWrt 提供 LAN 客户端实时速率、连接详情、运行诊断与配置页面。当前版本为 `1.1.6-r2`。
 
 x86_64 使用独立 TC-BPF 路径，并支持客户端限速与禁网；Qualcomm aarch64 NSS 使用 Access Edge 提供客户端总速率，ECM/NSS 与 TC-BPF 只做路径分类。两套平台代码独立编译，不交叉探测或展示。
 
@@ -88,6 +88,7 @@ SDK 构建与发布说明见[构建与发布](docs/guide/development.md)。
 
 安装依赖、内核选项及服务冲突处理见[部署与排障](docs/guide/operations.md)。
 
-## License
+## 许可证
 
-Apache-2.0
+除目录或文件明确另有声明外，本仓库自有代码采用 [Apache License 2.0](LICENSE)。
+`net/lanspeedd/rust/vendor/` 中的第三方依赖保留各自随附的许可证；eBPF 对象中的 `GPL` 字符串是提供给 Linux 内核的程序许可证标记，相关源码仍按其文件和包元数据声明授权。
