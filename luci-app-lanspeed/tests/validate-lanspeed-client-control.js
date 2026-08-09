@@ -94,10 +94,12 @@ async function main() {
     x86ControlByModule['classifier.rs'].includes('&["action", "pass"]') &&
     x86ControlByModule['classifier.rs'].includes('"src"') &&
     x86ControlByModule['classifier.rs'].includes('"ether"') &&
+    x86ControlByModule['classifier.rs'].includes('CONTROL_PROTOCOLS: [&str; 2] = ["ip", "ipv6"]') &&
     x86ControlByModule['shaper.rs'].includes('Direction::Download => "dst"') &&
     x86ControlByModule['shaper.rs'].includes('"ether"') &&
+    x86ControlByModule['shaper.rs'].includes('CONTROL_PROTOCOLS: [&str; 2] = ["ip", "ipv6"]') &&
     !x86ControlByModule['shaper.rs'].includes('"cls_flower"'),
-    'LAN/local destinations must pass before MAC-based dual-stack control redirects to IFB');
+    'LAN/local destinations and non-IP control frames must pass before dual-stack client shaping');
   assert(x86ControlByModule['shaper.rs'].includes('Self::Upload => UPLOAD_HANDLE') &&
     x86ControlByModule['shaper.rs'].includes('Self::Download => DOWNLOAD_HANDLE') &&
     x86ControlByModule['shaper.rs'].includes('"htb"') &&
@@ -107,10 +109,13 @@ async function main() {
     !x86Control.includes('lanspeed_control_io') &&
     !x86ControlByModule['shaper.rs'].includes('wan_devices'),
     'x86 must use HTB/FQ for direct upload and independent LAN download trees');
-  assert(x86ControlByModule['shaper.rs'].includes('DAE_UPLOAD_COMPENSATION_NUMERATOR: u64 = 110') &&
-    x86ControlByModule['shaper.rs'].includes('Self::Upload if rule.upload_before_proxy') &&
-    x86ControlByModule['shaper.rs'].includes('Self::Download => rule.download_bps'),
-    'DAE pre-proxy upload must compensate wire overhead without changing direct upload or download');
+  assert(x86ControlByModule['shaper.rs'].includes('APPLICATION_RATE_NUMERATOR: u64 = 110') &&
+    x86ControlByModule['shaper.rs'].includes('fn application_rate(') &&
+    x86ControlByModule['shaper.rs'].includes('fn htb_burst_bytes(') &&
+    x86ControlByModule['shaper.rs'].includes('HTB_BURST_WINDOW_MILLIS: u64 = 10') &&
+    x86ControlByModule['shaper.rs'].includes('"burst"') &&
+    x86ControlByModule['shaper.rs'].includes('"cburst"'),
+    'x86 HTB must translate application Mbps and use an explicit bounded token budget');
   assert(x86ControlByModule['dae.rs'].includes('/sys/class/net/{bridge}/brif') &&
     x86ControlByModule['dae.rs'].includes('resolve_upload_devices(bridges, bridge_members)') &&
     x86ControlByModule['dae.rs'].includes('return BTreeSet::new()') &&
@@ -123,10 +128,10 @@ async function main() {
     'updating an active upload rate must remove the owned HTB tree before replace can retain stale classes');
   assert(x86ControlByModule['mod.rs'].indexOf('shaper::stage_upload(&upload)?') <
     x86ControlByModule['mod.rs'].indexOf('classifier::install(device, &plan.local_prefixes, rules)?') &&
-    x86ControlByModule['mod.rs'].indexOf('shaper::stage_download(&plan.lan_device, &download)?') <
+    x86ControlByModule['mod.rs'].indexOf('shaper::stage_download(device, rules)?') <
       x86ControlByModule['mod.rs'].indexOf('firewall::install(plan)?') &&
     x86ControlByModule['mod.rs'].indexOf('firewall::install(plan)?') <
-      x86ControlByModule['mod.rs'].indexOf('shaper::activate_download(&plan.lan_device') &&
+      x86ControlByModule['mod.rs'].indexOf('shaper::activate_download(device, rules') &&
     x86ControlByModule['mod.rs'].includes('fn rollback('),
     'queue trees must stage before block/download/upload activation with rollback');
   assert(control.includes('pub interface: Option<String>') &&
@@ -135,11 +140,17 @@ async function main() {
     x86ControlByModule['mod.rs'].includes('fn upload_rules_by_device') &&
     x86ControlByModule['mod.rs'].includes('for (device, rules) in &upload_by_device'),
     'upload shaping must bind each rule to the client interface observed by the rate collector');
-  assert(production.includes('observe_preempted_upload_devices(dae_preempted_devices)') &&
-    production.includes('observe_dae_upload_devices(dae_upload_devices)') &&
+  assert(production.includes('observe_dae_topology(') &&
+    production.includes('dae_preempted_devices,') &&
+    production.includes('dae_upload_devices,') &&
+    production.includes('observe_dae_topology_failure(') &&
     x86ControlByModule['mod.rs'].includes('rule.upload_before_proxy') &&
     x86ControlByModule['mod.rs'].includes('for device in &plan.dae_upload_devices') &&
     x86ControlByModule['mod.rs'].includes('cleanup_legacy_dae_upload_objects') &&
+    x86ControlByModule['mod.rs'].includes('cleanup_obsolete_upload_classifiers(&active_upload_devices)?') &&
+    x86ControlByModule['dae.rs'].includes('cleanup_obsolete_ingress_objects') &&
+    x86ControlByModule['dae.rs'].includes('classifier::ingress_owned(&device)?') &&
+    x86ControlByModule['dae.rs'].includes('fs::read_dir("/sys/class/net")') &&
     x86ControlByModule['dae.rs'].includes('classifier::legacy_dae_egress_owned(&device)?') &&
     !x86ControlByModule['mod.rs'].includes('const LEGACY_DEVICE') &&
     !x86ControlByModule['mod.rs'].includes('stage_native_upload') &&
@@ -147,7 +158,7 @@ async function main() {
     !x86ControlByModule['mod.rs'].includes('plan.upload_preempted && !upload.is_empty()') &&
     control.includes('dae_upload_preempts_control') &&
     !source.includes('dae_upload_preempts_control'),
-    'DAE upload must shape once on bridge slaves before both direct and proxy branches without a fallback UI label');
+    'DAE upload must shape once on discovered bridge slaves and clean obsolete owned hooks after topology changes');
   assert(x86ControlByModule['firewall.rs'].includes('Hook::Ingress') &&
     x86ControlByModule['firewall.rs'].includes('Hook::Egress') &&
     x86ControlByModule['firewall.rs'].includes('"ether"') &&
@@ -156,6 +167,9 @@ async function main() {
     x86ControlByModule['firewall.rs'].includes('"drop"') &&
     x86ControlByModule['firewall.rs'].includes('NFT_OWNER_COMMENT') &&
     x86ControlByModule['firewall.rs'].includes('block_nft_owned_by_external_service') &&
+    x86ControlByModule['firewall.rs'].includes('CONTROL_PROTOCOLS: [&str; 2] = ["ip", "ipv6"]') &&
+    x86ControlByModule['firewall.rs'].includes('fn ingress_rules_by_device') &&
+    x86ControlByModule['firewall.rs'].includes('fn egress_rules_by_device') &&
     !x86ControlByModule['firewall.rs'].includes('fn delete_nft_tables'),
     'block rules must cover proxy ingress and client egress while retaining targeted conntrack cleanup');
   assert(x86ControlByModule['system.rs'].includes('Command::new(program)') &&
@@ -174,8 +188,11 @@ async function main() {
     'verification must use each direction\'s owned queue counters');
   assert(control.includes('CONTROL_DHCP_LEASES_PATH') &&
     control.includes('fn lease_addresses_from(') &&
-    control.includes('merge_control_lease_addresses(&mut next'),
-    'persistent controls must recover safe address-dependent rules from unexpired DHCP leases');
+    control.includes('merge_control_lease_addresses(&mut next') &&
+    control.includes('"224.0.0.0"') &&
+    control.includes('"255.255.255.255"') &&
+    control.includes('"ff00::"'),
+    'persistent controls must recover safe addresses and keep LAN multicast out of shaping');
   assert(!production.includes('x86_control_bpf_unavailable') &&
     !production.includes('replace_control_maps'),
     'x86 client control availability must be independent of the rate-monitor BPF runtime');
@@ -227,6 +244,8 @@ async function main() {
   assert.throws(() => module.mbpsToBps('4000.1', 4_000_000_000));
   assert.throws(() => module.mbpsToBps('0.001', 4_000_000_000));
   assert.strictEqual(module.mbpsToBps('', 4_000_000_000), 0);
+  assert.strictEqual(module.mbpsToBps('0.008', 4_000_000_000), 8_000);
+  assert.strictEqual(module.mbpsToBps('10.1234567', 4_000_000_000) % 8, 0);
 
   module.openLimit({}, {
     identity_key: '02:00:00:00:00:01@lan',
@@ -234,7 +253,7 @@ async function main() {
     ips: [ '2001:db8::1', '192.0.2.44' ],
     mac: '02:00:00:00:00:01',
     control: {
-      upload_bps: 0,
+      upload_bps: 8_000,
       download_bps: 100_000_000,
       internet_disabled: false,
       max_rate_bps: 4_000_000_000
@@ -246,6 +265,9 @@ async function main() {
     modalText.includes('192.0.2.44') && modalText.includes('02:00:00:00:00:01'),
     'limit modal must identify the selected client by name, preferred IP, and MAC');
   assert(modalText.includes('上传 Mbps') && modalText.includes('下载 Mbps'));
+  const modalInputs = modals[0].body[2].children.map((label) => label.children[1]);
+  assert.strictEqual(modalInputs[0].attrs.value, '0.008');
+  assert.strictEqual(modalInputs[1].attrs.value, '100');
   assert(!source.includes('Mbit' + '/s'), 'client control UI must consistently use Mbps');
 
   let reloads = 0;
@@ -286,6 +308,22 @@ async function main() {
   });
   assert.strictEqual(unavailable.children[0].children[0].attrs.disabled, 'disabled');
   assert.strictEqual(unavailable.children[0].children[1].attrs.disabled, 'disabled');
+
+  const recoverable = module.cell(viewState, {
+    identity_key: client.identity_key,
+    control: Object.assign({}, client.control, {
+      configured: true,
+      upload_bps: 8_000,
+      internet_disabled: true,
+      shaping_supported: false,
+      blocking_supported: false,
+      reason: 'control_apply_failed'
+    })
+  });
+  assert.strictEqual(recoverable.children[0].children[0].attrs.disabled, undefined,
+    'an existing limit must remain removable after an apply failure');
+  assert.strictEqual(recoverable.children[0].children[1].attrs.disabled, undefined,
+    'an existing block must remain restorable after an apply failure');
 
   console.log('validate-lanspeed-client-control: PASS');
 }

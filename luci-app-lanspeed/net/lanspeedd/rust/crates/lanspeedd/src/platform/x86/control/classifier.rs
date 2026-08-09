@@ -13,6 +13,7 @@ const JUMP_PREF: u32 = 0xd020;
 const LOCAL_PREF_START: u32 = 100;
 const CLIENT_PREF_START: u32 = 10_000;
 const TERMINAL_PREF: u32 = 65_534;
+const CONTROL_PROTOCOLS: [&str; 2] = ["ip", "ipv6"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Hook {
@@ -86,33 +87,8 @@ fn install_on(
     deactivate_on(hook, lan_device)?;
     clear_chain(hook, lan_device)?;
 
-    let mut preference = LOCAL_PREF_START;
-    for (address, prefix_len) in local_prefixes {
-        add_u32(
-            hook,
-            lan_device,
-            preference,
-            *address,
-            *prefix_len,
-            "dst",
-            &["action", "pass"],
-        )?;
-        preference += 1;
-    }
-
-    preference = CLIENT_PREF_START;
-    for rule in rules {
-        add_mac(
-            hook,
-            lan_device,
-            preference,
-            "src",
-            &rule.mac.to_string(),
-            &["action", "mirred", "egress", "redirect", "dev", ifb::DEVICE],
-        )?;
-        preference += 1;
-    }
-
+    // Create the ownership marker before staging filters so a failure in any
+    // later command remains exactly and safely rollback-able.
     let chain = CHAIN.to_string();
     let terminal = TERMINAL_PREF.to_string();
     let marker = format!("0x{CHAIN:x}");
@@ -137,12 +113,39 @@ fn install_on(
             "pass",
         ],
     )?;
+
+    let mut preference = LOCAL_PREF_START;
+    for (address, prefix_len) in local_prefixes {
+        add_u32(
+            hook,
+            lan_device,
+            preference,
+            *address,
+            *prefix_len,
+            "dst",
+            &["action", "pass"],
+        )?;
+        preference += 1;
+    }
+
+    preference = CLIENT_PREF_START;
+    for rule in rules {
+        for protocol in CONTROL_PROTOCOLS {
+            add_mac(
+                hook,
+                lan_device,
+                preference,
+                protocol,
+                "src",
+                &rule.mac.to_string(),
+                &["action", "mirred", "egress", "redirect", "dev", ifb::DEVICE],
+            )?;
+            preference += 1;
+        }
+    }
+
     verify_chain(hook, lan_device, rules)?;
     activate_on(hook, lan_device)
-}
-
-pub(crate) fn deactivate(lan_device: &str) -> Result<(), String> {
-    deactivate_on(Hook::Ingress, lan_device)
 }
 
 fn deactivate_on(hook: Hook, lan_device: &str) -> Result<(), String> {
@@ -174,11 +177,19 @@ pub(crate) fn cleanup_legacy_dae_egress(device: &str) -> Result<(), String> {
     cleanup_on(Hook::Egress, device)
 }
 
+pub(crate) fn ingress_owned(device: &str) -> Result<bool, String> {
+    owned_on(Hook::Ingress, device)
+}
+
 pub(crate) fn legacy_dae_egress_owned(device: &str) -> Result<bool, String> {
+    owned_on(Hook::Egress, device)
+}
+
+fn owned_on(hook: Hook, device: &str) -> Result<bool, String> {
     if !system::interface_exists(device) || !system::has_qdisc(device, "clsact", None) {
         return Ok(false);
     }
-    let preference = Hook::Egress.jump_pref().to_string();
+    let preference = hook.jump_pref().to_string();
     let jump = system::output(
         "tc",
         &[
@@ -188,7 +199,7 @@ pub(crate) fn legacy_dae_egress_owned(device: &str) -> Result<bool, String> {
             "show",
             "dev",
             device,
-            Hook::Egress.as_str(),
+            hook.as_str(),
             "pref",
             &preference,
         ],
@@ -212,7 +223,7 @@ pub(crate) fn legacy_dae_egress_owned(device: &str) -> Result<bool, String> {
             "show",
             "dev",
             device,
-            Hook::Egress.as_str(),
+            hook.as_str(),
             "chain",
             &chain,
         ],
@@ -230,7 +241,12 @@ fn cleanup_on(hook: Hook, lan_device: &str) -> Result<(), String> {
         return Ok(());
     }
     deactivate_on(hook, lan_device)?;
-    clear_chain(hook, lan_device)
+    clear_chain(hook, lan_device)?;
+    if owned_on(hook, lan_device)? {
+        Err("ingress_filter_cleanup_failed".into())
+    } else {
+        Ok(())
+    }
 }
 
 fn activate_on(hook: Hook, lan_device: &str) -> Result<(), String> {
@@ -403,6 +419,7 @@ fn add_mac(
     hook: Hook,
     device: &str,
     preference: u32,
+    protocol: &str,
     field: &str,
     mac: &str,
     action: &[&str],
@@ -418,7 +435,7 @@ fn add_mac(
         "chain",
         &chain,
         "protocol",
-        "all",
+        protocol,
         "pref",
         &preference,
         "u32",
@@ -432,8 +449,10 @@ fn add_mac(
 }
 
 fn validate_capacity(local_prefixes: &[(IpAddr, u8)], rules: &[&ActiveRule]) -> Result<(), String> {
+    let client_filters =
+        u32::try_from(rules.len().saturating_mul(CONTROL_PROTOCOLS.len())).unwrap_or(u32::MAX);
     if LOCAL_PREF_START + local_prefixes.len() as u32 >= CLIENT_PREF_START
-        || CLIENT_PREF_START + rules.len() as u32 >= TERMINAL_PREF
+        || CLIENT_PREF_START.saturating_add(client_filters) >= TERMINAL_PREF
     {
         Err("control_filter_capacity".into())
     } else {
@@ -462,7 +481,7 @@ fn verify_chain(hook: Hook, lan_device: &str, rules: &[&ActiveRule]) -> Result<(
     }
     let values: Vec<Value> = serde_json::from_slice(&output.stdout)
         .map_err(|_| "ingress_filter_verification_failed".to_owned())?;
-    let expected = rules.len();
+    let expected = rules.len().saturating_mul(CONTROL_PROTOCOLS.len());
     let redirects = values
         .iter()
         .map(|value| count_ifb_redirects(value, ifb::DEVICE))
@@ -552,5 +571,11 @@ mod tests {
         });
         assert_eq!(count_ifb_redirects(&value, ifb::DEVICE), 1);
         assert_eq!(count_ifb_redirects(&value, "ifb-foreign"), 0);
+    }
+
+    #[test]
+    fn client_redirects_are_l3_only() {
+        assert_eq!(CONTROL_PROTOCOLS, ["ip", "ipv6"]);
+        assert!(!CONTROL_PROTOCOLS.contains(&"all"));
     }
 }
