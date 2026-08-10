@@ -20,13 +20,35 @@ interface EditorState {
   categories: SavedMenuCategory[];
   hiddenCategoryIds: Set<string>;
   hiddenItemPaths: Set<string>;
+  itemTitles: Map<string, string>;
   pending: PendingMenuLayout;
 }
 
-const CATEGORY_DRAG_TYPE = "application/x-fluent-menu-category";
-const ITEM_DRAG_TYPE = "application/x-fluent-menu-item";
+type MenuDragSource = { kind: "category"; categoryId: string } | { kind: "item"; path: string };
 
-function dropPosition(event: DragEvent, target: HTMLElement): MenuDropPosition {
+type MenuDropTarget =
+  | { kind: "category"; categoryId: string; element: HTMLElement; position: MenuDropPosition }
+  | { kind: "item"; categoryId: string; element: HTMLElement; path: string; position: MenuDropPosition }
+  | { kind: "item-category"; categoryId: string; element: HTMLElement; position: MenuDropPosition }
+  | { kind: "item-list"; categoryId: string; element: HTMLElement };
+
+interface ActiveDragProjection {
+  placeholder: HTMLElement;
+  source: MenuDragSource;
+  sourceElement: HTMLElement;
+}
+
+interface ActivePointerDrag {
+  handle: HTMLElement;
+  offsetX: number;
+  offsetY: number;
+  pointerId: number;
+  preview: HTMLElement;
+  source: MenuDragSource;
+  sourceElement: HTMLElement;
+}
+
+function dropPosition(event: Pick<MouseEvent, "clientY">, target: HTMLElement): MenuDropPosition {
   const bounds = target.getBoundingClientRect();
   return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
 }
@@ -84,7 +106,8 @@ function buildEditorState(tree: LuCI.ui.menu.MenuNode, savedValue: string | stri
       categories: buildDefaultMenuCategories(tree),
       hiddenCategoryIds: new Set<string>(),
       hiddenItemPaths: new Set<string>(),
-      pending: { titles: [], categoryMoves: [], itemMoves: [] },
+      itemTitles: new Map(),
+      pending: { titles: [], itemTitles: [], categoryMoves: [], itemMoves: [] },
     };
   }
 
@@ -93,6 +116,7 @@ function buildEditorState(tree: LuCI.ui.menu.MenuNode, savedValue: string | stri
     categories: resolved.categories,
     hiddenCategoryIds: resolved.hiddenCategoryIds,
     hiddenItemPaths: resolved.hiddenItemPaths,
+    itemTitles: new Map(resolved.itemTitles),
     pending: resolved.pending,
   };
 }
@@ -115,8 +139,11 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
       const hiddenInput = (<input type="hidden" id={this.cbid(sectionId)} value={initialStringValue} />) as HTMLInputElement;
       const cards = (<div class="fluent-menu-editor__categories" />) as HTMLElement;
       const categoryElements = new Map<string, { card: HTMLElement; error?: HTMLElement }>();
-      let activeDropTarget: HTMLElement | null = null;
-      let activeDropPosition: MenuDropPosition = "before";
+      let activeDropIndicator: HTMLElement | null = null;
+      let activeDropList: HTMLElement | null = null;
+      let activeDropTarget: MenuDropTarget | null = null;
+      let activeDragProjection: ActiveDragProjection | null = null;
+      let activePointerDrag: ActivePointerDrag | null = null;
       const validationSummary = (<div class="fluent-menu-editor__validation" role="alert" />) as HTMLElement;
       const storedValueNotice = (
         <div class="fluent-menu-editor__notice" hidden={!invalidStoredValue}>
@@ -135,24 +162,204 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
         validationSummary.textContent = errors.size > 0 ? _("Fix primary menu title errors before saving.") : "";
       };
 
-      const syncValue = (value = serializeMenuLayout(tree, state.categories, state.hiddenCategoryIds, state.hiddenItemPaths, state.pending)): void => {
+      const syncValue = (value = serializeMenuLayout(tree, state.categories, state.hiddenCategoryIds, state.hiddenItemPaths, state.pending, state.itemTitles)): void => {
         hiddenInput.value = value;
         storedValueNotice.hidden = true;
         updateValidation();
         hiddenInput.dispatchEvent(new Event("change", { bubbles: true }));
       };
 
-      const clearDropIndicator = (): void => {
-        activeDropTarget?.classList.remove("is-drop-before", "is-drop-after");
-        activeDropTarget = null;
+      const reduceMotion = (): boolean => document.body.dataset.reduceMotion === "true";
+
+      const clearDropDecorations = (): void => {
+        activeDropIndicator?.classList.remove("is-drop-before", "is-drop-after");
+        activeDropIndicator = null;
+        activeDropList?.classList.remove("is-drag-over");
+        activeDropList = null;
       };
 
       const showDropIndicator = (target: HTMLElement, position: MenuDropPosition): void => {
-        if (activeDropTarget !== target || activeDropPosition !== position) clearDropIndicator();
-        activeDropTarget = target;
-        activeDropPosition = position;
+        clearDropDecorations();
+        activeDropIndicator = target;
         target.classList.toggle("is-drop-before", position === "before");
         target.classList.toggle("is-drop-after", position === "after");
+      };
+
+      const projectionElements = (source: MenuDragSource): HTMLElement[] => {
+        const selector = source.kind === "category" ? ".fluent-menu-editor__category" : ".fluent-menu-editor__item";
+        return Array.from(cards.querySelectorAll<HTMLElement>(selector)).filter((element) => element !== activeDragProjection?.sourceElement && element.getClientRects().length > 0);
+      };
+
+      const animationTiming = (): { duration: number; easing: string } => {
+        const styles = getComputedStyle(document.documentElement);
+        const durationValue = styles.getPropertyValue("--fluent-duration-fast").trim();
+        const parsedDuration = Number.parseFloat(durationValue);
+        const duration = Number.isFinite(parsedDuration) ? parsedDuration * (durationValue.endsWith("ms") ? 1 : 1000) : 0;
+        return { duration, easing: styles.getPropertyValue("--fluent-easing-standard").trim() };
+      };
+
+      const movePlaceholder = (parent: HTMLElement, reference: ChildNode | null): void => {
+        const projection = activeDragProjection;
+        if (!projection || reduceMotion()) return;
+        if (projection.placeholder.parentElement === parent && projection.placeholder.nextSibling === reference) return;
+
+        const elements = projectionElements(projection.source);
+        const previousPositions = new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
+        parent.insertBefore(projection.placeholder, reference);
+        const timing = animationTiming();
+
+        for (const element of elements) {
+          const previous = previousPositions.get(element);
+          if (!previous || !element.isConnected) continue;
+          const current = element.getBoundingClientRect();
+          const offsetX = previous.left - current.left;
+          const offsetY = previous.top - current.top;
+          if (offsetX === 0 && offsetY === 0) continue;
+          element.getAnimations().forEach((animation) => {
+            animation.cancel();
+          });
+          element.animate([{ transform: `translate(${offsetX}px, ${offsetY}px)` }, { transform: "translate(0, 0)" }], timing);
+        }
+      };
+
+      const beginDragProjection = (source: MenuDragSource, sourceElement: HTMLElement): void => {
+        if (reduceMotion()) return;
+        const bounds = sourceElement.getBoundingClientRect();
+        const modifier = source.kind === "category" ? "category" : "item";
+        const placeholder = document.createElement("div");
+        placeholder.className = `fluent-menu-editor__drop-placeholder fluent-menu-editor__drop-placeholder--${modifier}`;
+        placeholder.style.height = `${bounds.height}px`;
+        placeholder.setAttribute("aria-hidden", "true");
+        sourceElement.parentElement?.insertBefore(placeholder, sourceElement);
+        const projection = { placeholder, source, sourceElement };
+        activeDragProjection = projection;
+        sourceElement.classList.add("is-drag-source");
+      };
+
+      const clearDragProjection = (): void => {
+        const projection = activeDragProjection;
+        activeDragProjection = null;
+        if (!projection) return;
+        projection.placeholder.remove();
+        projection.sourceElement.classList.remove("is-drag-source");
+      };
+
+      const pointerInsidePlaceholder = (clientX: number, clientY: number): boolean => {
+        const placeholder = activeDragProjection?.placeholder;
+        if (!placeholder?.isConnected) return false;
+        const bounds = placeholder.getBoundingClientRect();
+        return clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom;
+      };
+
+      const sameDropTarget = (left: MenuDropTarget | null, right: MenuDropTarget): boolean => {
+        if (!left || left.kind !== right.kind || left.categoryId !== right.categoryId) return false;
+        if (left.kind === "item" && right.kind === "item") return left.path === right.path && left.position === right.position;
+        if (left.kind === "category" && right.kind === "category") return left.categoryId === right.categoryId && left.position === right.position;
+        return left.kind === "item-list" || (left.kind === "item-category" && right.kind === "item-category" && left.position === right.position);
+      };
+
+      const itemDropTargetAtPoint = (list: HTMLElement, clientX: number, clientY: number): MenuDropTarget | null => {
+        const categoryId = list.dataset.categoryId;
+        if (!categoryId) return null;
+
+        const positionedItems = Array.from(list.querySelectorAll<HTMLElement>(":scope > .fluent-menu-editor__item"))
+          .filter((element) => element !== activeDragProjection?.sourceElement && !element.classList.contains("is-dragging") && element.getClientRects().length > 0)
+          .map((element) => ({ element, path: element.dataset.itemPath, bounds: element.getBoundingClientRect() }))
+          .filter((item): item is { element: HTMLElement; path: string; bounds: DOMRect } => Boolean(item.path));
+        if (positionedItems.length === 0) return { kind: "item-list", categoryId, element: list };
+
+        const rows: Array<{ items: typeof positionedItems; top: number; bottom: number }> = [];
+        for (const item of positionedItems) {
+          const row = rows.at(-1);
+          if (!row || item.bounds.top >= row.bottom - 1) {
+            rows.push({ items: [item], top: item.bounds.top, bottom: item.bounds.bottom });
+          } else {
+            row.items.push(item);
+            row.top = Math.min(row.top, item.bounds.top);
+            row.bottom = Math.max(row.bottom, item.bounds.bottom);
+          }
+        }
+
+        const itemTarget = (item: (typeof positionedItems)[number], position: MenuDropPosition): MenuDropTarget => ({
+          kind: "item",
+          categoryId,
+          element: item.element,
+          path: item.path,
+          position,
+        });
+        const firstItem = positionedItems[0];
+        if (clientY < rows[0].top) return itemTarget(firstItem, "before");
+
+        for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+          const row = rows[rowIndex];
+          if (clientY <= row.bottom) {
+            if (row.items.length === 1) {
+              const item = row.items[0];
+              return itemTarget(item, clientY < item.bounds.top + item.bounds.height / 2 ? "before" : "after");
+            }
+
+            const closestItem = row.items.reduce((closest, item) =>
+              Math.abs(clientX - item.bounds.left - item.bounds.width / 2) < Math.abs(clientX - closest.bounds.left - closest.bounds.width / 2) ? item : closest,
+            );
+            const itemCenter = closestItem.bounds.left + closestItem.bounds.width / 2;
+            const before = getComputedStyle(list).direction === "rtl" ? clientX > itemCenter : clientX < itemCenter;
+            return itemTarget(closestItem, before ? "before" : "after");
+          }
+
+          const nextRow = rows[rowIndex + 1];
+          if (nextRow && clientY < nextRow.top) return itemTarget(nextRow.items[0], "before");
+        }
+
+        return { kind: "item-list", categoryId, element: list };
+      };
+
+      const projectDropTarget = (target: MenuDropTarget): void => {
+        const projection = activeDragProjection;
+        if (!projection) return;
+
+        if (target.kind === "category" || target.kind === "item") {
+          const reference = target.position === "before" ? target.element : target.element.nextSibling;
+          const parent = target.element.parentElement;
+          if (parent) movePlaceholder(parent, reference);
+          return;
+        }
+
+        const list = target.kind === "item-list" ? target.element : target.element.querySelector<HTMLElement>(".fluent-menu-editor__items");
+        if (list) movePlaceholder(list, null);
+      };
+
+      const resetProjection = (): void => {
+        const projection = activeDragProjection;
+        const parent = projection?.sourceElement.parentElement;
+        if (projection && parent) movePlaceholder(parent, projection.sourceElement);
+      };
+
+      const clearDropTarget = (reset = true): void => {
+        clearDropDecorations();
+        activeDropTarget = null;
+        if (reset) resetProjection();
+      };
+
+      const setDropTarget = (target: MenuDropTarget): void => {
+        if (sameDropTarget(activeDropTarget, target)) return;
+        clearDropDecorations();
+        activeDropTarget = target;
+
+        if (reduceMotion()) {
+          if (target.kind === "item-list") {
+            activeDropList = target.element;
+            target.element.classList.add("is-drag-over");
+          } else {
+            showDropIndicator(target.element, target.position);
+          }
+          return;
+        }
+
+        if (target.kind === "item-category") {
+          activeDropList = target.element;
+          target.element.classList.add("is-drag-over");
+        }
+        projectDropTarget(target);
       };
 
       const moveItem = (path: string, targetCategoryId: string, beforePath?: string): void => {
@@ -163,6 +370,194 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
         expandedCategoryIds.add(targetCategoryId);
         syncValue();
         renderCategories();
+      };
+
+      const clearPointerDrag = (): void => {
+        const drag = activePointerDrag;
+        if (!drag) return;
+
+        activePointerDrag = null;
+        drag.sourceElement.classList.remove("is-dragging");
+        drag.preview.remove();
+        clearDropTarget();
+        clearDragProjection();
+        if (drag.handle.hasPointerCapture(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
+      };
+
+      const findNearestCategory = (clientX: number, clientY: number, excludeCategoryId?: string): HTMLElement | null => {
+        const categories = Array.from(cards.querySelectorAll<HTMLElement>(".fluent-menu-editor__category")).filter((cat) => {
+          const id = cat.dataset.categoryId;
+          return id && id !== excludeCategoryId && !cat.classList.contains("is-dragging");
+        });
+
+        let nearest: HTMLElement | null = null;
+        let minDistance = Number.MAX_VALUE;
+
+        for (const cat of categories) {
+          const rect = cat.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const distance = Math.hypot(clientX - centerX, clientY - centerY);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearest = cat;
+          }
+        }
+
+        return nearest;
+      };
+
+      const updatePointerDropTarget = (source: MenuDragSource, event: PointerEvent): void => {
+        if (pointerInsidePlaceholder(event.clientX, event.clientY)) return;
+        const element = document.elementFromPoint(event.clientX, event.clientY);
+        if (!element) {
+          clearDropTarget();
+          return;
+        }
+
+        if (source.kind === "category") {
+          let category = element.closest<HTMLElement>(".fluent-menu-editor__category");
+          if (!category) {
+            category = findNearestCategory(event.clientX, event.clientY, source.categoryId);
+          }
+          const categoryId = category?.dataset.categoryId;
+          if (!category || !categoryId || categoryId === source.categoryId) {
+            clearDropTarget();
+            return;
+          }
+
+          setDropTarget({ kind: "category", categoryId, element: category, position: dropPosition(event, category) });
+          return;
+        }
+
+        const item = element.closest<HTMLElement>(".fluent-menu-editor__item");
+        const path = item?.dataset.itemPath;
+        const itemList = item?.closest<HTMLElement>(".fluent-menu-editor__items");
+        const itemCategoryId = itemList?.dataset.categoryId;
+        if (item && path && itemList && itemCategoryId) {
+          if (path === source.path) {
+            clearDropTarget();
+            return;
+          }
+
+          setDropTarget({ kind: "item", categoryId: itemCategoryId, element: item, path, position: dropPosition(event, item) });
+          return;
+        }
+
+        const list = element.closest<HTMLElement>(".fluent-menu-editor__items");
+        if (list) {
+          const target = itemDropTargetAtPoint(list, event.clientX, event.clientY);
+          if (target) setDropTarget(target);
+          else clearDropTarget();
+          return;
+        }
+
+        let category = element.closest<HTMLElement>(".fluent-menu-editor__category");
+        if (!category) {
+          category = findNearestCategory(event.clientX, event.clientY);
+        }
+        const targetCategoryId = category?.dataset.categoryId;
+        if (category && targetCategoryId) {
+          setDropTarget({ kind: "item-category", categoryId: targetCategoryId, element: category, position: "after" });
+        } else {
+          clearDropTarget();
+        }
+      };
+
+      const commitDrop = (source: MenuDragSource, target: MenuDropTarget): void => {
+        if (source.kind === "item") {
+          if (target.kind === "item") {
+            const category = state.categories.find((candidate) => candidate.id === target.categoryId);
+            if (!category) return;
+
+            const targetIndex = category.items.indexOf(target.path);
+            if (targetIndex < 0) return;
+            const beforePath = target.position === "before" ? target.path : category.items[targetIndex + 1];
+            moveItem(source.path, target.categoryId, beforePath);
+          } else if (target.kind === "item-category" || target.kind === "item-list") {
+            moveItem(source.path, target.categoryId);
+          }
+          return;
+        }
+
+        if (target.kind !== "category") return;
+        state.pending.categoryMoves = state.pending.categoryMoves.filter(([sourceId]) => sourceId !== source.categoryId);
+        state.categories = moveMenuCategory(state.categories, source.categoryId, target.categoryId, target.position);
+        syncValue();
+        renderCategories();
+      };
+
+      const completePointerDrag = (): void => {
+        const drag = activePointerDrag;
+        const target = activeDropTarget;
+        clearPointerDrag();
+        if (drag && target) commitDrop(drag.source, target);
+      };
+
+      const beginPointerDrag = (event: PointerEvent, source: MenuDragSource, sourceElement: HTMLElement, handle: HTMLElement): void => {
+        if (activePointerDrag || (event.pointerType !== "mouse" && event.pointerType !== "pen" && event.pointerType !== "touch")) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const bounds = sourceElement.getBoundingClientRect();
+        const preview = sourceElement.cloneNode(true) as HTMLElement;
+        preview.classList.add("fluent-menu-editor__drag-preview");
+        preview.setAttribute("aria-hidden", "true");
+        if (source.kind === "category") {
+          preview.querySelector(".fluent-menu-editor__category-error")?.remove();
+          preview.querySelector(".fluent-menu-editor__items")?.remove();
+        }
+        preview.style.width = `${bounds.width}px`;
+        document.body.append(preview);
+
+        const drag: ActivePointerDrag = {
+          handle,
+          offsetX: event.clientX - bounds.left,
+          offsetY: event.clientY - bounds.top,
+          pointerId: event.pointerId,
+          preview,
+          source,
+          sourceElement,
+        };
+        activePointerDrag = drag;
+        sourceElement.classList.add("is-dragging");
+        beginDragProjection(source, sourceElement);
+        preview.style.left = `${event.clientX - drag.offsetX}px`;
+        preview.style.top = `${event.clientY - drag.offsetY}px`;
+        handle.setPointerCapture(event.pointerId);
+      };
+
+      const movePointerDrag = (event: PointerEvent): void => {
+        const drag = activePointerDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        event.preventDefault();
+        drag.preview.style.left = `${event.clientX - drag.offsetX}px`;
+        drag.preview.style.top = `${event.clientY - drag.offsetY}px`;
+        updatePointerDropTarget(drag.source, event);
+      };
+
+      const endPointerDrag = (event: PointerEvent, shouldCommit: boolean): void => {
+        const drag = activePointerDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        event.preventDefault();
+        if (shouldCommit) {
+          updatePointerDropTarget(drag.source, event);
+          completePointerDrag();
+        } else {
+          clearPointerDrag();
+        }
+      };
+
+      const bindPointerDrag = (handle: HTMLElement, source: MenuDragSource, sourceElement: HTMLElement): void => {
+        handle.addEventListener("pointerdown", (event) => beginPointerDrag(event, source, sourceElement, handle));
+        handle.addEventListener("pointermove", movePointerDrag);
+        handle.addEventListener("pointerup", (event) => endPointerDrag(event, true));
+        handle.addEventListener("pointercancel", (event) => endPointerDrag(event, false));
+        handle.addEventListener("lostpointercapture", () => {
+          if (activePointerDrag?.handle === handle) clearPointerDrag();
+        });
       };
 
       const restoreItem = (path: string): void => {
@@ -180,64 +575,110 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
         if (!item || !category) return null;
 
         const row = (<div class={`fluent-menu-editor__item${state.hiddenItemPaths.has(path) ? " is-hidden" : ""}`} data-item-path={path} />) as HTMLElement;
-        const dragHandle = (
-          <span class="fluent-menu-editor__drag-handle" title={_("Drag to move second-level menu")}>
-            ⋮⋮
-          </span>
-        ) as HTMLElement;
+        const dragHandle = (<span class="fluent-menu-editor__drag-handle" title={_("Drag to move second-level menu")} />) as HTMLElement;
         const visibility = (<input type="checkbox" checked={!state.hiddenItemPaths.has(path)} aria-label={_("Show %s in the menu").format(item.title)} />) as HTMLInputElement;
-        dragHandle.draggable = true;
-
-        dragHandle.addEventListener("dragstart", (event) => {
-          event.dataTransfer?.setData(ITEM_DRAG_TYPE, path);
-          if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-          row.classList.add("is-dragging");
-        });
-        dragHandle.addEventListener("dragend", () => {
-          row.classList.remove("is-dragging");
-          clearDropIndicator();
-        });
+        const dragSource: MenuDragSource = { kind: "item", path };
+        bindPointerDrag(dragHandle, dragSource, row);
         visibility.addEventListener("change", () => {
           if (visibility.checked) state.hiddenItemPaths.delete(path);
           else state.hiddenItemPaths.add(path);
           row.classList.toggle("is-hidden", !visibility.checked);
           syncValue();
         });
-        row.addEventListener("dragover", (event) => {
-          if (!event.dataTransfer?.types.includes(ITEM_DRAG_TYPE)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          showDropIndicator(row, dropPosition(event, row));
-        });
-        row.addEventListener("dragleave", (event) => {
-          if (!row.contains(event.relatedTarget as Node | null) && activeDropTarget === row) clearDropIndicator();
-        });
-        row.addEventListener("drop", (event) => {
-          const pathToMove = event.dataTransfer?.getData(ITEM_DRAG_TYPE);
-          if (!pathToMove) return;
-          event.preventDefault();
-          event.stopPropagation();
 
-          const position = activeDropTarget === row ? activeDropPosition : dropPosition(event, row);
-          const targetIndex = category.items.indexOf(path);
-          const beforePath = position === "before" ? path : category.items[targetIndex + 1];
-          clearDropIndicator();
-          moveItem(pathToMove, categoryId, beforePath);
+        const displayTitle = state.itemTitles.get(path) ?? item.title;
+        const editItemTitleLabel = _("Edit");
+        const editItemTitleButton = (<button class="fluent-menu-editor__category-edit" type="button" aria-label={editItemTitleLabel} title={editItemTitleLabel} />) as HTMLButtonElement;
+
+        editItemTitleButton.addEventListener("click", () => {
+          const currentTitle = state.itemTitles.get(path) ?? item.title;
+          const titleInputId = `${this.cbid(sectionId)}-item-${path.replace(/\//g, "-")}-title`;
+          const titleInput = (<input id={titleInputId} class="cbi-input-text" type="text" value={currentTitle} aria-label={_("Second-level menu title")} />) as HTMLInputElement;
+          const validation = (<p class="cbi-value-description" role="alert" hidden />) as HTMLParagraphElement;
+          let saveButton: HTMLButtonElement | null = null;
+
+          const validateTitle = (): boolean => {
+            const title = titleInput.value.trim();
+            const message = title ? "" : _("Menu title cannot be empty.");
+            validation.textContent = message;
+            validation.hidden = !message;
+            titleInput.classList.toggle("cbi-input-invalid", Boolean(message));
+            if (saveButton) saveButton.disabled = Boolean(message);
+            return !message;
+          };
+
+          titleInput.addEventListener("input", validateTitle);
+          saveButton = (
+            <button
+              type="button"
+              class="btn cbi-button-save"
+              onclick={() => {
+                if (!validateTitle()) return;
+                const newTitle = titleInput.value.trim();
+                if (newTitle === item.title) state.itemTitles.delete(path);
+                else state.itemTitles.set(path, newTitle);
+                syncValue();
+                renderCategories();
+                L.ui.hideModal();
+              }}
+            >
+              {_("Save")}
+            </button>
+          ) as HTMLButtonElement;
+
+          const restoreOriginalLabel = _("Restore to original title");
+          const restoreOriginalButton = (
+            <button
+              class="fluent-menu-editor__item-reset"
+              type="button"
+              aria-label={restoreOriginalLabel}
+              title={restoreOriginalLabel}
+              onclick={() => {
+                titleInput.value = item.title;
+                validateTitle();
+                titleInput.focus();
+              }}
+            />
+          );
+
+          L.ui.showModal(
+            _("Second-level menu title"),
+            <div class="fluent-menu-editor__rename-dialog">
+              <label htmlFor={titleInputId}>{_("Second-level menu title")}</label>
+              <div class="fluent-menu-editor__rename-control">
+                {titleInput}
+                {restoreOriginalButton}
+              </div>
+              {validation}
+              <div class="right">
+                <button type="button" class="btn" onclick={() => L.ui.hideModal()}>
+                  {_("Cancel")}
+                </button>
+                {saveButton}
+              </div>
+            </div>,
+          );
+          validateTitle();
+          requestAnimationFrame(() => {
+            titleInput.focus();
+            titleInput.select();
+          });
         });
 
         const label = (
           <span class="fluent-menu-editor__item-label">
-            <strong>{item.title}</strong>
+            <strong>{displayTitle}</strong>
             <small>{item.path}</small>
           </span>
         );
-        row.append(dragHandle, visibility, label);
+        row.append(dragHandle, editItemTitleButton, label);
         if (canRestoreMenuItem(state.categories, items, path)) {
           const restoreLabel = _("Restore %s to its original menu position").format(item.title);
           const restoreButton = (<button class="fluent-menu-editor__item-reset" type="button" aria-label={restoreLabel} title={restoreLabel} />) as HTMLButtonElement;
           restoreButton.addEventListener("click", () => restoreItem(path));
           row.append(restoreButton);
         }
+        row.append(visibility);
         return row;
       };
 
@@ -276,29 +717,92 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
             expandedCategoryIds.delete(category.id);
           }
         });
-        list.addEventListener("dragover", (event) => {
-          if (!event.dataTransfer?.types.includes(ITEM_DRAG_TYPE)) return;
-          event.preventDefault();
-          list.classList.add("is-drag-over");
-        });
-        list.addEventListener("dragleave", (event) => {
-          if (!list.contains(event.relatedTarget as Node | null)) list.classList.remove("is-drag-over");
-        });
-        list.addEventListener("drop", (event) => {
-          const path = event.dataTransfer?.getData(ITEM_DRAG_TYPE);
-          if (!path) return;
-          event.preventDefault();
-          event.stopPropagation();
-          list.classList.remove("is-drag-over");
-          moveItem(path, category.id);
-        });
 
         if (card.open) renderItems();
 
         const canReorderCategories = state.categories.length > 1;
         const originalCategory = defaultCategoriesById.get(category.id);
         const visibility = (<input type="checkbox" checked={!state.hiddenCategoryIds.has(category.id)} aria-label={_("Show %s in the menu").format(category.title)} />) as HTMLInputElement;
-        const titleInput = (<input class="fluent-menu-editor__category-title" type="text" value={category.title} aria-label={_("Primary menu title")} />) as HTMLInputElement;
+        const categoryTitle = (<span class="fluent-menu-editor__category-name">{category.title}</span>) as HTMLElement;
+        const editTitleLabel = _("Edit");
+        const editTitleButton = (<button class="fluent-menu-editor__category-edit" type="button" aria-label={editTitleLabel} title={editTitleLabel} />) as HTMLButtonElement;
+
+        const openRenameDialog = (): void => {
+          const titleInputId = `${this.cbid(sectionId)}-${category.id}-title`;
+          const titleInput = (<input id={titleInputId} class="cbi-input-text" type="text" value={category.title} aria-label={_("Primary menu title")} />) as HTMLInputElement;
+          const validation = (<p class="cbi-value-description" role="alert" hidden />) as HTMLParagraphElement;
+          let saveButton: HTMLButtonElement | null = null;
+
+          const validateTitle = (): boolean => {
+            const title = titleInput.value.trim();
+            const categories = state.categories.map((candidate) => (candidate.id === category.id ? { ...candidate, title } : candidate));
+            const message = titleErrors(categories).get(category.id) ?? "";
+            validation.textContent = message;
+            validation.hidden = !message;
+            titleInput.classList.toggle("cbi-input-invalid", Boolean(message));
+            if (saveButton) saveButton.disabled = Boolean(message);
+            return !message;
+          };
+
+          titleInput.addEventListener("input", validateTitle);
+          saveButton = (
+            <button
+              type="button"
+              class="btn cbi-button-save"
+              onclick={() => {
+                if (!validateTitle()) return;
+                category.title = titleInput.value.trim();
+                syncValue();
+                renderCategories();
+                L.ui.hideModal();
+              }}
+            >
+              {_("Save")}
+            </button>
+          ) as HTMLButtonElement;
+
+          const restoreTitleLabel = originalCategory ? _("Restore %s to its original menu name").format(originalCategory.title) : "";
+          const restoreTitleButton = originalCategory ? (
+            <button
+              class="fluent-menu-editor__item-reset"
+              type="button"
+              aria-label={restoreTitleLabel}
+              title={restoreTitleLabel}
+              onclick={() => {
+                titleInput.value = originalCategory.title;
+                validateTitle();
+                titleInput.focus();
+              }}
+            />
+          ) : null;
+
+          L.ui.showModal(
+            _("Primary menu title"),
+            <>
+              <div class="fluent-menu-editor__rename-dialog">
+                <label htmlFor={titleInputId}>{_("Primary menu title")}</label>
+                <div class="fluent-menu-editor__rename-control">
+                  {titleInput}
+                  {restoreTitleButton}
+                </div>
+                {validation}
+              </div>
+              <div class="right">
+                <button type="button" class="btn" onclick={() => L.ui.hideModal()}>
+                  {_("Cancel")}
+                </button>
+                {saveButton}
+              </div>
+            </>,
+          );
+          validateTitle();
+          requestAnimationFrame(() => {
+            titleInput.focus();
+            titleInput.select();
+          });
+        };
+
+        editTitleButton.addEventListener("click", openRenameDialog);
 
         visibility.addEventListener("change", () => {
           if (visibility.checked) state.hiddenCategoryIds.delete(category.id);
@@ -307,53 +811,14 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
           syncValue();
         });
 
-        let titleResetButton: HTMLButtonElement | null = null;
-        if (originalCategory) {
-          const restoreTitleLabel = _("Restore %s to its original menu name").format(originalCategory.title);
-          const button = (<button class="fluent-menu-editor__category-reset" type="button" aria-label={restoreTitleLabel} title={restoreTitleLabel} />) as HTMLButtonElement;
-          button.hidden = category.title.trim() === originalCategory.title;
-          button.addEventListener("click", () => {
-            category.title = originalCategory.title;
-            titleInput.value = originalCategory.title;
-            button.hidden = true;
-            syncValue();
-          });
-          titleResetButton = button;
-        }
-
-        titleInput.addEventListener("input", () => {
-          category.title = titleInput.value;
-          if (titleResetButton && originalCategory) titleResetButton.hidden = titleInput.value.trim() === originalCategory.title;
-          syncValue();
-        });
-        titleInput.addEventListener("blur", () => {
-          category.title = titleInput.value.trim();
-          titleInput.value = category.title;
-          if (titleResetButton && originalCategory) titleResetButton.hidden = category.title === originalCategory.title;
-          syncValue();
-        });
-
         if (canReorderCategories) {
-          const dragHandle = (
-            <span class="fluent-menu-editor__drag-handle" title={_("Drag to reorder primary menu")}>
-              ⋮⋮
-            </span>
-          ) as HTMLElement;
-          dragHandle.draggable = true;
-          dragHandle.addEventListener("dragstart", (event) => {
-            event.dataTransfer?.setData(CATEGORY_DRAG_TYPE, category.id);
-            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-            card.classList.add("is-dragging");
-          });
-          dragHandle.addEventListener("dragend", () => {
-            card.classList.remove("is-dragging");
-            clearDropIndicator();
-          });
+          const dragSource: MenuDragSource = { kind: "category", categoryId: category.id };
+          const dragHandle = (<span class="fluent-menu-editor__drag-handle" title={_("Drag to reorder primary menu")} />) as HTMLElement;
+          bindPointerDrag(dragHandle, dragSource, card);
           header.append(dragHandle);
         }
 
-        header.append(visibility, titleInput, itemCount);
-        if (titleResetButton) header.append(titleResetButton);
+        header.append(editTitleButton, categoryTitle, itemCount);
         if (!originalCategory) {
           const deleteButton = (<button class="fluent-menu-editor__category-delete" type="button" aria-label={_("Delete primary menu")} title={_("Delete primary menu")} />) as HTMLButtonElement;
           deleteButton.addEventListener("click", () => {
@@ -372,43 +837,7 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
           });
           header.append(deleteButton);
         }
-
-        card.addEventListener("dragover", (event) => {
-          const isItemDrag = event.dataTransfer?.types.includes(ITEM_DRAG_TYPE);
-          const isCategoryDrag = canReorderCategories && event.dataTransfer?.types.includes(CATEGORY_DRAG_TYPE);
-          if (isCategoryDrag) {
-            event.preventDefault();
-            showDropIndicator(card, dropPosition(event, card));
-            return;
-          }
-          if (!isItemDrag || list.contains(event.target as Node | null)) return;
-
-          event.preventDefault();
-          showDropIndicator(card, "after");
-        });
-        card.addEventListener("dragleave", (event) => {
-          if (card.contains(event.relatedTarget as Node | null)) return;
-          if (activeDropTarget === card) clearDropIndicator();
-        });
-        card.addEventListener("drop", (event) => {
-          const path = event.dataTransfer?.getData(ITEM_DRAG_TYPE);
-          if (path) {
-            event.preventDefault();
-            clearDropIndicator();
-            moveItem(path, category.id);
-            return;
-          }
-
-          const sourceId = event.dataTransfer?.getData(CATEGORY_DRAG_TYPE);
-          if (!canReorderCategories || !sourceId || sourceId === category.id) return;
-          event.preventDefault();
-          const position = activeDropTarget === card ? activeDropPosition : dropPosition(event, card);
-          clearDropIndicator();
-          state.pending.categoryMoves = state.pending.categoryMoves.filter(([pendingSourceId]) => pendingSourceId !== sourceId);
-          state.categories = moveMenuCategory(state.categories, sourceId, category.id, position);
-          syncValue();
-          renderCategories();
-        });
+        header.append(visibility);
 
         card.append(header);
         if (error) card.append(error);
@@ -420,13 +849,103 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
         return card;
       };
 
+      const getInvalidItemsCount = (): number => {
+        let count = state.pending.titles.length + state.pending.itemTitles.length + state.pending.categoryMoves.length + state.pending.itemMoves.length;
+
+        for (const path of state.hiddenItemPaths) {
+          if (!itemsByPath.has(path)) count += 1;
+        }
+
+        const categoryIds = new Set(state.categories.map((c) => c.id));
+        for (const id of state.hiddenCategoryIds) {
+          if (!categoryIds.has(id)) count += 1;
+        }
+
+        return count;
+      };
+
+      const cleanButton = (<button class="btn cbi-button" type="button" />) as HTMLButtonElement;
+
+      const updateCleanButtonState = (): void => {
+        const count = getInvalidItemsCount();
+        cleanButton.disabled = count === 0;
+        if (count > 0) {
+          cleanButton.textContent = _("Clean up invalid items (%d)").format(count);
+        } else {
+          cleanButton.textContent = _("Clean up invalid items");
+        }
+      };
+
+      cleanButton.addEventListener("click", () => {
+        const count = getInvalidItemsCount();
+        if (count === 0) return;
+
+        L.ui.showModal(
+          _("Clean up invalid items"),
+          (
+            <div class="fluent-menu-editor__rename-dialog">
+              <p>{_("Are you sure you want to clean up %d invalid/uninstalled menu items or rules?").format(count)}</p>
+              <div class="right">
+                <button type="button" class="btn" onclick={() => L.ui.hideModal()}>
+                  {_("Cancel")}
+                </button>
+                <button
+                  type="button"
+                  class="btn cbi-button-save"
+                  onclick={() => {
+                    state.pending = { titles: [], itemTitles: [], categoryMoves: [], itemMoves: [] };
+
+                    const nextHiddenItemPaths = new Set<string>();
+                    for (const path of state.hiddenItemPaths) {
+                      if (itemsByPath.has(path)) nextHiddenItemPaths.add(path);
+                    }
+                    state.hiddenItemPaths = nextHiddenItemPaths;
+
+                    const nextHiddenCategoryIds = new Set<string>();
+                    const categoryIds = new Set(state.categories.map((c) => c.id));
+                    for (const id of state.hiddenCategoryIds) {
+                      if (categoryIds.has(id)) nextHiddenCategoryIds.add(id);
+                    }
+                    state.hiddenCategoryIds = nextHiddenCategoryIds;
+
+                    syncValue();
+                    renderCategories();
+                    L.ui.hideModal();
+                  }}
+                >
+                  {_("Clean up")}
+                </button>
+              </div>
+            </div>
+          ) as HTMLElement,
+        );
+      });
+
       function renderCategories(): void {
+        const listScrollPositions = new Map<string, number>();
+        for (const list of cards.querySelectorAll<HTMLElement>(".fluent-menu-editor__items")) {
+          const categoryId = list.dataset.categoryId;
+          if (categoryId) listScrollPositions.set(categoryId, list.scrollTop);
+        }
+        const pageScrollLeft = window.scrollX;
+        const pageScrollTop = window.scrollY;
+
         categoryElements.clear();
         dom.content(
           cards,
           state.categories.map((category) => renderCategory(category)),
         );
         updateValidation();
+        updateCleanButtonState();
+
+        requestAnimationFrame(() => {
+          for (const list of cards.querySelectorAll<HTMLElement>(".fluent-menu-editor__items")) {
+            const categoryId = list.dataset.categoryId;
+            const scrollTop = categoryId ? listScrollPositions.get(categoryId) : undefined;
+            if (scrollTop != null) list.scrollTop = scrollTop;
+          }
+          window.scrollTo(pageScrollLeft, pageScrollTop);
+        });
       }
 
       const addButton = (
@@ -461,7 +980,8 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
           categories: buildDefaultMenuCategories(tree),
           hiddenCategoryIds: new Set<string>(),
           hiddenItemPaths: new Set<string>(),
-          pending: { titles: [], categoryMoves: [], itemMoves: [] },
+          itemTitles: new Map(),
+          pending: { titles: [], itemTitles: [], categoryMoves: [], itemMoves: [] },
         };
         expandedCategoryIds.clear();
         syncValue("");
@@ -474,7 +994,7 @@ function createMenuLayoutOption(tree: LuCI.ui.menu.MenuNode) {
         <div class="fluent-menu-editor">
           {hiddenInput}
           {storedValueNotice}
-          <div class="fluent-menu-editor__actions">{[addButton, resetButton]}</div>
+          <div class="fluent-menu-editor__actions">{[cleanButton, addButton, resetButton]}</div>
           {validationSummary}
           {cards}
         </div>
