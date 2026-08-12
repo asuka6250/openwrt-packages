@@ -236,6 +236,23 @@ Before rendering the new view:
   on every navigation — so moving from a polling page to a non-polling one left "Paused" about
   polling that did not exist. Our own `poll-stop` listener (registered at module eval, therefore
   after LuCI's, therefore running second) hides the pill when the queue is empty.
+- **uci's config cache is dropped** (`flushUciCache()`). `uci.load()` does not answer "is this
+  config present?" — it answers "which of these packages did THIS call fetch", skipping every
+  package already in `state.values`. Four shipped views read the return value as an existence check
+  (`luci-app-banip` and `luci-app-adblock`'s overview, `luci-app-travelmate`'s overview and
+  stations): `if (!result[3] || result[3].length === 0) → _('No banIP config found!')`. On a full
+  load the cache is empty, so the check passes; under SPA the second visit gets `[]` and the page
+  draws an error notification over an empty view until a reload. The apps' reading is wrong, the
+  divergence is ours — a document-scoped cache outliving the page that filled it is exactly the
+  shape of the poll queue and the stray intervals above. `unload()` is upstream's own idiom for it:
+  `uci.save()` ends with `self.unload(pkgs); return self.load(pkgs)`. Unsaved local edits
+  (`creates`/`changes`/`deletes`) go with it, as they do on a full load; **saved** changes are on
+  the server, so the Unsaved-changes banner is unaffected. Reached through `window.L.uci`, not a
+  `'require uci'` pragma — the class attaches to `L`'s prototype when its first requirer compiles
+  it, so this sees the instance the pages use, does not bind it to the router's prototypal `L` (the
+  two-`L` trap above), and does not pull uci.js onto pages that never touch uci. `state.values` and
+  `loaded` are private, so a shape we do not recognise is one loud `console.error` and no sweep —
+  the same rule as `L.Poll.timer`.
 - `clearViewIntervals()` kills the outgoing view's bare `window.setInterval`s. A full load would
   have killed them; SPA must do it explicitly. `setInterval`/`clearInterval` are hooked at module
   eval and the ids tracked in a `Set`; `L.Poll`'s own 1-second tick is preserved.
@@ -493,6 +510,35 @@ one thing, the `L.Poll` tick, which the hook explicitly preserves (`keep = L.Pol
 everything but one" is a correct operation there and has no equivalent for `setTimeout`/rAF. **If
 such a view ever appears, the right answer is a targeted cancel through `onNavigate`, not a global
 hook.**
+
+### Deliberately not fixed: global listeners a departing view leaves behind
+
+**A view's `window.addEventListener` survives navigation, and hooking it the way `setInterval` is
+hooked would be a one-way deletion — the same mistake as sweeping a view's CSS.** The proposal is
+always the same: wrap `addEventListener`, keep the tuples, `removeEventListener` them all in
+`navigate()`. The asymmetry that makes the interval hook correct is exactly what makes this wrong.
+
+A poller is re-created on every render, so clearing it costs nothing — re-entering the page starts a
+new one. A listener registered at a module's TOP LEVEL is created once, because `L.require` caches
+the module for the life of the document and never runs its factory again. Remove it and it is gone
+for good, on every later visit, with no error and nothing to re-run it. That is the ACE stylesheet
+bug in a different medium (see [third-party-apps.md](third-party-apps.md)).
+
+Which shape the real apps have is a measurement, not a guess. Grepped on owrt2512: **9 view files
+register global listeners** (`system/filemanager`, `system/sshkeys`, `ssclash/config`, ACE itself,
+`justclash/{connections,realtime_logs,status}`, `adblock/dnsreport`, `nlbw/display`) — 15
+registrations, mostly `beforeunload` and `visibilitychange`. Then measured through CDP
+`DOMDebugger.getEventListeners` on `window` and `document`, **8 SPA round trips overview →
+File Manager → overview**, counted at the same page each time: **27 → 28 on the first visit, then
+flat for all 8** (`window:click` +1, once). ACE adds three the same way on ssclash. Nothing
+accumulates, because nothing re-registers — which is the direct evidence that these are module-eval
+registrations, i.e. exactly the ones a sweep would delete permanently.
+
+A sweep also cannot tell them from ours or from LuCI's: `luci.js` and `ui.js` register 21 listeners
+on `document` between them (`validation-failure`, `poll-start`, tooltips), the theme registers its
+own, and a global hook sees one undifferentiated list. **If a view that re-registers per render ever
+appears, the answer is a targeted teardown through `onNavigate`,** the same conclusion the
+`setTimeout`/rAF section reaches.
 
 ### Still open: in-flight responses
 

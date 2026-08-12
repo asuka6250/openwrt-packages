@@ -205,10 +205,65 @@ The shapes both strings encode, each a measured bug:
 - **The pin may carry only inherited properties.** A non-inherited one there is a style decision
   wearing a guard's coat, and at zero specificity it would lose to everything anyway.
 
+**The fence is CSSOM surgery, not a CSS parser** — which is what makes an app written in modern CSS
+a non-event rather than the next round of cat-and-mouse. Every selector the fence reads comes out of
+the browser's own parser (`CSSStyleRule.selectorText`), and every one it writes goes back in through
+the same parser's setter, which is atomic: a selector it cannot parse leaves the rule exactly where
+it was. The only text this file ever scans is one already-serialised selector, and only to answer
+two questions on it — where the top-level commas are, and where the `::` is. Nesting, `:has()`,
+`:is()`, `@scope`, `@container` and an app's own `@layer` are the parser's problem, not ours; the
+recursion that reaches them (`r.cssRules`) is three lines and does not care which at-rule it just
+descended into.
+
+Measured rather than argued, on owrt2512 (25.12.4) against the live theme: **21 hostile sheets, one
+per syntax, each carrying `padding: 0 !important` on an unpinned selector, injected into `<head>`
+after the theme's own modules had loaded** — `*`; a selector list; nesting with `&`, without `&` and
+two levels deep; `:has()`; `:is()`/`:where()`; `:not(:has())`; bare `@scope` and `@scope … to …`;
+`@supports`; `@media`; the app's own `@layer`; an escaped leading digit and an escaped `@`; a comma
+and an IPv6 `::` inside an attribute value; a pseudo-element; and two sheets built entirely through
+`insertRule()` (empty text, so `textIsSheet()` refuses the `@layer` wrap and only the fence stands).
+**0 of 247 chrome elements moved in any of the 21, on both Blink and WebKit.** The negative control
+is the same payload marked `[data-fs-shell]` so the module skips it: **63 elements flattened** (59
+for the nested variant), which is what makes the twenty-one zeroes a working fence rather than a
+broken measurement. Gecko (Firefox 153) rewrites all of them identically on a synthetic page.
+
+Two things that fell out of it and are worth knowing:
+
+- **A nested rule under a pinned parent is fenced too, redundantly.** `#app-x .thing { &:hover { … } }`
+  comes back as `&:hover:where(:not([data-fs-chrome], …))` — `&:hover` names nothing the theme does
+  not know, so it reads as unpinned on its own. It costs nothing (the `&` still requires `#app-x`,
+  which can never be chrome, and `:where()` adds no specificity) and the safe default is the right
+  one: a nested rule whose parent is itself unpinned MUST be fenced, and from inside `fenceRules()`
+  the two cases look the same. Every other shape round-trips byte-identical.
+- **The gap the fence does not cover is time, not syntax.** A first attempt at the measurement
+  injected on a fixed 2 s timer and reported 121 of 247 elements flattened on WebKit — the stand is
+  slow enough that the payload landed before `fs-sheets.js` had loaded and started watching `<head>`.
+  That is the flash the module's own comment already describes for server-rendered `<link>`s, it
+  affects only the page you are on, and it is not fixable from a module that has to be fetched. Any
+  future probe must wait for the theme's JS, or it measures the gap and calls it a fence failure.
+
 The same gate holds the dark-mode guard to `stampDark`: that guard exists because third parties
 write the attributes this theme publishes (`luci-app-openclash` does it in seven templates). Add a
 fourth dialect to `stampDark` and forget the observer's `attributeFilter`, and that dialect is
 unguarded — silently.
+
+### Rule 8. A foreign table is claimed by its HEADER ROW, not by its class
+
+`.table` is LuCI's class, and every table rule the theme has hangs off it — the frame, the cell
+padding, the measured card stack. An app that emits a bare `<table>` matched none of it, so nothing
+tagged it, nothing measured it and `.fs-main`'s `overflow-x: clip` silently CUT its right-hand
+columns; the only thing that ever reached it was a phone-tier scrollbar. `tagDataTables()` now takes
+any `#view table` that has a header row in any of four markups, adds `.table.fs-dt`, and copies the
+column headings into `data-title` so the card has something to print. A table with **no** header row
+is left alone on purpose and scrolls: see [css.md](css.md#which-of-the-three-a-table-gets-and-what-decides-it).
+
+This is deliberately unmeasurable here. A census of `#view table:not(.table):not(.cbi-section-table)`
+over all **196** menu pages on the stand — openclash, justclash, ssclash, dashboard and statistics
+included — found **zero**: everything anyone here emits already carries the class. The rule exists for
+the shape a census cannot reach, which is what the coverage contract means
+([conventions.md](conventions.md)). The three synthetic shapes are checked instead, on Blink and
+WebKit at 1440 px and 390 px: `<thead><tr><th>` and `<tr><th>` both card with the right captions, a
+header-less matrix stays a scrolling matrix at both widths.
 
 ### What the theme cannot do, and should not try
 

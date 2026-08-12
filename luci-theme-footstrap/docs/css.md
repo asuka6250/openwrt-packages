@@ -222,6 +222,74 @@ never had. **The act of measuring was the bug.** Do not "finish the job".
 The price is the last irreducible duplicate: the same declarations under a class and under an
 `@container`, which CSS cannot factor apart. It is pinned with `@mirror table-card/{label,actions}`.
 
+### Which of the three a table gets, and what decides it
+
+Every `<table>` or `<div class="table">` under `#view` lands in exactly one of three tiers, and the
+discriminator is **does it have a header row**, never who wrote it:
+
+| Tier | Reached by | What it does |
+|---|---|---|
+| measured card | a header row **and** not `.cbi-section-table` → `fs-select.js` tags `.table.fs-dt` | folds into labelled cards when it stops fitting, at any width |
+| `@container` card | `.cbi-section-table` | folds at 960 px of content, never measured (above) |
+| scroll | no header row at all | `display: block; overflow-x: auto` on the table itself |
+
+A header row is any of four markups, and each missing one has cost a page: `.tr.table-titles`
+(`L.ui.Table`), `.tr.cbi-section-table-titles` (the apk Software list), a `<thead>` — E()-built, so
+its `<th>`s may hang off it directly with no `<tr>` — and a first row made entirely of `<th>`, which
+is what a foreign app writing plain HTML emits. `labelCells()` then **copies** the heading of the
+column each cell sits in into `data-title`, which is what the card prints above the value; it never
+overwrites one the app set, and it counts COLUMNS rather than cells so a `colspan` does not shift
+every caption after it by one.
+
+The third tier is the deliberate refusal. A card prints `attr(data-title)` above each value, and a
+matrix — a log, a statistics grid, a layout table — has no headings to print, so carding one yields a
+column of numbers with nothing saying what they are. Comparison is that shape's whole point, so it
+scrolls instead. **The scroll rule is not scoped to a phone.** It spent its life inside
+`@media (max-width: 767px)`, which is the same mistake the card stack was built to avoid: whether a
+table fits is a property of its content and its column, and a 400 px panel on a 1600 px desktop hits
+the wall a phone hits. It costs nothing where the table fits — `overflow` paints a scrollbar only
+when there is something to scroll.
+
+### Two ways a table falls apart without ever overflowing
+
+`fit.overflows()` cannot see either of them, because `overflow-wrap: anywhere` gives a cell a
+min-content of one character: the table always "fits", it just stops being readable. So `fitTables()`
+asks two more questions:
+
+- **`idTower` — the first column past `MAX_ID_LINES` (5).** The row's identity squeezed into a tower
+  of half-words by a greedy neighbour. Measured on Wireless: 101 px and 5 lines at a 900 px viewport,
+  76 px and 8 lines at 800 px, and at no width did the table card (issue #7).
+- **`fit.wordFloor(t) > room` — the table is narrower than its own content needs.** No number is
+  picked here at all: `wordFloor` returns, per column, the width of the widest WORD that column has
+  to show in that column's own font, summed across columns. Below that width the browser has to cut
+  through a value, and the card view is what shows values whole. Every table therefore carries its
+  own breakpoint, computed from its own rows.
+
+On the reporting router at 1190 px of room, that number is **935** for the DHCPv6 leases, **966** for
+associated stations, **645** for the v4 leases, **794** for Processes, **550** for Connections and
+**381** for Startup — so the two tables that were unreadable card at roughly a 1000 px window while
+the four that were fine stay tables until the room they actually need runs out. Before/after over the
+same DOM: **15 of 136** table-states change on the router, **5 of 88** on the stand.
+
+**The engine cannot be asked this.** Flipping `overflow-wrap` for one layout and reading min-content
+back does not work: Blink returns the same table min-content for `normal`, `break-word` and
+`anywhere` — measured at 645 px on Processes while the widest word alone needs 367 — so the honest
+floor has to be computed, not queried. `wordFloor` measures with a canvas, sampling the font once per
+column and measuring only each column's longest-by-characters word; both approximations are stated in
+the function, and they take the walk over Processes' 114 rows from 6 ms to about **1 ms**.
+
+### The first column has a floor, and the rest do not
+
+Cells break `anywhere` so an unbreakable value cannot hold a column open (`base/40-tables.css`). The
+first column is exempt and breaks at word boundaries instead, because `anywhere` costs a min-content
+of ONE CHARACTER and auto table layout hands width out by each column's max-content: a two-column
+key/value table whose value is one enormous token starves the key column down to that character.
+Measured against `luci-app-dockerman`'s Environment table, which prints `JSON.stringify()` of every
+field `docker info` returns — 8 000 characters of value took the key column from 95 px to 55 px, and
+the reporter's own host drove it to about one glyph, so the header read `E N T R Y` down the page
+(issue #36). A carded row is exempt from the exemption: once every cell is on its own line there is
+no neighbour left to starve it.
+
 ## Proving a CSS change
 
 **Screenshots do not work here.** On a live router, uptime, DHCP leases and signal strength give
