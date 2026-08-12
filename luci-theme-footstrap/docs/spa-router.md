@@ -337,8 +337,15 @@ Three traps, each one actually hit:
 - **Six class names have no file**, and requesting one is a guaranteed 404 in the user's console.
   `luci.js` keeps its registry as a literal (`baseclass`, `dom`, `poll`, `request`, `session`,
   `view`) and answers `require()` for them from memory. Every view file's pragmas name `view` and
-  `baseclass`, so the walk trips on this at the first step. `BUILTIN_CLASSES` is that literal copied
-  from `luci.js`, not a guess about it.
+  `baseclass`, so the walk trips on this at the first step. That literal used to be copied here; the
+  rule is now the SHAPE of the name — a class name is a path, so a name with no dot is either one of
+  those virtual classes or a flat library (`ui`, `form`, `network`, `uci`, `rpc`, `fs`,
+  `validation`), and the chrome has already loaded every one of those before a prefetch can run
+  (measured from three landing pages including System → Reboot: all eight were instances on
+  arrival, and a walk over seven pages fetched 10 files, all of them nested). Declining the flat
+  half outright therefore costs nothing measurable and covers a seventh built-in before it ships.
+  The dotted half is asked properly: `require()` attaches a class at its path, so `tools.widgets`
+  reads back as `L.tools.widgets` once any form page has pulled it.
 - **Speculation stops under an already-clicked link** (`_committed`). After the click, `require()`
   fetches the same graph and parallelises parsing with loading; our walk would only race it.
   Measured at 120 ms RTT: 658 ms waiting for the whole subtree against 525 ms racing — for a
@@ -442,8 +449,11 @@ scroll) and would take away working restoration in `top`.
 - Third-party apps that register `view` nodes speed up automatically.
 - **Status→Overview** (`template` node `admin_status/index`) is the SPA exception: its server
   template only defines three global helpers and calls `ui.instantiateView('status/index')`. The
-  router reproduces that — `ensureOverviewHelpers()` defines the helpers idempotently (the
-  template's inline script does not run under SPA), then instantiates `view.status.index`. Other
+  theme reproduces that — `fs-overview.js` calls `ensureOverviewHelpers()` at its own module eval,
+  which defines the helpers idempotently (the template's inline script does not run under SPA), and
+  the router then instantiates `view.status.index`. The helpers are deliberately NOT the router's:
+  they are luci-mod-status's globals, and a router that owned them would be reaching into another
+  module's namespace. Other
   `template` nodes → full navigation.
 - Legacy `cbi` and `call`/`function` handlers → full navigation.
 - Any require/instanceof error → `console.error(...)` and `window.location = pathname`. The error is
@@ -514,6 +524,17 @@ does not exist.
   `window:click` per navigation that do not exist). `window` and `document` counts identical
   before and after; heap **10.0 MB → 10.0 MB**. The centralised `fs-fit.js` (one ResizeObserver for
   the document's life instead of one per view) is the structural reason this is clean.
+- **A long soak says the same thing about the CACHE, which is the part a SPA is actually accused
+  of.** 72 navigations over 12 distinct pages on 25.12 and 96 on 24.10, sampling always on the same
+  page after a forced GC: after the FIRST pass everything is pinned to the byte — heap
+  **21.16 → 21.13 MB**, DOM nodes 26998 → 26998, listeners 8110 → 8110, documents 13 → 13, poll
+  queue 1, view intervals 1, over the following 60 navigations; on 24.10, 3.68 → 3.66 MB and
+  2116 → 2116 nodes over 96. A full-load run of the same walk sits at 4.4 MB, flat.
+  That difference IS the cache and it is one-time: measured per page, the first visit costs
+  0.02–1.18 MB except `admin/system/package-manager`, whose package index costs **+16.9 MB** and
+  keeps it until a real reload. Nothing the theme owns grows — the structures are `WeakMap`/
+  `WeakSet` or capped (`SCROLL_MEM_MAX`), and the one-per-document `fs-fit` observer is why the
+  listener count does not move at all.
 - **A full walk of all 65 clickable nodes**, in both layouts, comparing each against a **real full
   load of the same URL**: **62 SPA-OK, 0 divergences, 3 fallbacks**. `data-page`, `dispatchpath`,
   `pathinfo`, URL and tab count all match; console clean. Back/Forward through a chain of alias and
