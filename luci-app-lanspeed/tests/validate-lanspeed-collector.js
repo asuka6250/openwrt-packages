@@ -76,7 +76,7 @@ const model = readJson('net/lanspeedd/src/collector-model.json');
 const schema = readJson('net/lanspeedd/files/usr/share/lanspeed/schema.json');
 const ecm = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/ecm_node.rs');
 const ecmBpf = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/ecm_bpf.rs');
-const ecmBpfProgram = read('net/lanspeedd/rust/crates/lanspeed-ebpf/src/nss/mod.rs');
+const ecmBpfProgram = read('net/lanspeedd/rust/crates/lanspeed-ebpf/src/nss/ecm.rs');
 const windowSource = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/window.rs');
 const nssFusion = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/fusion.rs');
 const nssOutput = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/output.rs');
@@ -104,7 +104,9 @@ const x86Ebpf = collectFiles('net/lanspeedd/rust/crates/lanspeed-ebpf/src/x86')
   .map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 const nssEbpf = collectFiles('net/lanspeedd/rust/crates/lanspeed-ebpf/src/nss')
   .map((file) => fs.readFileSync(file, 'utf8')).join('\n');
-const production = read('net/lanspeedd/rust/crates/lanspeedd/src/production.rs');
+const production = `${read('net/lanspeedd/rust/crates/lanspeedd/src/production.rs')}\n${read(
+  'net/lanspeedd/rust/crates/lanspeedd/src/production/rate_helpers.rs'
+)}`;
 const policy = read('net/lanspeedd/rust/crates/lanspeedd/src/policy.rs');
 const config = read('net/lanspeedd/rust/crates/lanspeedd/src/config.rs');
 const probeCollector = read('net/lanspeedd/rust/crates/lanspeedd/src/probe/collector.rs');
@@ -213,6 +215,8 @@ assert(edgeModel.topology.fdb_primary === 'RTM_GETNEIGH_AF_BRIDGE' &&
   accessEdgeWifi.includes('const NL80211_STA_INFO_ASSOC_AT_BOOTTIME: u16 = 42;') &&
   accessEdgeWifi.includes('pub const NL80211_IFTYPE_WDS: u32 = 5;') &&
   accessEdgeWifi.includes('pub const NL80211_IFTYPE_MESH_POINT: u32 = 7;') &&
+  accessEdgeTopology.includes('direct_client: station.proves_direct_client_interface()') &&
+  accessEdgeTopology.includes('AttachmentTrust::Unknown') &&
   accessEdgeRuntime.includes('wifi_shared_or_unproven_interface') &&
   accessEdgeRuntime.includes('inherit_unambiguous_fdb_vlan(') &&
   !accessEdgeWifi.includes('Command::new("iw")'),
@@ -510,8 +514,10 @@ assert(ebpfManifest.includes('default = ["x86-tc", "conntrack-kfunc"]') &&
   ebpfManifest.includes('x86-tc = ["tc"]') &&
   ebpfManifest.includes('nss-tc = ["tc"]') &&
   ebpfManifest.includes('nss-ecm = []') &&
-  ebpfMain.includes('#[path = "x86/account.rs"]') &&
-  ebpfMain.includes('#[path = "nss/account.rs"]') &&
+  ebpfMain.includes('mod x86;') &&
+  ebpfMain.includes('mod nss;') &&
+  ebpfMain.includes('use x86::account_frame;') &&
+  ebpfMain.includes('use nss::account_frame;') &&
   ebpfMain.includes('x86-tc and nss-tc are mutually exclusive'),
   'x86 TC, NSS TC, and NSS ECM eBPF programs must have separate source features');
 assert(buildDriver.includes('LANSPEED_BPF_TARGET_ARCH') &&
@@ -638,7 +644,7 @@ assert(production.includes('fn nss_tc_snapshot(snapshot: &BpfSnapshot) -> NssTcS
   production.includes('.map(nss_tc_snapshot)') &&
   production.includes('nss_tc_snapshot.as_ref()'),
   'only production orchestration may convert x86 TC results into the NSS-owned value contract');
-assert(model.bpf_model.source_by_platform.x86_64.endsWith('/lanspeed-ebpf/src/x86/account.rs') &&
+assert(model.bpf_model.source_by_platform.x86_64.endsWith('/lanspeed-ebpf/src/x86/accounting.rs') &&
   model.bpf_model.source_by_platform.aarch64_nss.endsWith('/lanspeed-ebpf/src/nss/account.rs') &&
   model.bpf_model.feature_by_platform.x86_64 === 'x86-tc' &&
   model.bpf_model.feature_by_platform.aarch64_nss === 'nss-tc',

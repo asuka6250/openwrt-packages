@@ -51,8 +51,12 @@ const qaDevicePath = path.join(root, 'tests/qa-device.sh');
 const qaDevice = fs.readFileSync(qaDevicePath, 'utf8');
 
 const luciResources = [
-  'configForm.js',
+	'moduleManifest.js',
+	'configForm.js',
   'configModel.js',
+  'configPlatform.js',
+  'configPlatformX86.js',
+  'configPlatformNss.js',
   'configStyle.js',
   'configStyleArgon.js',
   'configStyleAurora.js',
@@ -74,10 +78,19 @@ const luciResources = [
   'diagnosticsStyleBase.js',
   'diagnosticsStyleBootstrap.js',
   'diagnosticsStyleResponsive.js',
+	'diagnosticsSchema.js',
+	'diagnosticsResources.js',
+	'diagnosticsStates.js',
 	'diagnosticsModel.js',
+	'diagnosticsReport.js',
+	'diagnosticsReportModel.js',
 	'diagnosticsView.js',
 	'clientConnections.js',
 	'clientControl.js',
+	'clientControlReasons.js',
+	'clientControlReasonsShared.js',
+	'clientControlReasonsX86.js',
+	'clientControlReasonsNss.js',
 	'dhcpHostnames.js',
 	'clientDetailShell.js',
   'clientDetailStyle.js',
@@ -94,6 +107,7 @@ const luciResources = [
   'rpc.js',
   'statusCollector.js',
   'statusIp.js',
+  'statusRateMeta.js',
   'statusRefresh.js',
   'statusShell.js',
   'statusStyle.js',
@@ -686,7 +700,7 @@ try {
   assertMatch(nssControlKmodMakefile, /^PKG_VERSION:=1\.1\.6$/m,
     'NSS control kmod must stay on the daemon version');
   assertMatch(nssControlKmodMakefile, /^PKG_RELEASE:=3$/m,
-    'NSS control kmod must stay on release 3');
+    'NSS control kmod must stay on release 4');
   assertMatch(nssControlKmodMakefile,
     /^  DEPENDS:=@TARGET_qualcommax \+kmod-ifb \+kmod-qca-nss-drv \+kmod-qca-nss-drv-igs$/m,
     'NSS control kmod must be packaged only for qualcommax with verified IGS dependencies');
@@ -697,17 +711,31 @@ try {
     'NSS control kmod must normalize installed module metadata to root-owned mode 0644');
   assertNoMatch(nssControlKmodMakefile, /TARGET_x86|platform\/x86/,
     'NSS control kmod must not change or import the x86 platform');
+  const nssPublishEntry = nssControlKmodSource.match(
+    /static int lanspeed_igs_publish_entry[\s\S]*?(?=\nstatic int lanspeed_igs_unpublish_entry)/
+  )?.[0] || '';
+  const nssUnpublishEntry = nssControlKmodSource.match(
+    /static int lanspeed_igs_unpublish_entry[\s\S]*?(?=\nstatic void lanspeed_igs_forget_edge)/
+  )?.[0] || '';
   assert(nssControlKmodSource.includes('module_param_cb(stage') &&
     nssControlKmodSource.includes('module_param_cb(publish') &&
     nssControlKmodSource.includes('module_param_cb(unpublish') &&
     nssControlKmodSource.includes('module_param_cb(unstage') &&
     nssControlKmodSource.includes('LANSPEED_IGS_DEGRADED') &&
-    nssControlKmodSource.indexOf('NSS_IF_SET_IGS_NODE') <
-      nssControlKmodSource.indexOf('nss_if_set_nexthop') &&
-    nssControlKmodSource.indexOf('nss_if_reset_nexthop') <
-      nssControlKmodSource.indexOf('NSS_IF_CLEAR_IGS_NODE',
-        nssControlKmodSource.indexOf('nss_if_reset_nexthop')),
+    nssPublishEntry.indexOf('NSS_IF_SET_IGS_NODE') <
+      nssPublishEntry.indexOf('status = lanspeed_set_nexthop') &&
+    nssUnpublishEntry.indexOf('lanspeed_reset_nexthop') <
+      nssUnpublishEntry.indexOf('NSS_IF_CLEAR_IGS_NODE'),
     'NSS control kmod must stage queues before transactional publish and reset before clear');
+  assert(
+    nssControlKmodSource.includes('NSS_DYNAMIC_INTERFACE_TYPE_VAP') &&
+      nssControlKmodSource.includes('NSS_WIFI_VDEV_SET_NEXT_HOP') &&
+      nssControlKmodSource.includes('return lanspeed_wifi_set_nexthop(edge_if_num, NSS_ETH_RX_INTERFACE);') &&
+      nssControlKmodSource.includes('Only peers selected by') &&
+      nssControlKmodSource.includes('wait_for_completion_timeout(&lanspeed_wifi_completion') &&
+      nssControlKmodSource.includes('lanspeed_wifi_response != NSS_CMN_RESPONSE_ACK'),
+    'NSS control kmod must use the acknowledged Wi-Fi vdev nexthop transaction for dynamic VAP edges'
+  );
   assert(
     nssControlKmodSource.includes('rtnl_dereference(entry->dev->qdisc)') &&
       nssControlKmodSource.includes('rtnl_dereference(queue->qdisc_sleeping)') &&

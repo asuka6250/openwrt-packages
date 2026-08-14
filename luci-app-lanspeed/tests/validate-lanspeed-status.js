@@ -297,6 +297,16 @@ async function testIndependentRpcSettlement(context, fmt) {
 	assert.strictEqual(malformed.rpc.status.ok, true);
 	assert.strictEqual(malformed.rpc.clients.ok, false);
 	assert.strictEqual(malformed.rpc.clients.error.code, 'INVALID_RESPONSE');
+
+	rpc.status = function() { return new Promise(function() {}); };
+	rpc.clients = function() { return Promise.resolve({ clients: [] }); };
+	rpc.interfaces = function() { return Promise.resolve({ interfaces: [] }); };
+	rpc.uciGet = function() { return Promise.resolve({}); };
+	const timedOut = await overview.loadAll(null, clock, 5);
+	assert.strictEqual(timedOut.rpc.status.ok, false,
+		'a hung live RPC must settle instead of stopping the refresh controller');
+	assert.strictEqual(timedOut.rpc.status.error.code, 'TIMEOUT');
+	assert.strictEqual(timedOut.rpc.clients.ok, true);
 }
 
 async function testLiveSamplePairing(context, fmt) {
@@ -748,9 +758,14 @@ function loadShellAndRefresh(context, fmt) {
 	], { filename: 'resources/lanspeed/statusShell.js', parsingContext: context })(
 		baseclass, fmt, { applyRoot: function() {} }, { CSS: '' }, fakeElement, translate
 	);
+	const rateMeta = vm.compileFunction(readModule('statusRateMeta.js'), [
+		'baseclass', 'E', '_'
+	], { filename: 'resources/lanspeed/statusRateMeta.js', parsingContext: context })(
+		baseclass, fakeElement, translate
+	);
 	const refresh = vm.compileFunction(readModule('statusRefresh.js'), [
 		'baseclass', 'vocab', 'fmt', 'clientConnections', 'clientControl', 'lsVersion',
-		'statusIp', 'statusCollector', 'E', '_', 'window'
+		'statusIp', 'statusCollector', 'statusRateMeta', 'E', '_', 'window'
 	], { filename: 'resources/lanspeed/statusRefresh.js', parsingContext: context })(
 		baseclass,
 		{
@@ -771,7 +786,7 @@ function loadShellAndRefresh(context, fmt) {
 			effectiveCollector: function() { return 'bpf'; },
 			collectorClass: function() { return 'label label-success'; },
 			collectorLabel: function() { return 'BPF'; }
-		},
+		}, rateMeta,
 		fakeElement,
 		translate,
 		context.window

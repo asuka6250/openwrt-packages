@@ -13,7 +13,10 @@ const ebpfMain = fs.readFileSync(path.join(root,
   'net/lanspeedd/rust/crates/lanspeed-ebpf/src/main.rs'), 'utf8');
 const x86ControlDir = path.join(root,
   'net/lanspeedd/rust/crates/lanspeedd/src/platform/x86/control');
-const x86ControlModules = [ 'mod.rs', 'classifier.rs', 'dae.rs', 'firewall.rs', 'ifb.rs', 'shaper.rs', 'system.rs' ];
+const x86ControlModules = [
+  'mod.rs', 'classifier.rs', 'classifier_tests.rs', 'dae.rs', 'firewall.rs',
+  'firewall_tests.rs', 'ifb.rs', 'shaper.rs', 'shaper_tests.rs', 'system.rs', 'tests.rs'
+];
 const x86ControlByModule = Object.fromEntries(x86ControlModules.map((name) => [
   name, fs.readFileSync(path.join(x86ControlDir, name), 'utf8')
 ]));
@@ -30,7 +33,8 @@ const nssControlDir = path.join(root,
   'net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/control');
 const nssControlModules = [
   'mod.rs', 'capability.rs', 'classifier.rs', 'ecm_qos.rs', 'firewall.rs', 'legacy.rs', 'qdisc.rs',
-  'rollback.rs', 'shaper.rs', 'state.rs', 'system.rs', 'telemetry.rs', 'topology.rs'
+  'firewall_tests.rs', 'qdisc_tests.rs', 'rollback.rs', 'shaper.rs', 'state.rs',
+  'system.rs', 'system_tests.rs', 'telemetry.rs', 'topology.rs'
 ];
 const nssControlByModule = Object.fromEntries(nssControlModules.map((name) => [
   name, fs.readFileSync(path.join(nssControlDir, name), 'utf8')
@@ -40,7 +44,7 @@ const nssProductionControl = Object.values(nssControlByModule)
   .map((value) => value.split('#[cfg(test)]')[0]).join('\n');
 const nssCpuPathDir = path.join(nssControlDir, 'cpu_path');
 const nssCpuPathModules = [
-  'mod.rs', 'block.rs', 'classifier.rs', 'ifb.rs', 'probe.rs', 'shaper.rs', 'tagger.rs'
+  'mod.rs', 'block.rs', 'bridge.rs', 'classifier.rs', 'ifb.rs', 'probe.rs', 'shaper.rs', 'tagger.rs'
 ];
 const nssCpuPathByModule = Object.fromEntries(nssCpuPathModules.map((name) => [
   name, fs.readFileSync(path.join(nssCpuPathDir, name), 'utf8')
@@ -50,6 +54,10 @@ const nssCpuPathProduction = Object.values(nssCpuPathByModule)
   .map((value) => value.split('#[cfg(test)]')[0]).join('\n');
 const nssKmodSource = fs.readFileSync(path.join(root,
   'net/lanspeed-nss-control/src/lanspeed_nss_control.c'), 'utf8');
+const nssPublishEntry = nssKmodSource.match(
+  /static int lanspeed_igs_publish_entry[\s\S]*?(?=\nstatic int lanspeed_igs_unpublish_entry)/)?.[0] || '';
+const nssUnpublishEntry = nssKmodSource.match(
+  /static int lanspeed_igs_unpublish_entry[\s\S]*?(?=\nstatic void lanspeed_igs_forget_edge)/)?.[0] || '';
 const nssCpuBlockProduction = nssCpuPathByModule['block.rs'].split('#[cfg(test)]')[0];
 const nssCpuProbeProduction = nssCpuPathByModule['probe.rs'].split('#[cfg(test)]')[0];
 const daemonMakefile = fs.readFileSync(path.join(root, 'net/lanspeedd/Makefile'), 'utf8');
@@ -227,8 +235,9 @@ async function main() {
     'x86 client control availability must be independent of the rate-monitor BPF runtime');
   assert(!fs.existsSync(path.join(root,
     'net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/control.rs')) &&
-    fs.readdirSync(nssControlDir).filter((name) => name.endsWith('.rs')).sort().join(',') ===
-      nssControlModules.slice().sort().join(','),
+    fs.readdirSync(nssControlDir)
+      .filter((name) => name.endsWith('.rs') && !name.endsWith('_tests.rs'))
+      .sort().join(',') === nssControlModules.filter((name) => !name.endsWith('_tests.rs')).slice().sort().join(','),
     'NSS client control must be a fixed modular implementation rather than a monolithic source file');
   for (const name of [
     'capability', 'classifier', 'cpu_path', 'ecm_qos', 'firewall', 'legacy', 'qdisc', 'rollback', 'shaper',
@@ -262,7 +271,8 @@ async function main() {
     !nssControlByModule['qdisc.rs'].includes('"htb"') &&
     !nssControlByModule['qdisc.rs'].includes('"fq_codel"'),
     'NSS-visible directions must retain NSSHTB/NSSBFIFO and dual-stack QoS tags');
-  assert(fs.readdirSync(nssCpuPathDir).filter((name) => name.endsWith('.rs')).sort().join(',') ===
+  assert(fs.readdirSync(nssCpuPathDir)
+      .filter((name) => name.endsWith('.rs') && !name.endsWith('_tests.rs')).sort().join(',') ===
       nssCpuPathModules.slice().sort().join(',') &&
     nssCpuPathByModule['ifb.rs'].includes('DEVICE_PREFIX') &&
     nssCpuPathByModule['ifb.rs'].includes('lanspeedd:nss-igs-upload:v3:') &&
@@ -303,6 +313,10 @@ async function main() {
 		nssCpuBlockProduction.includes('{address_set} counter drop comment') &&
 		!nssCpuBlockProduction.includes(' reject') &&
 		!nssCpuBlockProduction.includes(' redirect ') &&
+	    nssCpuPathByModule['bridge.rs'].includes('hook postrouting priority -15') &&
+	    nssCpuPathByModule['bridge.rs'].includes('ip saddr @local4 ip daddr @local4 return') &&
+	    nssCpuPathByModule['bridge.rs'].includes('ip6 saddr @local6 ip6 daddr @local6 return') &&
+	    nssCpuPathByModule['bridge.rs'].includes('meta priority set') &&
 	    nssCpuPathByModule['shaper.rs'].includes('"nsshtb"') &&
 	    nssCpuPathByModule['shaper.rs'].includes('"nssbfifo"') &&
 	    nssCpuPathByModule['shaper.rs'].includes('sync_igs_tree') &&
@@ -314,6 +328,11 @@ async function main() {
     !nssCpuPathProduction.includes('platform::x86::control') &&
     nssKmodSource.includes('NSS_IF_SET_IGS_NODE') &&
     nssKmodSource.includes('nss_if_set_nexthop') &&
+    nssKmodSource.includes('NSS_WIFI_VDEV_SET_NEXT_HOP') &&
+    nssKmodSource.includes('return lanspeed_wifi_set_nexthop(edge_if_num, NSS_ETH_RX_INTERFACE);') &&
+    nssKmodSource.includes('Only peers selected by') &&
+    nssKmodSource.includes('wait_for_completion_timeout(&lanspeed_wifi_completion') &&
+    nssKmodSource.includes('lanspeed_wifi_response != NSS_CMN_RESPONSE_ACK') &&
     nssKmodSource.includes('NSS_IF_CLEAR_IGS_NODE') &&
     nssKmodSource.includes('nss_if_reset_nexthop') &&
     nssKmodSource.includes('LANSPEED_IGS_DEGRADED') &&
@@ -321,10 +340,10 @@ async function main() {
     nssKmodSource.includes('igs_reply_qos_tag') &&
 	    nssKmodSource.includes('NF_IP_PRI_CONNTRACK + 2') &&
 	    nssControlByModule['capability.rs'].includes('"act_mirred"') &&
-	    nssKmodSource.indexOf('lanspeed_igs_config(edge, NSS_IF_SET_IGS_NODE') <
-      nssKmodSource.indexOf('nss_if_set_nexthop') &&
-    nssKmodSource.indexOf('nss_if_reset_nexthop') <
-      nssKmodSource.indexOf('lanspeed_igs_config(entry->edge, NSS_IF_CLEAR_IGS_NODE'),
+	    nssPublishEntry.indexOf('NSS_IF_SET_IGS_NODE') <
+      nssPublishEntry.indexOf('status = lanspeed_set_nexthop') &&
+    nssUnpublishEntry.indexOf('lanspeed_reset_nexthop') <
+      nssUnpublishEntry.indexOf('NSS_IF_CLEAR_IGS_NODE'),
     'NSS CPU path must use one aggregate NSS IGS queue with transactional edge publication');
   assert(control.includes('nss_proven_directions') &&
     control.includes('nss_cpu_directions') &&
@@ -376,8 +395,26 @@ async function main() {
     document: { querySelector: () => null },
     window: { setTimeout: (callback) => callback() }
   });
+  const sharedReasons = vm.compileFunction(
+    fs.readFileSync(path.join(root,
+      'applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/clientControlReasonsShared.js'), 'utf8'),
+    [ 'baseclass', '_' ], { parsingContext: context })({ extend: (value) => value }, translate);
+  const x86Reasons = vm.compileFunction(
+    fs.readFileSync(path.join(root,
+      'applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/clientControlReasonsX86.js'), 'utf8'),
+    [ 'baseclass', '_' ], { parsingContext: context })({ extend: (value) => value }, translate);
+  const nssReasons = vm.compileFunction(
+    fs.readFileSync(path.join(root,
+      'applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/clientControlReasonsNss.js'), 'utf8'),
+    [ 'baseclass', '_' ], { parsingContext: context })({ extend: (value) => value }, translate);
+  const controlReasons = vm.compileFunction(
+    fs.readFileSync(path.join(root,
+      'applications/luci-app-lanspeed/htdocs/luci-static/resources/lanspeed/clientControlReasons.js'), 'utf8'),
+    [ 'baseclass', 'sharedReasons', 'x86Reasons', 'nssReasons', '_' ],
+    { parsingContext: context })(
+      { extend: (value) => value }, sharedReasons, x86Reasons, nssReasons, translate);
   const module = vm.compileFunction(source,
-    [ 'baseclass', 'ui', 'lsRpc', 'E', '_', 'document', 'window' ],
+    [ 'baseclass', 'ui', 'lsRpc', 'controlReasons', 'E', '_', 'document', 'window' ],
     { filename: 'resources/lanspeed/clientControl.js', parsingContext: context })(
       { extend: (value) => value },
       {
@@ -391,6 +428,7 @@ async function main() {
           return Promise.resolve({ ok: true });
         }
       },
+      controlReasons,
       element,
       translate,
       context.document,

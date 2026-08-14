@@ -74,11 +74,75 @@ const statusCollector = {
     return ({ access_edge: '自动精准', bpf: 'BPF', conntrack_netlink: 'CT-Netlink', unsupported: '不可用' })[value] || String(value || '-');
   }
 };
-const model = vm.compileFunction(readModule('diagnosticsModel.js'),
-  [ 'baseclass', 'vocab', 'statusCollector', '_' ],
-  { filename: 'diagnosticsModel.js', parsingContext: context })(
-    baseclass, vocab, statusCollector, translate
-  );
+const report = vm.compileFunction(readModule('diagnosticsReport.js'),
+  [ 'baseclass', '_' ],
+  { filename: 'diagnosticsReport.js', parsingContext: context })(
+  baseclass, translate
+);
+function loadLanspeedModule(name, args, dependencies) {
+  return vm.compileFunction(readModule(name), args,
+    { filename: name, parsingContext: context })(...dependencies);
+}
+const schema = loadLanspeedModule('diagnosticsSchema.js', [ 'baseclass', '_' ],
+  [ baseclass, translate ]);
+const resources = loadLanspeedModule('diagnosticsResources.js',
+  [ 'baseclass', 'schema', '_' ], [ baseclass, schema, translate ]);
+const states = loadLanspeedModule('diagnosticsStates.js',
+  [ 'baseclass', 'schema', 'resources', 'vocab', 'statusCollector', '_' ],
+  [ baseclass, schema, resources, vocab, statusCollector, translate ]);
+const reportModel = loadLanspeedModule('diagnosticsReportModel.js',
+  [ 'baseclass', 'schema', 'resources', 'states', 'vocab', 'diagnosticsReport', '_' ],
+  [ baseclass, schema, resources, states, vocab, report, translate ]);
+const model = loadLanspeedModule('diagnosticsModel.js',
+  [ 'baseclass', 'schema', 'resources', 'states', 'reportModel', '_' ],
+  [ baseclass, schema, resources, states, reportModel, translate ]);
+
+function createRealBaseclass() {
+  function Baseclass() {}
+  Baseclass.extend = function(properties) {
+    function ClassConstructor() {}
+    ClassConstructor.prototype = Object.create(this.prototype);
+    Object.keys(properties).forEach((key) => {
+      ClassConstructor.prototype[key] = properties[key];
+    });
+    ClassConstructor.prototype.constructor = ClassConstructor;
+    ClassConstructor.extend = this.extend;
+    return ClassConstructor;
+  };
+  return Baseclass;
+}
+
+function loadRealLanspeedModule(name, args, dependencies) {
+  const ClassConstructor = vm.compileFunction(readModule(name), args,
+    { filename: `real-${name}`, parsingContext: context })(...dependencies);
+  return new ClassConstructor();
+}
+
+function assertRealBaseclassFacade() {
+  const realBaseclass = createRealBaseclass();
+  const realSchema = loadRealLanspeedModule('diagnosticsSchema.js',
+    [ 'baseclass', '_' ], [ realBaseclass, translate ]);
+  const realResources = loadRealLanspeedModule('diagnosticsResources.js',
+    [ 'baseclass', 'schema', '_' ], [ realBaseclass, realSchema, translate ]);
+  const realVocab = loadRealLanspeedModule('vocab.js',
+    [ 'baseclass', '_' ], [ realBaseclass, translate ]);
+  const realCollector = loadRealLanspeedModule('statusCollector.js',
+    [ 'baseclass', '_' ], [ realBaseclass, translate ]);
+  const realStates = loadRealLanspeedModule('diagnosticsStates.js',
+    [ 'baseclass', 'schema', 'resources', 'vocab', 'statusCollector', '_' ],
+    [ realBaseclass, realSchema, realResources, realVocab, realCollector, translate ]);
+  const realReport = loadRealLanspeedModule('diagnosticsReport.js',
+    [ 'baseclass', '_' ], [ realBaseclass, translate ]);
+  const realReportModel = loadRealLanspeedModule('diagnosticsReportModel.js',
+    [ 'baseclass', 'schema', 'resources', 'states', 'vocab', 'diagnosticsReport', '_' ],
+    [ realBaseclass, realSchema, realResources, realStates, realVocab, realReport, translate ]);
+  const realModel = loadRealLanspeedModule('diagnosticsModel.js',
+    [ 'baseclass', 'schema', 'resources', 'states', 'reportModel', '_' ],
+    [ realBaseclass, realSchema, realResources, realStates, realReportModel, translate ]);
+  assert(Array.isArray(realModel.RPC_KEYS), 'diagnostics facade must expose prototype constants on real LuCI instances');
+  assert.strictEqual(typeof realModel.normalizeResults, 'function',
+    'diagnostics facade must expose prototype methods on real LuCI instances');
+}
 
 function fakeElement(tag, attrs, children) {
   attrs = Object.assign({}, attrs || {});
@@ -194,10 +258,19 @@ function loadVocabulary() {
 }
 
 function loadRefresh(vocabulary) {
+	const sharedReasons = vm.compileFunction(readModule('clientControlReasonsShared.js'),
+	  [ 'baseclass', '_' ], { parsingContext: context })(baseclass, translate);
+	const x86Reasons = vm.compileFunction(readModule('clientControlReasonsX86.js'),
+	  [ 'baseclass', '_' ], { parsingContext: context })(baseclass, translate);
+	const nssReasons = vm.compileFunction(readModule('clientControlReasonsNss.js'),
+	  [ 'baseclass', '_' ], { parsingContext: context })(baseclass, translate);
+	const controlReasons = vm.compileFunction(readModule('clientControlReasons.js'),
+	  [ 'baseclass', 'sharedReasons', 'x86Reasons', 'nssReasons', '_' ],
+	  { parsingContext: context })(baseclass, sharedReasons, x86Reasons, nssReasons, translate);
 	const clientControl = vm.compileFunction(readModule('clientControl.js'),
-	  [ 'baseclass', 'ui', 'lsRpc', '_' ],
+	  [ 'baseclass', 'ui', 'lsRpc', 'controlReasons', '_' ],
 	  { filename: 'clientControl.js', parsingContext: context })(
-	    baseclass, {}, {}, translate
+	    baseclass, {}, {}, controlReasons, translate
 	  );
   return vm.compileFunction(readModule('diagnosticsRefresh.js'),
     [ 'baseclass', 'fmt', 'vocab', 'lsVersion', 'statusCollector', 'diagnosticsModel', 'clientControl', 'E', '_' ],
@@ -1376,6 +1449,7 @@ async function testAlertsAndReport() {
 }
 
 async function run() {
+  assertRealBaseclassFacade();
   await testStrictContracts();
   await testResourceStateMachine();
   await testRequestOrdering();
