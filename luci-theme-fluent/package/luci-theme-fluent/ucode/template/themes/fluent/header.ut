@@ -56,6 +56,7 @@
   let dark_card_bg = defaults.dark_card_bg;
   let dark_sidebar_bg = defaults.dark_sidebar_bg;
   let progressbar_text_position = defaults.progressbar_text_position;
+  let menu_layout = defaults.menu_layout || null;
   let direction = {};
   include('themes/fluent/direction', { cfg, defaults, direction });
 
@@ -106,6 +107,7 @@
     prefers_reduced_motion = cfg.get_first('fluent', 'global', 'prefers_reduced_motion') || prefers_reduced_motion;
     loading_bar = cfg.get_first('fluent', 'global', 'loading_bar') || loading_bar;
     progressbar_text_position = cfg.get_first('fluent', 'global', 'progressbar_text_position') || progressbar_text_position;
+    menu_layout = cfg.get_first('fluent', 'global', 'menu_layout') || null;
 
     bar_color = mode === 'dark' ? dark_primary : primary;
     main_left_font_color = font_weight === 'normal' ? '#5f6368' : '#69758c';
@@ -213,21 +215,24 @@
       navigation: auto;
     }
     
-    /* Smooth fade-out/fade-in page transition */
+    /* Smooth fade-over page transition without dimming unchanged areas */
     ::view-transition-old(root) {
-      animation: 180ms cubic-bezier(0.4, 0, 0.2, 1) both fade-out;
+      animation: none;
     }
     ::view-transition-new(root) {
-      animation: 180ms cubic-bezier(0.4, 0, 0.2, 1) both fade-in;
+      animation: 180ms cubic-bezier(0, 0, 0.2, 1) both fade-in;
     }
     
-    @keyframes fade-out {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
     @keyframes fade-in {
       from { opacity: 0; }
       to { opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      ::view-transition-old(root),
+      ::view-transition-new(root) {
+        animation: none !important;
+      }
     }
   </style>
   {% } %}
@@ -295,6 +300,7 @@
   <script src="{{ resource }}/cbi.js?v={{ version.luciversion }}"></script>
   <script src="{{ resource }}/luci.js?v={{ version.luciversion }}"></script>
   <script>
+    window._fluent_menu_layout = {{ menu_layout ? sprintf('%J', menu_layout) : 'null' }};
     // Dark mode logic
     (function() {
       var mode = '{{ mode }}';
@@ -313,6 +319,7 @@
   class="lang_{{ dispatcher.lang }} {{ node ? entityencode(node.title, true) : '' }} {{ ctx.authsession ? 'logged-in' : '' }}"
   data-page="{{ entityencode(join('-', ctx.request_path), true) }}"
   data-theme-mode="{{ mode }}"
+  data-menu-layout="{{ entityencode(menu_layout ? sprintf('%J', menu_layout) : '', true) }}"
   data-fluent-dir="{{ direction.resolved }}"
   data-theme-custom-select="{{ custom_select }}"
   data-view-transition="{{ view_transition }}"
@@ -346,6 +353,58 @@
     <div class="main-left" id="mainmenu" style="display:none">
       <div class="sidebar__search-slot" aria-hidden="true"></div>
     </div>
+    <script>
+      (function() {
+        try {
+          var cached = sessionStorage.getItem('fluent_sidebar_html');
+          if (cached) {
+            var m = document.getElementById('mainmenu');
+            m.innerHTML = cached;
+            m.style.display = '';
+
+            var currentPath = location.pathname;
+            var links = m.querySelectorAll('a[href]');
+            var matched = null;
+            var maxLen = -1;
+
+            for (var i = 0; i < links.length; i++) {
+              var href = links[i].getAttribute('href');
+              if (href && href !== '#' && href.indexOf('javascript:') !== 0) {
+                if (currentPath === href || currentPath.indexOf(href) === 0) {
+                  if (href.length > maxLen) {
+                    matched = links[i];
+                    maxLen = href.length;
+                  }
+                }
+              }
+            }
+
+            if (matched) {
+              var actives = m.querySelectorAll('.active');
+              for (var j = 0; j < actives.length; j++) {
+                actives[j].classList.remove('active');
+              }
+
+              matched.classList.add('active');
+              if (matched.parentElement) {
+                matched.parentElement.classList.add('active');
+              }
+
+              var parentSubmenu = matched.closest('ul.slide-menu');
+              if (parentSubmenu) {
+                parentSubmenu.classList.add('active');
+                var parentLi = parentSubmenu.parentElement;
+                if (parentLi) {
+                  parentLi.classList.add('active');
+                  var parentA = parentLi.querySelector(':scope > a');
+                  if (parentA) parentA.classList.add('active');
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      })();
+    </script>
     {% } %}
     <div class="main-right">
       <header class="header">
@@ -387,6 +446,20 @@
           </noscript>
 
           <div id="tabmenu" style="display:none"></div>
+          <script>
+            (function() {
+              try {
+                var page = document.body.getAttribute('data-page') || '';
+                var pathKey = page.split('-').slice(0, 2).join('_');
+                var cachedTabs = sessionStorage.getItem('fluent_tabmenu_html_' + pathKey);
+                if (cachedTabs) {
+                  var t = document.getElementById('tabmenu');
+                  t.innerHTML = cachedTabs;
+                  t.style.display = '';
+                }
+              } catch (_) {}
+            })();
+          </script>
 {% } else { %}
 {% include("themes/fluent/out_header_login"); %}
 {% include("themes/fluent/sysauth"); %}

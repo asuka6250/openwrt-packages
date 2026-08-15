@@ -1453,7 +1453,7 @@ div.td, div.th {
   padding: var(--fluent-space-md);
   box-sizing: border-box;
   justify-content: center;
-  align-items: center;
+  align-items: safe center;
   display: none;
   position: fixed;
   inset-inline-start: 0;
@@ -11253,6 +11253,10 @@ body[data-page^="admin-status-logs-syslog"] .fluent-log-viewer--fullscreen .flue
 
 body.fluent-log-fullscreen {
   overflow: hidden !important;
+}
+
+body[data-page="admin-network-wireless"] > #modal_overlay > .modal {
+  max-height: 90% !important;
 }
 
 body.login-page {
