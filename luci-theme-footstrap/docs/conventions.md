@@ -221,7 +221,8 @@ package needs.
 **One asset per package per format in a release.** Nothing on a router picks an asset any more —
 the installer takes the feed — but a reader that does gets one candidate, not a guess: GitHub
 returns assets **sorted by name**, and in v0.8.4 a `luci-i18n-…` package sorted ahead of
-`luci-theme-…`, so the then-shipped self-updater installed a 6 KB catalogue instead of the theme,
+`luci-theme-…`, so the self-update script shipped at the time installed a 6 KB catalogue instead of
+the theme,
 reported success, and offered the same update forever (issue #6). Code already on somebody's router
 cannot be fixed remotely; only the release can. CI fails unless each package resolves to exactly
 one asset under its name-anchored regex.
@@ -229,8 +230,8 @@ one asset under its name-anchored regex.
 **The translation catalogue lives in `po/`.** That is the directory `LUCI_LANGUAGES` globs, so
 luci.mk bakes a `luci-i18n-footstrap-<lang>` package per language exactly as it does for every
 luci-app — and it is the only directory Weblate, which CONTRIBUTING names as the way to translate
-LuCI, can see. It was `i18n/` while a fielded self-updater resolved the theme by name and took
-`head -1` (issue #6); that updater is retired and owfeed builds the release as one artifact per
+LuCI, can see. It was `i18n/` while a fielded self-update script resolved the theme by name and took
+`head -1` (issue #6); that script is retired and owfeed builds the release as one artifact per
 format regardless, so the rename no longer bought anything.
 
 **No runtime dependency beyond `+luci-base`.** `curl` is not in OpenWrt's default set (the base
@@ -298,7 +299,7 @@ after a client navigation while every static gate stayed green.
 | `upstream` | the coupling registry: every assumption fs-*.js makes about luci-base (`L.Poll`'s alias and queue, `uci.state.values`/`loaded`, `uci.load()` answering "what did THIS call fetch", `network.js` loading its three packages exactly once, `require()` publishing onto `L`, the modal contract, where `addNotification` puts a banner, an open dropdown being `position: absolute`) checked against the luci-base the router runs. Each failure names the module here that was written against it |
 | `spa-parity` | every menu page opened BOTH ways — by click and by full load — compared on content, on uci's cache, on `network.getWifiDevices()` and on console errors. No baseline: a difference is always a bug |
 | `install-check` | `install.sh` run twice on a stand — fresh, then over its own result — asserting the package is installed, `luci.main.mediaurlbase` points here and `cascade.css` is on disk. Three field reports (#16, #28, #30) were this script alone, all on the second-run path. It leaves the PUBLISHED release installed and re-syncs the working tree afterwards, so it runs last |
-| `live-audit` | every menu page at 320/390/568/768/1024/1440: sideways document scroll, an element past the content column with no scroller, a clipped non-scrolling box, a sub-24px hit target with a neighbour, an operable element with no name, two stacked scrollports, a JS error. Ratcheted against `tools/baselines/live-audit.json` — a NEW signature fails, and `--update` (read the diff first) rewrites it |
+| `live-audit` | every menu page at 320/390/568/768/1024/1440: sideways document scroll, an element past the content column with no scroller, a clipped non-scrolling box, a sub-24px hit target with a neighbour, an operable element with no name, two stacked scrollports, a JS error. Ratcheted against `tools/baselines/live-audit.json` — a NEW signature fails, and `--update` (read the diff first) rewrites it. That file is a **union across platforms**: a handful of findings sit within a pixel of their threshold and text metrics differ between a maintainer's containers and CI's runner, so six signatures first appeared in CI |
 
 `--engine firefox` and `--engine webkit` run the audit in the other two engines, keyed separately in
 the baseline: #12 was Firefox-only, and a chromium run must not bless a finding it never saw.

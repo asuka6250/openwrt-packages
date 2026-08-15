@@ -1,6 +1,13 @@
 #!/bin/sh
 # luci-theme-footstrap installer for OpenWrt 24.10 (opkg) and 25.12+ (apk).
 #
+#   wget -qO- https://raw.githubusercontent.com/VizzleTF/luci-theme-footstrap/main/install.sh | sh
+#
+# The same script is attached to every release and served from the release CDN, which has no
+# per-address budget — the address raw.githubusercontent.com rate-limits is the one a user behind
+# CGNAT shares with everyone else (issue #17). That copy is signed, so it can be verified before it
+# is run as root:
+#
 #   wget -qO- https://github.com/VizzleTF/luci-theme-footstrap/releases/latest/download/install.sh | sh
 #
 # It adds the owfeed-packages feed and installs the theme from it, so `apk upgrade` /
@@ -51,6 +58,73 @@ fetch() {	# <url> <outfile>
 	return 1
 }
 
+# THE PACKAGE MANAGER'S CHATTER IS NOT THE USER'S BUSINESS — until it fails.
+#
+# `apk update` prints every repository the router has (nine lines on an ordinary box, none of them
+# ours), and `apk add` prints its progress and its OK line. Running this from `wget | sh` is a
+# one-command gesture, and burying the one sentence that matters — which version ended up on the
+# router — under a dump of somebody else's feed URLs is the opposite of what the gesture is for.
+#
+# So: capture, and speak only on failure, where the same output is the ONLY diagnosis available.
+# Never `>/dev/null`: a silent failure here is a router left half-installed with a green message.
+pm_quiet() {	# <command...>
+	_pmlog="/tmp/fs-install-pm.$$"
+	if "$@" >"$_pmlog" 2>&1; then rm -f "$_pmlog"; return 0; fi
+	err "\`$*\` failed:"
+	tail -15 "$_pmlog" | sed 's/^/    /' >&2
+	rm -f "$_pmlog"
+	return 1
+}
+
+# --- what is on the router, and whether anything newer exists ---------------------------------
+#
+# SAY THE VERSION. This script used to end with "Installed from the … feed" whatever happened, and
+# that sentence was equally true of a router that had just kept the version it already had —
+# `apk add` does not upgrade (see the note beside it), so a stale install and a fresh one printed
+# the same line. The number is the one thing that tells them apart, and the only other place a user
+# can read it is the Footstrap tab in LuCI.
+installed_version() {
+	if [ "$PM" = "apk" ]; then
+		apk list -I 2>/dev/null | sed -n "s/^$PKG-\([0-9][^ ]*\) .*/\1/p" | head -1
+	else
+		opkg list-installed 2>/dev/null | sed -n "s/^$PKG - \(.*\)$/\1/p" | head -1
+	fi
+}
+
+# …AND WHETHER THE FEED HAS CAUGHT UP. A release lands on GitHub first and reaches owfeed-packages
+# afterwards, through a pull request against that repository — usually minutes, sometimes a day. In
+# between, a user who installs gets the previous version and has nothing to tell them why: the
+# release page says one number, their router says another, and the install they just ran was
+# correct. So compare and say it in one line, rather than leaving them to wonder whether it failed.
+#
+# `releases/latest/download/manifest.txt`, NOT api.github.com: the API is rate-limited to 60 an hour
+# per address (issue #17) and needs JSON parsing on a box that may have no jsonfilter, while this URL
+# is a plain redirect to the newest tag's asset and is already the file this script picks a package
+# from. Read here for a MESSAGE only — nothing is installed from it and no decision depends on it,
+# so an unreachable GitHub is silence rather than a failure, and no signature is claimed for it.
+feed_lag_note() {	# <installed version>
+	[ -n "$1" ] || return 0
+	_vtmp="/tmp/fs-ver.$$"
+	mkdir -p "$_vtmp" || return 0
+	if fetch "$RELEASE_BASE/manifest.txt" "$_vtmp/manifest.txt"; then
+		# `<pkg>-<version>.apk` but `<pkg>_<version>_<arch>.ipk`, so the trailing `_<arch>` comes off
+		# after the extension does — without it the ipk leg reported "0.13.0-r1_all is out", which is
+		# not a version and never compares equal to what the router has.
+		_rel=$(awk -v p="$PKG" -v f="$PM_FMT" '$1=="pkg" && $2==p && $3==f { print $4 }' "$_vtmp/manifest.txt" \
+			| sed -n "s/^$PKG[-_]\(.*\)\.$PM_FMT$/\1/p" | sed "s/_[a-z0-9]*$//")
+		# Newest-wins with the tools a router has: `sort -V` where busybox provides it. Being
+		# unable to compare is a reason to say NOTHING — never to claim the router is behind.
+		if [ -n "$_rel" ] && [ "$_rel" != "$1" ] &&
+		   [ "$(printf '%s\n%s\n' "$1" "$_rel" | sort -V 2>/dev/null | tail -1)" = "$_rel" ]; then
+			printf '\n'
+			info "Release $_rel is out; this router has $1."
+			info "The feed follows a release through a pull request against owfeed-packages, so it"
+			info "usually catches up within a day — \`$PM upgrade\` will pick it up then."
+		fi
+	fi
+	rm -rf "$_vtmp" 2>/dev/null || true
+}
+
 # --- the release, for a router the feed cannot serve ------------------------------------------
 #
 # THE FEED IS STILL THE INSTALL PATH. It is what makes `apk upgrade` / `opkg upgrade` carry the
@@ -60,7 +134,7 @@ fetch() {	# <url> <outfile>
 # which is a worse version of what the script is for.
 #
 # PICKED FROM THE SIGNED MANIFEST, never by guessing an asset's name. That distinction is issue
-# #6: the retired self-updater resolved the theme by name and took `head -1`, which on a release
+# #6: the retired self-update script resolved the theme by name and took `head -1`, which on a release
 # carrying per-language packages installed a catalogue instead of the theme. `manifest.txt` names
 # exactly one file per format with its size and digest, and it is signed — so the name comes from
 # the same statement the signature covers.
@@ -107,10 +181,11 @@ install_from_release() {
 		rm -rf "$_tmp"; return 1
 	fi
 	ok "Signature and digest verified."
+	info "Installing $_file..."
 	if [ "$PM" = apk ]; then
-		apk add --allow-untrusted "$_tmp/$_file"
+		pm_quiet apk add --allow-untrusted "$_tmp/$_file" || { rm -rf "$_tmp"; return 1; }
 	else
-		opkg install "$_tmp/$_file"
+		pm_quiet opkg install "$_tmp/$_file" || { rm -rf "$_tmp"; return 1; }
 	fi
 	rm -rf "$_tmp"
 	return 0
@@ -129,6 +204,11 @@ if command -v apk >/dev/null 2>&1; then PM=apk; PM_FMT=apk; INDEX=packages.adb
 elif command -v opkg >/dev/null 2>&1; then PM=opkg; PM_FMT=ipk; INDEX=Packages.gz
 else err "Neither apk nor opkg found."; exit 1; fi
 ok "Package manager: $PM"
+
+# What is on the router BEFORE anything is installed — the closing line reads "installed",
+# "upgraded" or "already current" off the difference, which is the distinction a user was left to
+# make by hand while the manager's own output scrolled past.
+_before=$(installed_version)
 
 # Read before the branch rather than beside the feed entry, because a router that names
 # no branch picks one by asking the feed which branch carries this architecture.
@@ -232,8 +312,15 @@ if [ -z "$BRANCH" ]; then
 	rm -rf /tmp/luci-modulecache 2>/dev/null || true
 	if [ -x /etc/init.d/rpcd ]; then /etc/init.d/rpcd reload >/dev/null 2>&1 || true; fi
 	printf '\n'
+	_have=$(installed_version)
+	if [ -n "$_have" ] && [ -n "$_before" ] && [ "$_before" != "$_have" ]; then
+		ok "Upgraded $PKG $_before -> $_have"
+	elif [ -n "$_have" ]; then
+		ok "Installed $PKG $_have"
+	fi
 	ok "Installed from the release. Re-run this script to update, or fix the feed and run it again"
 	ok "to switch to \`$PM upgrade\`."
+	printf '\n'			# the same break between the outcome and the next steps as the feed path
 	info "Select \"Footstrap\" in System -> System -> Language and Style -> \"Design\"."
 	info "Layout, dark mode, palette, colours and the wallpaper live in the \"Footstrap\" tab"
 	info "of System -> System. Then hard-reload the page (Ctrl+F5)."
@@ -280,9 +367,20 @@ if [ "$PM" = apk ]; then
 	mkdir -p /etc/apk/keys /lib/upgrade/keep.d
 	fetch "$FEED_HOST/owfeed-packages.pem" /etc/apk/keys/owfeed-packages.pem
 	printf '%s\n' /etc/apk/keys/owfeed-packages.pem > /lib/upgrade/keep.d/owfeed-packages
-	apk update
-	# `apk add` resolves to the newest version in the feed, so a second run upgrades.
-	apk add "$PKG"
+	info "Updating the package index..."
+	pm_quiet apk update || exit 1
+	# `apk add` ALONE DOES NOT UPGRADE, and the comment that used to sit here said it did. apk 3
+	# reads `add` as "make sure this is present": a package already in `world` and already satisfied
+	# stays at the version it is at, the command prints its usual OK line and exits 0. Reproduced on
+	# a 25.12 stand carrying 0.12.5 with 0.12.7 in the feed — the run ended with
+	# "[+] Installed from the owfeed-packages feed" and `apk list -I` still said 0.12.5. That is the
+	# shape of issues #16, #28 and #30: the installer reports success and changes nothing, and the
+	# only way a user sees it is by reading the version in the Footstrap tab.
+	# `--upgrade` (`-u`) is what asks for the newest the feed carries; it installs on a router that
+	# does not have the theme yet, so this one line covers both paths, exactly as the opkg leg below
+	# already did with its explicit `opkg upgrade`.
+	info "Installing $PKG..."
+	pm_quiet apk add --upgrade "$PKG" || exit 1
 else
 	if ! grep -q "$FEED_NAME" /etc/opkg/customfeeds.conf 2>/dev/null; then
 		info "Adding the $FEED_NAME feed..."
@@ -301,14 +399,16 @@ else
 	mkdir -p /etc/opkg/keys /lib/upgrade/keep.d
 	fetch "$FEED_HOST/$FEED_KEY_OPKG" "/etc/opkg/keys/$FEED_KEY_OPKG"
 	printf '%s\n' "/etc/opkg/keys/$FEED_KEY_OPKG" > /lib/upgrade/keep.d/owfeed-packages
-	opkg update
+	info "Updating the package index..."
+	pm_quiet opkg update || exit 1
 	# `opkg install` on an installed package is a no-op even when the feed has a newer
 	# version — it reports "already installed" and exits 0 — so a second run has to ask
 	# for the upgrade explicitly. Up to date is not an error for `opkg upgrade`.
+	info "Installing $PKG..."
 	if opkg list-installed | grep -q "^$PKG "; then
-		opkg upgrade "$PKG"
+		pm_quiet opkg upgrade "$PKG" || exit 1
 	else
-		opkg install "$PKG"
+		pm_quiet opkg install "$PKG" || exit 1
 	fi
 fi
 
@@ -320,7 +420,21 @@ rm -rf /tmp/luci-modulecache 2>/dev/null || true
 if [ -x /etc/init.d/rpcd ]; then /etc/init.d/rpcd reload >/dev/null 2>&1 || true; fi
 
 printf '\n'
-ok "Installed from the $FEED_NAME feed — \`$PM upgrade\` will keep it current."
+_have=$(installed_version)
+if [ -z "$_have" ]; then
+	ok "Installed from the $FEED_NAME feed — \`$PM upgrade\` will keep it current."
+elif [ -z "$_before" ]; then
+	ok "Installed $PKG $_have — from the $FEED_NAME feed, \`$PM upgrade\` will keep it current."
+elif [ "$_before" != "$_have" ]; then
+	ok "Upgraded $PKG $_before -> $_have — \`$PM upgrade\` will keep it current."
+else
+	ok "Already current: $PKG $_have — the feed carries nothing newer."
+fi
+# A blank line between WHAT HAPPENED and WHAT TO DO NEXT: the outcome is the one line a user
+# came for, and with the next-steps block butted straight against it the two read as one
+# paragraph.
+printf '\n'
 info "Select \"Footstrap\" in System -> System -> Language and Style -> \"Design\"."
 info "Layout, dark mode, palette, colours and the wallpaper live in the \"Footstrap\" tab"
 info "of System -> System. Then hard-reload the page (Ctrl+F5)."
+feed_lag_note "$_have"
