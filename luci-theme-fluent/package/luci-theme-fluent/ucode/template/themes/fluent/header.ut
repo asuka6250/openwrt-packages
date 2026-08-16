@@ -300,7 +300,6 @@
   <script src="{{ resource }}/cbi.js?v={{ version.luciversion }}"></script>
   <script src="{{ resource }}/luci.js?v={{ version.luciversion }}"></script>
   <script>
-    window._fluent_menu_layout = {{ menu_layout ? sprintf('%J', menu_layout) : 'null' }};
     // Dark mode logic
     (function() {
       var mode = '{{ mode }}';
@@ -320,6 +319,8 @@
   data-page="{{ entityencode(join('-', ctx.request_path), true) }}"
   data-theme-mode="{{ mode }}"
   data-menu-layout="{{ entityencode(menu_layout ? sprintf('%J', menu_layout) : '', true) }}"
+  data-menu-cache-scope="{{ entityencode(ctx.authsession, true) }}"
+  data-tab-cache-path="{{ entityencode(sprintf('%J', ctx.request_path), true) }}"
   data-fluent-dir="{{ direction.resolved }}"
   data-theme-custom-select="{{ custom_select }}"
   data-view-transition="{{ view_transition }}"
@@ -356,7 +357,9 @@
     <script>
       (function() {
         try {
-          var cached = sessionStorage.getItem('fluent_sidebar_html');
+          var cacheScope = document.body.getAttribute('data-menu-cache-scope');
+          if (!cacheScope) return;
+          var cached = sessionStorage.getItem('fluent_sidebar_html_' + cacheScope);
           if (cached) {
             var m = document.getElementById('mainmenu');
             m.innerHTML = cached;
@@ -449,9 +452,13 @@
           <script>
             (function() {
               try {
-                var page = document.body.getAttribute('data-page') || '';
-                var pathKey = page.split('-').slice(0, 2).join('_');
-                var cachedTabs = sessionStorage.getItem('fluent_tabmenu_html_' + pathKey);
+                var cacheScope = document.body.getAttribute('data-menu-cache-scope');
+                if (!cacheScope) return;
+                var encodedPath = document.body.getAttribute('data-tab-cache-path');
+                var pathParts = encodedPath ? JSON.parse(encodedPath) : [];
+                if (!Array.isArray(pathParts) || pathParts.length < 3) return;
+                var pathKey = JSON.stringify(pathParts);
+                var cachedTabs = sessionStorage.getItem('fluent_tabmenu_html_' + cacheScope + '_' + pathKey);
                 if (cachedTabs) {
                   var t = document.getElementById('tabmenu');
                   t.innerHTML = cachedTabs;

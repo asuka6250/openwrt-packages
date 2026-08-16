@@ -1451,62 +1451,69 @@ function setupMacSelector() {
 
 ;// CONCATENATED MODULE: ./web/resources/utils/menu-cache.ts
 let menu_cache_e = "fluent_menu_cache";
+function menu_cache_t(e) {
+    let t = document.body?.getAttribute("data-menu-cache-scope");
+    return t ? `${e}_${t}` : null;
+}
 function getCachedMenu() {
     try {
-        let t = sessionStorage.getItem(menu_cache_e);
-        if (!t) return null;
-        let n = JSON.parse(t);
-        if (n && "object" == typeof n) return {
-            tree: n,
-            raw: t
+        let n = menu_cache_t(menu_cache_e);
+        if (!n) return null;
+        let r = sessionStorage.getItem(n);
+        if (!r) return null;
+        let u = JSON.parse(r);
+        if (u && "object" == typeof u) return {
+            tree: u,
+            raw: r
         };
     } catch (e) {}
     return null;
 }
-function saveMenuCache(t) {
+function saveMenuCache(n) {
     try {
-        let n = JSON.stringify(t);
-        return sessionStorage.setItem(menu_cache_e, n), n;
+        let r = menu_cache_t(menu_cache_e);
+        if (!r) return null;
+        let u = JSON.stringify(n);
+        return sessionStorage.setItem(r, u), u;
     } catch (e) {
         return null;
     }
 }
 function saveRenderedHtmlCache() {
     try {
-        let e = document.querySelector("#mainmenu");
-        e && sessionStorage.setItem("fluent_sidebar_html", e.innerHTML);
-        let t = document.querySelector("#tabmenu"), n = Array.isArray(L?.env?.dispatchpath) ? L.env.dispatchpath.slice(0, 2).join("_") : "";
-        t && t.children.length > 0 && n && sessionStorage.setItem(`fluent_tabmenu_html_${n}`, t.innerHTML);
+        let e = document.querySelector("#mainmenu"), n = menu_cache_t("fluent_sidebar_html");
+        e && n && sessionStorage.setItem(n, e.innerHTML);
+        let r = document.querySelector("#tabmenu"), u = menu_cache_t("fluent_tabmenu_html"), l = Array.isArray(L?.env?.dispatchpath) ? JSON.stringify(L.env.dispatchpath) : "";
+        r && r.children.length > 0 && u && l && sessionStorage.setItem(`${u}_${l}`, r.innerHTML);
     } catch (e) {}
 }
 function getResolvedMenuLayout() {
-    let e = window;
-    if (void 0 !== e._fluent_menu_layout) return e._fluent_menu_layout;
-    let t = document.body?.getAttribute?.("data-menu-layout");
-    if (t) try {
-        let e = JSON.parse(t);
-        if ("string" == typeof e || Array.isArray(e) || null === e) return e;
+    let e = document.body?.getAttribute?.("data-menu-layout");
+    if (e) try {
+        let t = JSON.parse(e);
+        if ("string" == typeof t || Array.isArray(t) || null === t) return t;
     } catch (e) {}
 }
 
 ;// CONCATENATED MODULE: ./web/resources/utils/menu-search.ts
-function menu_search_e(e) {
+let menu_search_e;
+function menu_search_t(e) {
     return e.toLowerCase().replace(/\s+/g, " ");
 }
-function menu_search_t(t, n, l) {
-    return menu_search_e(n).includes(l) || menu_search_e(t).includes(l);
+function menu_search_n(e, n, l) {
+    return menu_search_t(n).includes(l) || menu_search_t(e).includes(l);
 }
-function searchMenu(n, l) {
-    let r = menu_search_e(l);
+function searchMenu(e, l) {
+    let r = menu_search_t(l);
     if (!r) return [];
-    let a = [], i = (e, n, l)=>{
+    let a = [], i = (e, t, l)=>{
         for (let u of ui.menu.getChildren(e)){
             if (!u.satisfied) continue;
-            let e = `${n}/${u.name}`, c = u.title || u.name || "", s = c ? _(c) : "", o = c ? [
+            let e = `${t}/${u.name}`, c = u.title || u.name || "", s = c ? _(c) : "", o = c ? [
                 ...l,
                 s
             ] : l;
-            menu_search_t(c, s, r) && a.push({
+            menu_search_n(c, s, r) && a.push({
                 node: u,
                 url: e,
                 breadcrumb: [
@@ -1515,19 +1522,19 @@ function searchMenu(n, l) {
             }), i(u, e, o);
         }
     };
-    for (let e of n.categories)if (!n.hiddenCategoryIds.has(e.id)) for (let l of (e.primary && menu_search_t(e.primary.rawTitle, e.title, r) && a.push({
-        node: e.primary.node,
-        url: e.primary.path,
+    for (let t of e.categories)if (!e.hiddenCategoryIds.has(t.id)) for (let l of (t.primary && menu_search_n(t.primary.rawTitle, t.title, r) && a.push({
+        node: t.primary.node,
+        url: t.primary.path,
         breadcrumb: [
-            e.title
+            t.title
         ]
-    }), e.items)){
-        if (n.hiddenPaths.has(l.path)) continue;
+    }), t.items)){
+        if (e.hiddenPaths.has(l.path)) continue;
         let u = [
-            e.title,
+            t.title,
             l.title
         ];
-        menu_search_t(l.rawTitle, l.title, r) && a.push({
+        menu_search_n(l.rawTitle, l.title, r) && a.push({
             node: l.node,
             url: l.path,
             breadcrumb: u
@@ -1535,9 +1542,10 @@ function searchMenu(n, l) {
     }
     return a;
 }
-function setupMenuSearch(e) {
-    let t = [], n = (n)=>{
-        let l = document.querySelector(n);
+function setupMenuSearch(t) {
+    menu_search_e && (document.removeEventListener("keydown", menu_search_e), menu_search_e = void 0);
+    let n = [], l = (e)=>{
+        let l = document.querySelector(e);
         if (!l) return;
         l.innerHTML = "";
         let { container: r, input: a } = function(e) {
@@ -1620,22 +1628,22 @@ function setupMenuSearch(e) {
                 input: n,
                 overlay: r
             };
-        }(e);
-        l.appendChild(r), t.push(a);
+        }(t);
+        l.appendChild(r), n.push(a);
     };
-    n(".header__search-slot"), n(".sidebar__search-slot"), 0 !== t.length && document.addEventListener("keydown", (e)=>{
+    l(".header__search-slot"), l(".sidebar__search-slot"), 0 !== n.length && (menu_search_e = (e)=>{
         if ((e.ctrlKey || e.metaKey) && "k" === e.key || "/" === e.key && !e.ctrlKey && !e.metaKey && !e.altKey && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !document.activeElement?.getAttribute("contenteditable")) {
             e.preventDefault(), (()=>{
-                for (let e of t)if (null !== e.offsetParent) {
+                for (let e of n)if (null !== e.offsetParent) {
                     e.focus(), e.select();
                     return;
                 }
             })();
             return;
         }
-        let n = t.find((e)=>document.activeElement === e);
-        "Escape" === e.key && n && n.blur();
-    });
+        let t = n.find((e)=>document.activeElement === e);
+        "Escape" === e.key && t && t.blur();
+    }, document.addEventListener("keydown", menu_search_e));
 }
 
 ;// CONCATENATED MODULE: ./web/resources/utils/poll-pause.ts
@@ -2433,7 +2441,7 @@ function setupThemeFeatures() {
 
 let menu_fluent_w = !1;
 function menu_fluent_$(e) {
-    menu_fluent_w || (menu_fluent_w = !0, setupTableWrappers(), setupSelectionPause(), setupErrorTooltips(), setupFluentSelects(), setupIfaceboxTooltips(), setupThemeFeatures(), setupMenuSearch(e), setupMacSelector(), setupLogViewer());
+    menu_fluent_w || (menu_fluent_w = !0, setupTableWrappers(), setupSelectionPause(), setupErrorTooltips(), setupFluentSelects(), setupIfaceboxTooltips(), setupThemeFeatures(), setupMacSelector(), setupLogViewer()), setupMenuSearch(e);
 }
 const main = baseclass.extend({
     async __init__ () {
@@ -2473,6 +2481,9 @@ const main = baseclass.extend({
                 l = l.children?.[t], i = i + (i ? "/" : "") + t;
             }
             l && this.renderTabMenu(l, i, void 0, t.hiddenPaths);
+        } else {
+            let e = document.querySelector("#tabmenu");
+            e && (e.innerHTML = "", e.style.display = "none");
         }
         saveRenderedHtmlCache();
     },
@@ -2508,10 +2519,10 @@ const main = baseclass.extend({
         let r = (a || 0) + 1, s = a && i.title ? i.title.replace(/ /g, "_") : void 0, o = jsx("ul", {
             class: a ? "slide-menu" : "nav",
             "data-parent": s || void 0
-        }), p = ui.menu.getChildren(i);
-        if (0 === p.length || r > 2) return jsx(Fragment, {});
-        for(let l = 0; l < p.length; l++){
-            let a = p[l], s = L.env.dispatchpath[r] === a.name && L.env.dispatchpath[r - 1] === i.name, d = this.renderMainMenu(a, `${n}/${a.name}`, r), u = d.children.length > 0, c = u ? "slide" : null, h = u ? "menu" : "item";
+        }), u = ui.menu.getChildren(i);
+        if (0 === u.length || r > 2) return jsx(Fragment, {});
+        for(let l = 0; l < u.length; l++){
+            let a = u[l], s = L.env.dispatchpath[r] === a.name && L.env.dispatchpath[r - 1] === i.name, d = this.renderMainMenu(a, `${n}/${a.name}`, r), p = d.children.length > 0, c = p ? "slide" : null, h = p ? "menu" : "item";
             s && (o.classList.add("active"), c = c ? `${c} active` : "null active");
             let m = s ? `${h} active` : h, f = jsxs("li", {
                 class: c ?? void 0,
@@ -2578,12 +2589,12 @@ const main = baseclass.extend({
                 }));
             }
             s && r.classList.add("active"), n.primary && L.env.dispatchpath.length <= 2 && (s ||= n.primary.pathSegments.every((e, t)=>L.env.dispatchpath[t] === e));
-            let o = a.length > 0, p = n.primary?.path ?? a[0]?.path ?? "#", d = n.primary?.rawTitle ?? n.title, u = `${o ? "slide" : ""}${s ? " active" : ""}`.trim() || void 0;
+            let o = a.length > 0, u = n.primary?.path ?? a[0]?.path ?? "#", d = n.primary?.rawTitle ?? n.title, p = `${o ? "slide" : ""}${s ? " active" : ""}`.trim() || void 0;
             i.appendChild(jsxs("li", {
-                class: u,
+                class: p,
                 children: [
                     jsxs("a", {
-                        href: "#" === p ? p : L.url(p),
+                        href: "#" === u ? u : L.url(u),
                         onclick: o ? ui.createHandlerFn(this, "handleMenuExpand") : null,
                         class: `${o ? "menu" : "item"}${s ? " active" : ""}`,
                         "data-title": d.replace(/ /g, "_"),
@@ -2611,12 +2622,12 @@ const main = baseclass.extend({
     renderTabMenu (t, i, n, a) {
         let r = L.env.dispatchpath.slice(0, 2).join("/"), s = L.env.dispatchpath.slice(0, 3).join("/");
         if (a.has(r) || a.has(s)) return jsx(Fragment, {});
-        let o = document.querySelector("#tabmenu"), p = (n || 0) + 1, d = jsx("ul", {
+        let o = document.querySelector("#tabmenu"), u = (n || 0) + 1, d = jsx("ul", {
             class: "tabs"
-        }), u = ui.menu.getChildren(t), c = null;
-        if (0 === u.length) return o && 1 === p && (o.innerHTML = "", o.style.display = "none"), jsx(Fragment, {});
-        for(let t = 0; t < u.length; t++){
-            let l = u[t], n = L.env.dispatchpath[p + 2] === l.name, a = n ? " active" : "", r = jsx("li", {
+        }), p = ui.menu.getChildren(t), c = null;
+        if (0 === p.length) return o && 1 === u && (o.innerHTML = "", o.style.display = "none"), jsx(Fragment, {});
+        for(let t = 0; t < p.length; t++){
+            let l = p[t], n = L.env.dispatchpath[u + 2] === l.name, a = n ? " active" : "", r = jsx("li", {
                 class: `tabmenu-item-${l.name}${a}`,
                 children: jsx("a", {
                     href: L.url(i, l.name),
@@ -2625,8 +2636,8 @@ const main = baseclass.extend({
             });
             d.appendChild(r), n && (c = l);
         }
-        if (o && (1 === p && (o.innerHTML = ""), o.appendChild(d), o.style.display = "", c)) {
-            let e = this.renderTabMenu(c, `${i}/${c.name}`, p, a);
+        if (o && (1 === u && (o.innerHTML = ""), o.appendChild(d), o.style.display = "", c)) {
+            let e = this.renderTabMenu(c, `${i}/${c.name}`, u, a);
             e.children.length > 0 && o.appendChild(e);
         }
         return d;

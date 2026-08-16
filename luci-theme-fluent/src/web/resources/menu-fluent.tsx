@@ -30,18 +30,20 @@ type MenuNode = LuCI.ui.menu.MenuNode;
 let utilitiesInitialized = false;
 
 function initThemeUtilities(presentation: MenuPresentation) {
-  if (utilitiesInitialized) return;
-  utilitiesInitialized = true;
+  if (!utilitiesInitialized) {
+    utilitiesInitialized = true;
 
-  setupTableWrappers();
-  setupSelectionPause();
-  setupErrorTooltips();
-  setupFluentSelects();
-  setupIfaceboxTooltips();
-  setupThemeFeatures();
+    setupTableWrappers();
+    setupSelectionPause();
+    setupErrorTooltips();
+    setupFluentSelects();
+    setupIfaceboxTooltips();
+    setupThemeFeatures();
+    setupMacSelector();
+    setupLogViewer();
+  }
+
   setupMenuSearch(presentation);
-  setupMacSelector();
-  setupLogViewer();
 }
 
 /**
@@ -127,6 +129,12 @@ const module: Module = {
 
       if (node) {
         this.renderTabMenu(node, url, undefined, presentation.hiddenPaths);
+      }
+    } else {
+      const container = document.querySelector("#tabmenu") as HTMLElement | null;
+      if (container) {
+        container.innerHTML = "";
+        container.style.display = "none";
       }
     }
 
