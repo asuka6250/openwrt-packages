@@ -37,7 +37,14 @@ server — apt and the Playwright CDN — stall rather than fail: on the 0.13.2 
 playwright steps sat for 68, 68 and 17 minutes with GitHub reporting every system operational, and
 nothing retried them because nothing had failed. Each attempt now gets its own deadline (six minutes
 for apt, seven for playwright, three attempts), so a stall is a retry rather than a blocked release,
-and the job timeout is the backstop behind that rather than the only clock in the job.
+and the job timeout is the backstop behind that rather than the only clock in the job. Each attempt runs in a session of its own and is killed by process GROUP, because `timeout` signals only the child it started: the first version of the helper killed `playwright install --with-deps` and left the `apt-get` beneath it holding the lists lock, after which both retries died in seconds on that lock.
+
+And apt is asked for as little as possible, because retrying a stalled apt is still waiting for a
+stalled apt: a run spent its whole 20-minute budget doing exactly that. `gettext` is installed only
+when `msgfmt`/`msgmerge`/`xgettext` are missing from the image, and `tools/ci-playwright.sh` fetches
+Chromium from Playwright's CDN and then LAUNCHES it — the claim the gates actually need — going to
+apt for the system libraries only if that launch fails. `--with-deps` went through apt every time,
+and apt is the half that stalls.
 
 ## `check` — gates without node
 
@@ -226,7 +233,10 @@ produced, and runs the live gates cheapest-first:
    them has moved, every finding below is downstream of it.
 2. `tools/spa-parity.mjs` — every page opened by a click and by a full load, compared.
 3. `tools/live-audit.mjs` — one page per shape at six widths (resized into) plus one ENTERED with a
-   load of its own, ratcheted against `tools/baselines/live-audit.json`. `--update` UNIONS into that
+   load of its own — and the arrival records only what the resize at that width did not already
+   say, since a fault both passes see is one fault and a second copy of it is a baseline entry
+   that carries no information and only exists where that app is installed. Ratcheted against
+   `tools/baselines/live-audit.json`. `--update` UNIONS into that
    file rather than replacing a router's set: the baseline is a union across platforms, and a
    machine that does not install mwan3 must not delete mwan3's findings.
 4. `tools/scroll-jank.mjs` — a real wheel, long enough to meet a poll tick, in both layouts: nothing
