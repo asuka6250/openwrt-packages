@@ -39,15 +39,27 @@ const LIMITS = {
 	 * into two tokens. The headroom is deliberate and small: a feature's worth of rules should fit
 	 * without a gate edit, a redesign's should not. */
 	cascadeCss: 127_000,
-	/* 85,671 B measured 2026-08-18 over the 14 shipped modules, terser with top-level mangling.
-	 * This is the FLASH cost: every module ships, whether or not a given page loads it. */
-	resourcesJs: 87_000,
+	/* 87,347 B measured 2026-08-20 over the 14 shipped modules, terser with top-level mangling
+	 * (85,671 B on 2026-08-18, before the release's own fixes). This is the FLASH cost: every module
+	 * ships, whether or not a given page loads it.
+	 *
+	 * The last 541 B of it are the clamp the Overview kept jumping on: telling a clamped offset from
+	 * a reader who scrolled and giving one back with no reference left to measure (fs-fit.js), and
+	 * holding a section's height across the swap that causes it (fs-overview.js). A page that moves
+	 * 200-1206px under the reader once a second is not a page anybody reads, so the bytes are worth
+	 * their flash. */
+	resourcesJs: 88_000,
 	/* …and this is what a cold page DOWNLOADS, which is the number that matters on a link the
 	 * router is also routing packets over: the same set minus the page modules, which are required
-	 * only on the one page each belongs to (tools/page-modules.mjs). 70,437 B measured 2026-08-18,
-	 * i.e. 15.2 KB less than the sum. Raising it is a decision; lowering it whenever the number
-	 * comes down is the point. */
-	coldJs: 72_000,
+	 * only on the one page each belongs to (tools/page-modules.mjs). 72,499 B measured 2026-08-20,
+	 * i.e. 14.5 KB less than the sum. Raising it is a decision; lowering it whenever the number
+	 * comes down is the point.
+	 *
+	 * The last 252 B of it are the three Status→Overview template globals, which moved OUT of the
+	 * page module and into the chrome bootstrap: a page module is required during the navigation
+	 * that needs it, and a stock include calling `renderBadge` before it lands throws. Ordering is
+	 * not something a page module can promise, so the bytes buy it on every page. */
+	coldJs: 73_000,
 };
 
 function bytes(path) {

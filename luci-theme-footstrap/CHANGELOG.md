@@ -1,3 +1,62 @@
+## [0.13.3] — 2026-08-20
+
+### Fixed
+
+- **A poll tick no longer throws the page across the screen on Safari and iOS.** The compensation
+  0.13.2 added kept the reader's place for a section that GROWS, and the Overview kept jumping
+  anyway. `dom.content()` — what every LuCI poll calls to refresh a section — empties the container
+  before it refills it, and for that moment the document is shorter than the offset the reader is
+  at: the engine clamps the offset into what is left, the section fills again and nothing puts it
+  back. Reported from Safari on macOS and iOS with the offset moving 200-887px per tick. Both halves
+  are fixed. `fs-fit.js` can now tell a clamp from a reader who scrolled — a clamp only ever moves
+  the offset down, and a reader who moved is one `scrolling()` still answers for, because their
+  scroll starts the sampler while the clamp's own scroll event arrives after the mutation callback —
+  so the reference from the last still moment is kept instead of thrown away, and the clamped amount
+  raises the one-viewport ceiling that had refused exactly the worst jumps. `fs-overview.js` holds
+  each section's height across the swap, so on the one page whose poll the theme owns the document
+  never gets short enough to be clamped at all: prevention costs one `offsetHeight`, a correction is
+  a scroll the reader did not ask for. That pin reaches one release: 24.10's `view.status.index`
+  keeps its poll step in a closure, so there is no `poll_status` for the theme to replace and every
+  tick there empties its sections the hard way. The correction had to cover it, and could not — the
+  element it anchors to is one `dom.content()` replaces, so on the tick that mattered the reference
+  was gone and a fresh one measured a drift the ceiling refused. It no longer needs the element: an
+  offset that dropped with nobody scrolling, on the page it was taken on, has a number attached, and
+  giving that number back IS the correction. It cannot run away with the page either — if the
+  document really did get shorter, the browser clamps the write straight back.
+  Measured in WebKit with the engine's own anchoring off, a 30-row section swapped for a 35-row one
+  two screens above the reader: 255px of page moved under them before, 0px after, and 815px against
+  0px with the reader parked at the foot of the page. On a 24.10 router, its own poll running and
+  the reader parked 120px from the foot: 1206px of page moved and stayed moved, against a clamp
+  handed back within a single frame after. `tools/scroll-anchor.mjs` now refills a section the way a
+  poll does as well as growing one — the old case inserted a pad, so it never collapsed anything and
+  could not see this.
+- **The Overview's stock helpers can no longer arrive after the page that calls them.** The three
+  globals `admin_status/index.ut` defines in an inline script — `progressbar`, `renderBox`,
+  `renderBadge` — are called bare by stock includes and are this theme's to define on an SPA
+  arrival, where that script never runs. They were defined at `fs-overview.js`'s module eval, which
+  was free while that module sat in the chrome's require prologue and evaluated at chrome init.
+  Making it a page module (0.13.0, to keep 3.8 KB off every other page) turned that into a race: the
+  module is now required DURING the navigation that needs it, in a chain that runs beside the
+  router's own require of the view class, and losing it is a `ReferenceError` thrown from a stock
+  include on a page already committed to the document. The ~40 dependency-free lines moved to
+  `menu-footstrap-common.js`, which every page evaluates before the router exists; the Overview
+  layout code stays where it was. Three comments that still described the old ordering say what the
+  code does instead.
+- **A foreign stylesheet's gutter no longer outlives the page it came from.** `measureShell()`
+  memoised the content column's padding against density and window width, and neither changes on a
+  client navigation — but `fs-sheets` enables and disables a view's injected CSS on exactly that
+  event, and `.fs-content` carries no chrome mark, so an app is free to re-pad it. Navigating off
+  such a page left the chrome's model holding that app's gutter until the window was resized. The
+  page (`body[data-page]`) is the third term of the key now. Both consumers are lower-bound tests
+  (`< contentMin`, `< CRAMPED`), so the fault could only ever have cost one borderline stacking
+  decision — which is why it is worth three tokens of key rather than a re-read per call.
+- **The scroll gate stopped reporting its own instrument as a jump.** `tools/scroll-anchor.mjs` picks
+  the element under the reader with one hit test, and accepted `#view` itself when the test landed in
+  the gap between two sections — which happens at 390px. The host's own top does not move when
+  content grows inside it, so a page the engine had compensated perfectly read as 120px of movement:
+  two findings on ImmortalWrt 24.10, in the top layout, on the released build as much as on this one.
+  The host is excluded now and two more rows are tried before the case is skipped.
+
 ## [0.13.2] — 2026-08-19
 
 ### Added
@@ -3771,6 +3830,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.13.3]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.12.9...v0.13.0
