@@ -1,3 +1,52 @@
+## [0.13.5] — 2026-08-20
+
+### Added
+
+- **A fourth palette, `2020`, in light and dark.** The OpenWrt 2020 theme's colourway — the CI cyan
+  `#00B5E2` on the navy `#002B49` — carried onto footstrap's surfaces, which is how that look
+  survives if the theme it belongs to is dropped; proposed by LuCI's maintainers in exactly those
+  terms. The theme it comes from has one scheme and no dark mode, so the pair splits the work: dark
+  IS 2020's own scheme, navy canvas and the cyan nearly untouched, while light keeps the hue and
+  darkens it, because `#00B5E2` on white measures 2.09:1 where the export tier apps print text in
+  wants 4.5. The semantic three move for the same reason (green 2.28:1, amber 3.42:1 on white); the
+  red at 5.25:1 is the one kept where it was. Registered in all four places a palette has to be, so
+  `export-tier` and `a11y` now measure 56 combinations rather than 42 — 4352 contrast checks, all
+  clear, and axe-core clean across 24 palette × mode × tint points.
+- **`npm run fork-drift` says what the two trees disagree about.** Every shipped file compared
+  against `themes/luci-theme-footstrap` in a luci checkout, with the differences that are supposed
+  to exist named separately from the ones that are not. A report rather than a gate: an unproposed
+  change is a legitimate difference, and a machine without a luci checkout gets a skip instead of a
+  failure.
+
+### Changed
+
+- **The upstream workflow is a pull request now, not an amended branch.** The theme was merged into
+  openwrt/luci on 2026-08-20, so the one-commit proposal branch is history: changes go as a feature
+  branch off a fresh `upstream/master`, subject `luci-theme-footstrap: …`, `Signed-off-by` with a
+  real name, `push -f` only inside the PR branch. Their `CONTRIBUTING.md` is the authority and
+  `CLAUDE.md`, `docs/package.md` and `docs/design-system.md` now say so.
+- **The sync no longer sends `po/`, and says out loud what it cannot carry.** Upstream translations
+  are Weblate's — editing the catalogues by hand there is explicitly forbidden — so a sync that
+  copied ours would overwrite translators' work in the one direction nobody wants. The far side's
+  `Makefile` is hand-maintained too (`postinst`/`postrm`/`conffiles` do not travel), which had
+  already been missed once: a postrm cleaned up here and left as it was there. Both are now
+  reported on every sync.
+- **The install script is 36 lines instead of 162, and migrates nothing.** `uci-defaults` registered
+  the theme and then swept up after every footstrap that ever shipped: eight legacy theme names, four
+  legacy media paths, the old top-bar layout carried into `luci.main.footstrap_layout`, two
+  downloaded wallpapers, a pre-0.12.1 `fonts/` directory, a fallback to bootstrap when the active
+  theme's files were missing, and a marker file to tell a fresh install from an upgrade. All of it
+  served routers that predate the first version published in the LuCI tree, and OpenWrt expects a
+  `sysupgrade` rather than a package upgrade, so leftovers go with the image. What remains is the
+  registration, the three symlinks that expose the admin's own uploads out of `/etc`, and the same
+  fresh-vs-upgrade rule the other themes in the tree use — `mediaurlbase` is written only in the run
+  that first added `luci.themes.Footstrap`. Verified on both package managers that the behaviour is
+  unchanged where it matters: a fresh install with a theme already chosen registers and does not
+  switch, an upgrade changes nothing, a fresh install with no `mediaurlbase` activates the theme, and
+  a second run in the same install is a no-op. `postrm` loses the same eight-name list and the
+  marker, so the `@mirror theme/legacy-names` pin that held the two copies together is gone with
+  them. Requested in review by the LuCI maintainer.
+
 ## [0.13.4] — 2026-08-20
 
 ### Fixed
@@ -181,7 +230,6 @@
 - **The shell is sized in `svh`, not `dvh`.** `dvh` is defined to track the viewport as browser UI comes and goes, and on iOS the URL bar slides continuously while the user scrolls — so a shell keyed on it is re-laid-out on every frame of that animation. `svh` is the height with the UI shown and does not move while the UI does, which is also the right value for a floor: the shell must be at least one screenful with the bar visible, and nothing needs re-measuring when the bar hides.
 
 - **A checkbox and a radio are 24px targets, and nothing around them moved.** WCAG 2.2 SC 2.5.8 lets an undersized target pass on spacing — 24px centre to centre — and a 16px tick box has always relied on that. It holds while the theme decides the layout and stops holding the moment a third-party app lays out its own rows: CI's luci-app-filemanager listing put this checkbox and a file link inside the 24px and the page gate reported both, on a router where the same page here spaces its checkboxes 42-43px apart. A target that passes only because of what someone else's markup happens to do is not a target that passes. The element is now 24px (`max(24px, --box)`, so the Large density never shrinks it) with the drawing still `--box` and centred inside it by `inset: 0; margin: auto` — direction-agnostic, unlike the translate pair it replaces. The extra area is pulled back out of the flow with a negative margin, because the obvious version costs a page its layout: grown outright, filemanager's rows went 42px → 51px, i.e. a third-party page redesigned by a theme's accessibility fix; with the margin they are 43px against 42px and the target still answers a hit test at its centre.
-
 
 
 - **A development deploy can no longer be invisible to the device under test.** Every asset is versioned with `?v={{ pkgs_update_time }}`, which luci-base derives from the mtime of the package database — installing a package moves it, `scp`-ing files over an existing install does not. So a dev deploy left every URL identical while the bytes underneath changed, and a browser was entitled to keep serving what it had. That is not a theory: an afternoon of "still shaking" reports from a phone were taken against a stylesheet several deploys old, which made two correct fixes look like failures and sent the hunt down a wrong branch twice. `dev-sync.sh` now touches the package database, which is exactly what an install would have done to it, so the next page carries a new `?v=` for everything. Router-only and dev-only; nothing in the package does this.
@@ -1512,7 +1560,6 @@
   the tail, unlike `balance`, which re-runs the whole block and is meant for headings; a browser
   without it wraps exactly as before, so there is nothing to guard. Measured over four pages: 12
   elements changed, no other property moved.
-
 
 - **Every Appearance axis owns its router default, instead of a second copy restating it.**
   `_resolvedDefault()` spelled each validation out again — the 1–360 hue clamp twice, the 0–20
@@ -3871,6 +3918,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.13.5]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.4...v0.13.5
 [0.13.4]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.1...v0.13.2
