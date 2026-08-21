@@ -1,5 +1,56 @@
 ## [Unreleased]
 
+### Added
+
+- **The login page has a top-level heading again.** It renders with no chrome, so header.ut's
+  `.fs-title-main` h1 never reaches it and the document went out with `Authorization Required` as an
+  h2 and no h1 at all — the one sentence saying where you are, and the target of a screen reader's
+  `1` shortcut. Stock LuCI's h2 is inherited from a page that has a title bar above it; this one has
+  none, so the card's heading is the page title and is marked up as one. Set back to the h2's 20px
+  in `10-login.css`: the ramp puts an h1 at 26px, which wraps that string onto two lines in a 400px
+  card, and the size was never what was wrong.
+
+- **The login page says which router it is.** The card carried nothing but `Authorization Required`,
+  so an admin with three of these open in three tabs had only the browser tab's title to tell them
+  apart — and a focused password field hides even that. `sysauth.ut` now prints the hostname above
+  the heading, from the same `ubus system board` call and with the same `?? 'OpenWrt'` fallback and
+  striptags/entityencode pair the chrome's wordmark and `<title>` already use. It discloses nothing
+  new: that string has always reached an unauthenticated browser through `<title>`, in this theme
+  and in every stock one. Centred and set apart by the card's own 24px gutter — the shape an
+  appliance console uses for this — but SMALLER than the heading it stands over and not a heading
+  itself: `Authorization Required` stays the page's one heading, so the outline still has a login
+  form in it rather than a section named after the router. Not in the eyebrow's uppercase either,
+  because a hostname is a name and case is often the only thing separating two of them. Requested
+  as openwrt/luci#8961.
+
+## [0.14.0] — 2026-08-21
+
+### Added
+
+- **OpenWrt 23.05 is a supported release again, and gated like the others.** A user reported that the
+  Appearance tab was empty on 23.05.5 — the whole panel, not one control. The cause was one missing
+  widget: `ui.RangeSlider` arrived in 24.10, the panel is built inside a single try/catch, and the
+  miss took the tab down with one console line and nothing else to notice it. Everything else on
+  that release already worked, which the numbers now say out loud: the chrome, the menu, client
+  navigation, the Overview grid, the palettes, both layout and mode axes, the search palette, styled
+  dropdowns, the tables and Save-as-default all behave, and 74 pages agree between a click and a
+  full load. So the fix is the widget rather than the release: `fs-appearance.js` uses
+  `ui.RangeSlider` where it exists and builds the same thing from `ui.AbstractElement` — the base
+  class LuCI exports on every supported release — where it does not, with the same markup, the same
+  `.cbi-range-slider` classes the stylesheet already dresses, and the same two events. 356 B for a
+  release that still ships on a lot of hardware.
+- **23.05 has a router of its own in the gates.** `owlab.yaml` gains `owrt2305`, `upstream-contract`
+  gains the assumption that a range widget is reachable by one path or the other (exercised, not
+  assumed — the fallback's own machinery is built and rendered in the check), and a release is not
+  taggable until the wide live run has been through it. The bug reached a user because no gate had
+  ever opened a 23.05 router; that is the part worth not repeating.
+- **The installer knows 23.05, and it does not use the feed.** The feed publishes the two branches
+  the package FORMAT splits on — apk from 25.12, ipk on 24.10 — and a 23.05 branch would be a second
+  copy of a byte-identical artefact to sign and keep in step. So `install.sh` recognises the release
+  and installs the signed GitHub asset directly, the same path and the same verification a router
+  gets when the feed cannot serve it. The trade is stated where it is made: no `opkg upgrade` there,
+  an update means running the script again.
+
 ### Fixed
 
 - **The realtime graphs' axis labels are readable again.** Every `<text>` in LuCI's realtime `.svg`
@@ -3936,6 +3987,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.14.0]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.5...v0.14.0
 [0.13.5]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.4...v0.13.5
 [0.13.4]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.2...v0.13.3
