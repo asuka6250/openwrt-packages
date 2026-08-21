@@ -419,7 +419,37 @@ function healthyClients() {
 	  pending_clients: 0, error_clients: 0, queue_overflow_clients: 0,
 	  rate_limited_clients: 1, internet_disabled_clients: 1, block_active_clients: 1,
 	  required_directions: 2, verified_directions: 2,
-	  nss_verified_directions: 2, cpu_verified_directions: 1
+	  nss_verified_directions: 2, cpu_verified_directions: 1,
+	  hardware_telemetry: {
+	    state: 'ready', sync_count: 1, last_sync_ns: 2, igs_bytes: 3,
+	    igs_packets: 4, igs_drops: 5, peer_generation: 6, peer_reassert: 7,
+	    ack_latency_last_ns: 8, ack_latency_max_ns: 9, ack_received: 10,
+	    ack_timeout: 11, ack_late: 12, control_generation: 13,
+	    hardware_generation: 14,
+	    igs_cadence: {
+	      state: 'ready', samples: 15, last_interval_ns: 16,
+	      min_interval_ns: 17, max_interval_ns: 18, active_nodes: 1
+	    },
+	    genl_caps: {
+	      state: 'ready', abi_version: 1, feature_bits: 2, max_igs: 3,
+	      max_peers: 4, max_client_tags: 5, supports_wifi_peer: true,
+	      supports_igs_stats: true, supports_peer_query: true
+	    },
+	    genl_state: { state: 'ready', staged: 1, published: 1, degraded: 0 },
+	    genl_stats: {
+	      state: 'ready', control_generation: 1, hardware_generation: 2,
+	      peer_generation: 3, peer_reassert_count: 4, igs_sync_count: 5,
+	      igs_last_sync_ns: 6, igs_bytes: 7, igs_packets: 8, igs_drops: 9,
+	      igs_active_nodes: 1, igs_cadence_samples: 10,
+	      igs_cadence_last_ns: 11, igs_cadence_min_ns: 12,
+	      igs_cadence_max_ns: 13, ack_latency_last_ns: 14,
+	      ack_latency_max_ns: 15, ack_received: 16, ack_timeout: 17, ack_late: 18
+	    },
+	    genl_health: {
+	      state: 'ready', healthy: true, control_generation: 1,
+	      hardware_generation: 2
+	    }
+	  }
 	};
   return value;
 }
@@ -633,6 +663,20 @@ async function testStrictContracts() {
 	falseVerifiedControl.evidence.nss_control.pending_clients = 1;
 	assert.strictEqual(model.validateRuntimeResponse(falseVerifiedControl, 'clients').valid, false,
 	  'a verified NSS control aggregate cannot retain pending clients');
+	const badHardwareTelemetry = healthyClients();
+	badHardwareTelemetry.evidence.nss_control.hardware_telemetry.genl_stats.unknown = 1;
+	assert.strictEqual(model.validateRuntimeResponse(badHardwareTelemetry, 'clients').valid, false,
+	  'NSS hardware telemetry must reject undeclared generic-netlink fields');
+	const badIgsCadence = healthyClients();
+	badIgsCadence.evidence.nss_control.hardware_telemetry.igs_cadence.samples = -1;
+	assert.strictEqual(model.validateRuntimeResponse(badIgsCadence, 'clients').valid, false,
+	  'NSS hardware telemetry must reject invalid IGS cadence counters');
+	const unavailableIgsCadence = healthyClients();
+	unavailableIgsCadence.evidence.nss_control.hardware_telemetry.igs_cadence = {
+	  state: 'unavailable'
+	};
+	assert.strictEqual(model.validateRuntimeResponse(unavailableIgsCadence, 'clients').valid, true,
+	  'missing optional IGS cadence telemetry must not invalidate the clients response');
   const badRateReason = clone(futureRateSource);
   badRateReason.clients[0].rate_meta.reason_codes = [ 'contains spaces' ];
   assert.strictEqual(model.validateRuntimeResponse(badRateReason, 'clients').valid, false);
@@ -664,8 +708,30 @@ async function testResourceStateMachine() {
   assert.strictEqual(goodRate.source, 'access_edge');
   assert.strictEqual(goodRate.state, 'good');
   assert.strictEqual(goodRate.sourceText, 'Edge-Port 2');
+  assert.strictEqual(goodRate.facts.windowMs, 1000);
+  assert.strictEqual(goodRate.windowText, '实际窗口约 1 秒');
   assert.strictEqual(model.accessEdgeStateWithRpc(good).value, '1/1 个接入点');
   assert.strictEqual(model.accessEdgeStateWithRpc(good).trustText, '单 MAC 观察 1');
+
+  const routedValues = payloads();
+  routedValues.status.access_edge_mode = 'off';
+  routedValues.status.internet_view_mode = 'routed';
+  routedValues.clients.clients[0].rate_meta.scope = 'routed_observed';
+  routedValues.clients.clients[0].rate_meta.window_ms = 2000;
+  [ 'tx', 'rx' ].forEach((direction) => {
+    Object.assign(routedValues.clients.clients[0].rate_meta[direction], {
+      source: 'fast_routed_internet', coverage: 'full', byte_domain: 'ecm_data', window_ms: 2000
+    });
+  });
+  const routed = model.normalizeResults(await settled(routedValues), null, 10000, 1);
+  const routedRate = model.rateOwnerStateWithRpc(routed);
+  assert.strictEqual(routedRate.routedOwner, true);
+  assert.strictEqual(routedRate.edgeOwner, false);
+  assert.strictEqual(routedRate.badge, '路由视图');
+  assert.strictEqual(routedRate.facts.windowMs, 2000);
+  assert.strictEqual(routedRate.windowText, '实际窗口约 2 秒');
+  assert(routedRate.meta.includes('实际窗口约 2 秒'),
+    'routed diagnostics must expose the observed FastN+FastS batch window');
   const goodClassification = model.classificationStateWithRpc(good);
   assert.strictEqual(goodClassification.state, 'good');
   assert.strictEqual(goodClassification.badge, '运行正常');
@@ -1136,6 +1202,10 @@ async function testDomAndPresenter() {
   assert.strictEqual(goodBuilt.refs.interfacesBody.children.length, 1);
   assert.strictEqual(goodBuilt.refs.interfacesBody.children[0].children[3].textContent, '500 毫秒',
     'interface sample timestamps must render as age relative to the interface clock');
+  assert.strictEqual(states.sampleAge(9500, 9503), 0,
+    'interface samples captured just after the aggregate clock must remain usable');
+  assert.strictEqual(states.sampleAge(9500, 9551), null,
+    'interface samples beyond the clock skew tolerance must remain unavailable');
   assert.strictEqual(goodBuilt.refs.subsystemsBody.children.length, 8);
   const nssRow = goodBuilt.refs.subsystemsBody.children.find((row) =>
     row.children[0] && row.children[0].textContent === 'NSS 加速识别');

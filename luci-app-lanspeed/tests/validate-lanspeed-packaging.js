@@ -9,8 +9,21 @@ const root = path.resolve(__dirname, '..');
 const pkgMakefile = fs.readFileSync(path.join(root, 'net/lanspeedd/Makefile'), 'utf8');
 const nssControlKmodMakefile = fs.readFileSync(path.join(root,
   'net/lanspeed-nss-control/Makefile'), 'utf8');
-const nssControlKmodSource = fs.readFileSync(path.join(root,
-  'net/lanspeed-nss-control/src/lanspeed_nss_control.c'), 'utf8');
+const nssControlSourceRoot = path.join(root, 'net/lanspeed-nss-control/src');
+const nssControlSourceMakefile = fs.readFileSync(path.join(nssControlSourceRoot,
+  'Makefile'), 'utf8');
+const nssControlKmodSource = [
+  'lanspeed_nss_control_core.c',
+  'lanspeed_nss_control_ack.c',
+  'lanspeed_nss_control_telemetry.c',
+  'lanspeed_nss_control_genl.c',
+  'lanspeed_nss_control_tags.c',
+  'lanspeed_nss_control_trusted_ingress.c',
+  'lanspeed_nss_control_nexthop.c',
+  'lanspeed_nss_control_peer.c',
+  'lanspeed_nss_control_igs.c'
+].map((name) => fs.readFileSync(path.join(nssControlSourceRoot, name), 'utf8'))
+  .join('\n');
 const buildDriver = fs.readFileSync(
   path.join(root, 'net/lanspeedd/rust/crates/lanspeed-build/src/lib.rs'),
   'utf8'
@@ -18,6 +31,10 @@ const buildDriver = fs.readFileSync(
 const cargoConfig = fs.readFileSync(path.join(root, 'net/lanspeedd/rust/.cargo/config.toml'), 'utf8');
 const x86ProfileMigration = fs.readFileSync(
   path.join(root, 'net/lanspeedd/files/etc/uci-defaults/95-lanspeed-x86-profile'),
+  'utf8'
+);
+const nssShapingMigration = fs.readFileSync(
+  path.join(root, 'net/lanspeedd/files/etc/uci-defaults/94-lanspeed-nss-shaping'),
   'utf8'
 );
 const initScript = fs.readFileSync(
@@ -209,9 +226,12 @@ function validateBuiltLuciApk() {
   }
 
   assert(fs.existsSync(apkPath), `LANSPEED_LUCI_APK does not exist: ${apkPath}`);
-  const immortalwrtRoot = process.env.IMMORTALWRT_ROOT || '/openwrt/immortalwrt';
+  const sdkRoot = process.env.IMMORTALWRT_ROOT || process.env.SDK_DIR;
   const apkTool = process.env.LANSPEED_APK_TOOL ||
-    path.join(immortalwrtRoot, 'staging_dir/host/bin/apk');
+    (sdkRoot ? path.join(sdkRoot, 'staging_dir/host/bin/apk') : null);
+  if (!apkTool) {
+    throw new Error('APK content validation requires LANSPEED_APK_TOOL or IMMORTALWRT_ROOT');
+  }
   try {
     fs.accessSync(apkTool, fs.constants.X_OK);
   } catch (_error) {
@@ -483,10 +503,11 @@ function validateQaDeviceContract() {
     const dryEvidence = fs.readFileSync(dryEvidencePath, 'utf8');
     assert(!dryEvidence.includes(dryPlaceholder), 'qa-device dry-run evidence must never expose SSHPASS');
     assert(
-      dryEvidence.includes('coverage=ubus 九个方法: status, clients, overview, health, diagnostics, reload, interfaces, sysdevices, client_connections'),
-      'qa-device evidence header must state all nine ubus methods'
+      dryEvidence.includes('coverage=ubus 十个方法: realtime, status, clients, overview, health, diagnostics, reload, interfaces, sysdevices, client_connections'),
+      'qa-device evidence header must state all ten read/diagnostic ubus methods'
     );
     for (const method of [
+      'realtime',
       'status',
       'clients',
       'overview',
@@ -706,6 +727,9 @@ try {
     'NSS control kmod must be packaged only for qualcommax with verified IGS dependencies');
   assertMatch(nssControlKmodMakefile, /^  SOURCE:=lanspeed-nss-control$/m,
     'NSS control kmod package metadata must not expose a local build path');
+  assertMatch(nssControlSourceMakefile,
+    /^lanspeed_nss_control-objs := lanspeed_nss_control_core\.o lanspeed_nss_control_ack\.o lanspeed_nss_control_telemetry\.o lanspeed_nss_control_genl\.o lanspeed_nss_control_tags\.o lanspeed_nss_control_trusted_ingress\.o lanspeed_nss_control_nexthop\.o lanspeed_nss_control_peer\.o lanspeed_nss_control_igs\.o$/m,
+    'NSS control kmod must link separate responsibility objects into one module');
   assertMatch(nssControlKmodMakefile,
     /define Package\/kmod-lanspeed-nss-control\/postinst[\s\S]*chown 0:0[\s\S]*kmod-lanspeed-nss-control\.list[\s\S]*lanspeed_nss_control\.ko[\s\S]*chmod 0644/,
     'NSS control kmod must normalize installed module metadata to root-owned mode 0644');
@@ -730,10 +754,9 @@ try {
   assert(
     nssControlKmodSource.includes('NSS_DYNAMIC_INTERFACE_TYPE_VAP') &&
       nssControlKmodSource.includes('NSS_WIFI_VDEV_SET_NEXT_HOP') &&
-      nssControlKmodSource.includes('return lanspeed_wifi_set_nexthop(edge_if_num, NSS_ETH_RX_INTERFACE);') &&
-      nssControlKmodSource.includes('Only peers selected by') &&
-      nssControlKmodSource.includes('wait_for_completion_timeout(&lanspeed_wifi_completion') &&
-      nssControlKmodSource.includes('lanspeed_wifi_response != NSS_CMN_RESPONSE_ACK'),
+      nssControlKmodSource.includes('lanspeed_ack_callback') &&
+      nssControlKmodSource.includes('wait_for_completion_timeout(&txn->done') &&
+      nssControlKmodSource.includes('txn->response == NSS_CMN_RESPONSE_ACK'),
     'NSS control kmod must use the acknowledged Wi-Fi vdev nexthop transaction for dynamic VAP edges'
   );
   assert(
@@ -859,6 +882,11 @@ try {
   );
   assertMatch(
     pkgMakefile,
+    /if \[ "\$\(CONFIG_TARGET_qualcommax\)" = "y" \]; then \\\s*\$\(INSTALL_DIR\) \$\(1\)\/etc\/uci-defaults; \\\s*\$\(INSTALL_BIN\) \.\/files\/etc\/uci-defaults\/94-lanspeed-nss-shaping \$\(1\)\/etc\/uci-defaults\/94-lanspeed-nss-shaping; \\\s*fi/,
+    'only the qualcommax package may install the NSS shaping migration'
+  );
+  assertMatch(
+    pkgMakefile,
     /if \[ "\$\(CONFIG_TARGET_qualcommax\)" = "y" \]; then \\\s*\$\(SED\) '\/procd_set_param respawn\/a\\\tprocd_set_param term_timeout 15' \$\(1\)\/etc\/init\.d\/lanspeedd; \\\s*fi/,
     'only the qualcommax package may extend procd shutdown for NSS cleanup and BPF RCU detach'
   );
@@ -871,6 +899,16 @@ try {
     'the shared init source must retain the x86 default termination timeout');
   assertMatch(x86ProfileMigration, /uci -q delete lanspeed\.main\.access_edge_mode/,
     'x86 migration must remove a retained Access Edge option');
+  for (const option of [ 'nss_fifo_target_delay_ms', 'nss_fifo_min_queue_packets',
+    'rate_compensation_factor', 'nss_low_rate_window_ms',
+    'nss_low_rate_high_watermark_bps' ]) {
+    assert(x86ProfileMigration.includes(option),
+      `x86 migration must remove retained NSS-only shaping option ${option}`);
+    assert(nssShapingMigration.includes(`set_default ${option}`),
+      `NSS migration must initialize missing shaping option ${option}`);
+  }
+  assertMatch(nssShapingMigration, /if ! uci -q get "lanspeed\.main\.\$option"/,
+    'NSS shaping migration must not overwrite an existing user value');
   assertMatch(x86ProfileMigration, /uci -q delete lanspeed\.main\.single_client_ports/,
     'x86 migration must remove the retired single-client-port option');
   assertMatch(x86ProfileMigration, /uci -q delete lanspeed\.main\.dedicated_port/,
@@ -1015,6 +1053,7 @@ try {
     'LuCI package must install exactly the active client detail resources');
 
   const documentedMethods = [
+    'realtime',
     'status',
     'clients',
     'overview',

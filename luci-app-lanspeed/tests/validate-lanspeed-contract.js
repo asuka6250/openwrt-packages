@@ -5,6 +5,7 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const UBUS_METHODS = Object.freeze([
+  'realtime',
   'status',
   'clients',
   'overview',
@@ -319,6 +320,7 @@ function validateFixture(fixture) {
     'evidence',
     'refresh_interval_ms',
     'rate_collector_mode',
+    'internet_view_mode',
     'access_edge_mode',
     'conn_collector_mode',
     'version',
@@ -479,7 +481,10 @@ function validateClientConnectionsFixture(response, pathName) {
     'connections',
     'warnings'
   ];
-  const summaryFields = ['identity_key', 'hostname', 'mac', 'ips', 'interface', 'zone'];
+	const summaryFields = [
+		'identity_key', 'hostname', 'mac', 'ips', 'interface', 'zone', 'rx_bps', 'tx_bps',
+		'rate_sample_ms', 'rate_collector_mode', 'rate_meta'
+	];
   const detailFields = [
     'client_ip',
     'client_port',
@@ -499,6 +504,18 @@ function validateClientConnectionsFixture(response, pathName) {
   assert(sameStringSet(Object.keys(response.client), summaryFields),
     `${pathName}.client must keep the exact Rust summary key set`);
   assertArray(response.client.ips, `${pathName}.client.ips`);
+  assert(Number.isInteger(response.client.rx_bps) && response.client.rx_bps >= 0,
+    `${pathName}.client.rx_bps must be a non-negative integer`);
+	assert(Number.isInteger(response.client.tx_bps) && response.client.tx_bps >= 0,
+		`${pathName}.client.tx_bps must be a non-negative integer`);
+	assert((response.client.rate_sample_ms === null ||
+		Number.isInteger(response.client.rate_sample_ms) && response.client.rate_sample_ms >= 0),
+		`${pathName}.client.rate_sample_ms must be null or a non-negative integer`);
+	assert(typeof response.client.rate_collector_mode === 'string' &&
+		response.client.rate_collector_mode.length > 0,
+		`${pathName}.client.rate_collector_mode must identify the total-rate collector`);
+	assert(response.client.rate_meta === null || typeof response.client.rate_meta === 'object',
+		`${pathName}.client.rate_meta must be null or the typed total-rate metadata`);
   assertArray(response.connections, `${pathName}.connections`);
   assertArray(response.warnings, `${pathName}.warnings`);
   assert(response.connections.length >= 2,
@@ -656,6 +673,15 @@ function validateRpc(rpcSource) {
   assert(exported.clientConnections === declaration.callable,
     'rpc.js must export client_connections as clientConnections');
 
+  const realtime = declarations.filter(({ specification }) =>
+    specification.object === 'lanspeed' && specification.method === 'realtime'
+  );
+  assert(realtime.length === 1, 'rpc.js must declare realtime exactly once');
+  assert(JSON.stringify(realtime[0].specification.expect) === JSON.stringify({ '': {} }),
+    'realtime RPC declaration must keep the empty-object response contract');
+  assert(exported.realtime === realtime[0].callable,
+    'rpc.js must export realtime');
+
   const diagnostics = declarations.filter(({ specification }) =>
     specification.object === 'lanspeed' && specification.method === 'diagnostics'
   );
@@ -694,7 +720,13 @@ function validateUci(config) {
     "option active_client_min_bps '1'",
     "option overview_window_samples '240'",
     "option rate_collector_mode 'auto'",
+    "option internet_view_mode 'off'",
     "option access_edge_mode 'active'",
+    "option nss_low_rate_window_ms '18000'",
+    "option nss_low_rate_high_watermark_bps '8000000'",
+    "option nss_fifo_target_delay_ms '50'",
+    "option nss_fifo_min_queue_packets '8'",
+    "option rate_compensation_factor '1.10'",
     "option conn_collector_mode 'auto'",
     "option show_client_status '0'",
     "option show_ipv6 '1'",
@@ -850,7 +882,12 @@ assertSchemaExactObject(schema, 'clientConnectionSummary', [
   'mac',
   'ips',
   'interface',
-  'zone'
+  'zone',
+  'rx_bps',
+  'tx_bps',
+  'rate_sample_ms',
+  'rate_collector_mode',
+  'rate_meta'
 ]);
 const clientConnectionFields = [
   'available',
@@ -884,6 +921,9 @@ assert(schema.$defs.status.properties.active_client_window_ms.minimum === 1000, 
 assert(schema.$defs.status.properties.active_client_min_bps.minimum === 1, 'schema must reject/clamp active_client_min_bps below 1bps');
 assert(schema.$defs.status.properties.collector_mode.$ref === '#/$defs/collectorMode', 'schema status.collector_mode must reuse collectorMode enum');
 assert(schema.$defs.status.properties.rate_collector_mode.$ref === '#/$defs/rateCollectorMode', 'schema status.rate_collector_mode must reuse rateCollectorMode enum');
+assert(schema.$defs.status.properties.internet_view_mode.$ref === '#/$defs/internetViewMode', 'schema status.internet_view_mode must reuse internetViewMode enum');
+assert(JSON.stringify(schema.$defs.internetViewMode.enum) === JSON.stringify(['off', 'routed']),
+  'schema internetViewMode must expose only off/routed');
 assert(JSON.stringify(schema.$defs.status.properties.access_edge_mode.enum) === JSON.stringify(['off', 'shadow', 'active']),
   'schema status.access_edge_mode must expose only off/shadow/active');
 assert(!Object.prototype.hasOwnProperty.call(schema.$defs.status.properties, 'dedicated_ports'),
@@ -905,6 +945,8 @@ assert(schema.$defs.rateCollectorMode.enum.includes('auto'), 'schema must allow 
 assert(schema.$defs.rateCollectorMode.enum.includes('bpf'), 'schema must allow rate_collector_mode=bpf');
 assert(schema.$defs.rateCollectorMode.enum.includes('nss_ecm_node'), 'schema must allow rate_collector_mode=nss_ecm_node');
 assert(schema.$defs.rateCollectorMode.enum.includes('nss_ecm_bpf'), 'schema must allow rate_collector_mode=nss_ecm_bpf');
+assert(schema.$defs.rateSource.enum.includes('fast_routed_lease'),
+  'schema must expose the lease-authorized FastN+FastS rate source');
 assert(schema.$defs.capabilities.required.includes('nss_ecm_bpf'), 'schema must require the ECM+BPF runtime capability');
 assert(!schema.$defs.rateCollectorMode.enum.includes('nss_ecm_direct'), 'schema must remove legacy rate_collector_mode=nss_ecm_direct');
 assert(!schema.$defs.rateCollectorMode.enum.includes('nss_conntrack_sync'), 'schema must remove legacy rate_collector_mode=nss_conntrack_sync');

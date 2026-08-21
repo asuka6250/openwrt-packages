@@ -47,7 +47,7 @@ validate_common() {
 			fail "$label object is missing section ${section//\\/}"
 	done
 
-	license_size=$(awk '$3 == "license" { print $7; found = 1 } END { if (!found) exit 1 }' <<<"$sections") || \
+	license_size=$(awk '{ for (i = 1; i <= NF; i++) if ($i == "license") { print $(i + 4); found = 1 } } END { if (!found) exit 1 }' <<<"$sections") || \
 		fail "$label object license section is missing"
 	[[ $license_size == 000004 ]] || \
 		fail "$label object license section has unexpected size $license_size"
@@ -63,7 +63,7 @@ validate_common() {
 		has_symbol "$symbols" "$program" || \
 			fail "$label object is missing classifier program $program"
 	done
-	for map in lanspeed_clients lanspeed_packet_prefix; do
+	for map in lanspeed_clients lanspeed_fast_counters lanspeed_packet_prefix; do
 		has_symbol "$symbols" "$map" || fail "$label object is missing map $map"
 	done
 
@@ -82,8 +82,14 @@ kfunc_disassembly=$("$objdump_bin" -d "$kfunc_object")
 grep -Eq 'lock[[:space:]]+\*\(u32 \*\).*\+= r[0-9]+' <<<"$kfunc_disassembly" || \
 	fail 'kfunc object has no 32-bit BPF atomic add instruction'
 for forbidden in \
-	lanspeed_ecm_update lanspeed_ecm_nss_enter lanspeed_ecm_nss_exit \
-	lanspeed_ecm_clients lanspeed_ecm_layout lanspeed_ecm_nss_context lanspeed_ecm_source_stats; do
+	lanspeed_ecm_update \
+	lanspeed_ecm_nss_enter_sync_many_v4 lanspeed_ecm_nss_exit_sync_many_v4 \
+	lanspeed_ecm_nss_enter_sync_many_v6 lanspeed_ecm_nss_exit_sync_many_v6 \
+	lanspeed_ecm_nss_enter_netdev_v4 lanspeed_ecm_nss_exit_netdev_v4 \
+	lanspeed_ecm_nss_enter_netdev_v6 lanspeed_ecm_nss_exit_netdev_v6 \
+	lanspeed_ecm_clients lanspeed_ecm_layout lanspeed_ecm_nss_context \
+	lanspeed_ecm_fast_counters lanspeed_ecm_source_stats lanspeed_ecm_event_ringbuf \
+	lanspeed_ecm_event_stats; do
 	if has_symbol "$kfunc_symbols" "$forbidden"; then
 		fail "kfunc TC object unexpectedly contains ECM symbol $forbidden"
 	fi
@@ -97,8 +103,14 @@ for forbidden_map in lanspeed_conntrack_scratch lanspeed_seen_conns; do
 	fi
 done
 for forbidden in \
-	lanspeed_ecm_update lanspeed_ecm_nss_enter lanspeed_ecm_nss_exit \
-	lanspeed_ecm_clients lanspeed_ecm_layout lanspeed_ecm_nss_context lanspeed_ecm_source_stats; do
+	lanspeed_ecm_update \
+	lanspeed_ecm_nss_enter_sync_many_v4 lanspeed_ecm_nss_exit_sync_many_v4 \
+	lanspeed_ecm_nss_enter_sync_many_v6 lanspeed_ecm_nss_exit_sync_many_v6 \
+	lanspeed_ecm_nss_enter_netdev_v4 lanspeed_ecm_nss_exit_netdev_v4 \
+	lanspeed_ecm_nss_enter_netdev_v6 lanspeed_ecm_nss_exit_netdev_v6 \
+	lanspeed_ecm_clients lanspeed_ecm_layout lanspeed_ecm_nss_context \
+	lanspeed_ecm_fast_counters lanspeed_ecm_source_stats lanspeed_ecm_event_ringbuf \
+	lanspeed_ecm_event_stats; do
 	if has_symbol "$fallback_symbols" "$forbidden"; then
 		fail "fallback TC object unexpectedly contains ECM symbol $forbidden"
 	fi
@@ -122,7 +134,7 @@ if [[ -n $ecm_object ]]; then
 	if grep -Eq '[[:space:]]classifier(/|[[:space:]])' <<<"$ecm_sections"; then
 		fail 'ECM object unexpectedly contains a TC classifier section'
 	fi
-	ecm_license_size=$(awk '$3 == "license" { print $7; found = 1 } END { if (!found) exit 1 }' <<<"$ecm_sections") || \
+	ecm_license_size=$(awk '{ for (i = 1; i <= NF; i++) if ($i == "license") { print $(i + 4); found = 1 } } END { if (!found) exit 1 }' <<<"$ecm_sections") || \
 		fail 'ECM object license section is missing'
 	[[ $ecm_license_size == 000004 ]] || \
 		fail "ECM object license section has unexpected size $ecm_license_size"
@@ -132,13 +144,20 @@ if [[ -n $ecm_object ]]; then
 
 	ecm_symbols=$("$readelf_bin" -sW "$ecm_object")
 	for required in \
-		lanspeed_ecm_update lanspeed_ecm_nss_enter lanspeed_ecm_nss_exit \
-		lanspeed_ecm_clients lanspeed_ecm_layout lanspeed_ecm_nss_context lanspeed_ecm_source_stats; do
+		lanspeed_ecm_update \
+		lanspeed_ecm_nss_enter_sync_many_v4 lanspeed_ecm_nss_exit_sync_many_v4 \
+		lanspeed_ecm_nss_enter_sync_many_v6 lanspeed_ecm_nss_exit_sync_many_v6 \
+		lanspeed_ecm_nss_enter_netdev_v4 lanspeed_ecm_nss_exit_netdev_v4 \
+		lanspeed_ecm_nss_enter_netdev_v6 lanspeed_ecm_nss_exit_netdev_v6 \
+		lanspeed_ecm_clients lanspeed_ecm_layout lanspeed_ecm_nss_context \
+		lanspeed_ecm_fast_counters lanspeed_ecm_source_stats lanspeed_ecm_event_ringbuf \
+		lanspeed_ecm_event_stats; do
 		has_symbol "$ecm_symbols" "$required" || fail "ECM object is missing symbol $required"
 	done
 	for forbidden in \
 		lanspeed_ingress lanspeed_egress lanspeed_ingress_early lanspeed_egress_early \
-		lanspeed_clients lanspeed_packet_prefix lanspeed_conntrack_scratch lanspeed_seen_conns; do
+		lanspeed_clients lanspeed_fast_counters lanspeed_packet_prefix \
+		lanspeed_conntrack_scratch lanspeed_seen_conns; do
 		if has_symbol "$ecm_symbols" "$forbidden"; then
 			fail "ECM object unexpectedly contains TC symbol $forbidden"
 		fi

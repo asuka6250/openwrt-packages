@@ -32,8 +32,8 @@ const ecmNode = fs.readFileSync(path.join(root,
 const nssControlDir = path.join(root,
   'net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/control');
 const nssControlModules = [
-  'mod.rs', 'capability.rs', 'classifier.rs', 'ecm_qos.rs', 'firewall.rs', 'legacy.rs', 'qdisc.rs',
-  'firewall_tests.rs', 'qdisc_tests.rs', 'rollback.rs', 'shaper.rs', 'state.rs',
+  'mod.rs', 'capability.rs', 'classifier.rs', 'ecm_qos.rs', 'firewall.rs', 'genl.rs', 'legacy.rs', 'qdisc.rs',
+  'firewall_tests.rs', 'hardware_telemetry.rs', 'qdisc_tests.rs', 'rollback.rs', 'shaper.rs', 'state.rs',
   'system.rs', 'system_tests.rs', 'telemetry.rs', 'topology.rs'
 ];
 const nssControlByModule = Object.fromEntries(nssControlModules.map((name) => [
@@ -44,7 +44,7 @@ const nssProductionControl = Object.values(nssControlByModule)
   .map((value) => value.split('#[cfg(test)]')[0]).join('\n');
 const nssCpuPathDir = path.join(nssControlDir, 'cpu_path');
 const nssCpuPathModules = [
-  'mod.rs', 'block.rs', 'bridge.rs', 'classifier.rs', 'ifb.rs', 'probe.rs', 'shaper.rs', 'tagger.rs'
+  'mod.rs', 'block.rs', 'bridge.rs', 'classifier.rs', 'ifb.rs', 'probe.rs', 'shaper.rs', 'tagger.rs', 'trusted_ingress.rs'
 ];
 const nssCpuPathByModule = Object.fromEntries(nssCpuPathModules.map((name) => [
   name, fs.readFileSync(path.join(nssCpuPathDir, name), 'utf8')
@@ -52,8 +52,21 @@ const nssCpuPathByModule = Object.fromEntries(nssCpuPathModules.map((name) => [
 const nssCpuPath = Object.values(nssCpuPathByModule).join('\n');
 const nssCpuPathProduction = Object.values(nssCpuPathByModule)
   .map((value) => value.split('#[cfg(test)]')[0]).join('\n');
-const nssKmodSource = fs.readFileSync(path.join(root,
-  'net/lanspeed-nss-control/src/lanspeed_nss_control.c'), 'utf8');
+const nssControlSourceRoot = path.join(root, 'net/lanspeed-nss-control/src');
+const nssKmodHeader = fs.readFileSync(path.join(nssControlSourceRoot,
+  'lanspeed_nss_control.h'), 'utf8');
+const nssKmodSource = [
+  'lanspeed_nss_control_core.c',
+  'lanspeed_nss_control_ack.c',
+  'lanspeed_nss_control_telemetry.c',
+  'lanspeed_nss_control_genl.c',
+  'lanspeed_nss_control_tags.c',
+  'lanspeed_nss_control_trusted_ingress.c',
+  'lanspeed_nss_control_nexthop.c',
+  'lanspeed_nss_control_peer.c',
+  'lanspeed_nss_control_igs.c'
+].map((name) => fs.readFileSync(path.join(nssControlSourceRoot, name), 'utf8'))
+  .join('\n');
 const nssPublishEntry = nssKmodSource.match(
   /static int lanspeed_igs_publish_entry[\s\S]*?(?=\nstatic int lanspeed_igs_unpublish_entry)/)?.[0] || '';
 const nssUnpublishEntry = nssKmodSource.match(
@@ -239,6 +252,9 @@ async function main() {
       .filter((name) => name.endsWith('.rs') && !name.endsWith('_tests.rs'))
       .sort().join(',') === nssControlModules.filter((name) => !name.endsWith('_tests.rs')).slice().sort().join(','),
     'NSS client control must be a fixed modular implementation rather than a monolithic source file');
+  assert(nssControlByModule['mod.rs'].includes('pub(crate) fn startup_caps') &&
+    production.includes('let _nss_genl_caps = crate::platform::nss::control::startup_caps()'),
+    'NSS daemon startup must query the versioned Generic Netlink capabilities');
   for (const name of [
     'capability', 'classifier', 'cpu_path', 'ecm_qos', 'firewall', 'legacy', 'qdisc', 'rollback', 'shaper',
     'state', 'system', 'telemetry', 'topology'
@@ -291,8 +307,16 @@ async function main() {
 	    nssCpuPathByModule['classifier.rs'].includes('"action", "skbedit", "priority"') &&
 	    nssCpuPathByModule['classifier.rs'].includes('"action", "mirred", "egress"') &&
 	    nssCpuPathByModule['classifier.rs'].includes('exact_upload_redirect_actions') &&
-	    nssCpuPathByModule['classifier.rs'].indexOf('add_upload_prefix_pass(edge') <
-	      nssCpuPathByModule['classifier.rs'].indexOf('add_upload_redirect(edge') &&
+	    nssCpuPathByModule['classifier.rs'].indexOf('replace_upload_prefix_pass(edge') <
+	      nssCpuPathByModule['classifier.rs'].indexOf('replace_upload_redirect(edge') &&
+		nssCpuPathByModule['classifier.rs'].includes('remove_stale_u32_slots') &&
+		nssCpuPathByModule['classifier.rs'].includes('upload_chain_owned(&values, &device)') &&
+		nssCpuPathByModule['classifier.rs'].includes('"filter",\n                "replace"') &&
+		nssControlByModule['qdisc.rs'].includes('expected_client_details(direction, rule, shaping)') &&
+		nssCpuPathByModule['shaper.rs'].includes('plan.nss.shaping()') &&
+		nssControlByModule['qdisc.rs'].includes('exact_detail_count(&qdiscs, &expected_qdisc) == 1') &&
+		control.includes('preserve_unchanged_nss_verification') &&
+		control.includes('applied_plan: Option<ControlPlan>') &&
 			nssCpuPathByModule['classifier.rs'].includes('"gact"') &&
 			nssCpuPathByModule['classifier.rs'].includes('"skbedit"') &&
 		nssCpuProbeProduction.includes('hook prerouting') &&
@@ -329,16 +353,62 @@ async function main() {
     nssKmodSource.includes('NSS_IF_SET_IGS_NODE') &&
     nssKmodSource.includes('nss_if_set_nexthop') &&
     nssKmodSource.includes('NSS_WIFI_VDEV_SET_NEXT_HOP') &&
-    nssKmodSource.includes('return lanspeed_wifi_set_nexthop(edge_if_num, NSS_ETH_RX_INTERFACE);') &&
-    nssKmodSource.includes('Only peers selected by') &&
-    nssKmodSource.includes('wait_for_completion_timeout(&lanspeed_wifi_completion') &&
-    nssKmodSource.includes('lanspeed_wifi_response != NSS_CMN_RESPONSE_ACK') &&
+    nssKmodSource.includes('lanspeed_ack_callback') &&
+    nssKmodSource.includes('wait_for_completion_timeout(&txn->done') &&
+    nssKmodSource.includes('txn->response == NSS_CMN_RESPONSE_ACK') &&
     nssKmodSource.includes('NSS_IF_CLEAR_IGS_NODE') &&
     nssKmodSource.includes('nss_if_reset_nexthop') &&
     nssKmodSource.includes('LANSPEED_IGS_DEGRADED') &&
     nssKmodSource.includes('igs_flow_qos_tag') &&
     nssKmodSource.includes('igs_reply_qos_tag') &&
-	    nssKmodSource.includes('NF_IP_PRI_CONNTRACK + 2') &&
+    nssKmodSource.includes('LANSPEED_NSS_GENL_NAME') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_GET_CAPS') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_GET_STATE') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_GET_STATS') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_GET_HEALTH') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_IGS_STAGE') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_IGS_PUBLISH') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_IGS_UNPUBLISH') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_IGS_DELETE') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_PEER_REPLACE') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_TAG_REPLACE') &&
+    nssKmodSource.includes('LANSPEED_NSS_CMD_TRUSTED_INGRESS_REPLACE') &&
+    nssKmodSource.includes('LANSPEED_NSS_A_PEER_REASSERT_COUNT') &&
+    nssKmodHeader.includes('LANSPEED_NSS_FEATURE_IGS_CADENCE') &&
+    nssKmodHeader.includes('LANSPEED_NSS_A_IGS_CADENCE_SAMPLES') &&
+    nssKmodHeader.includes('atomic64_t stats_last_sync_ns') &&
+    nssKmodSource.includes('list_add_tail_rcu(&entry->list') &&
+    nssKmodSource.includes('list_for_each_entry_rcu(entry, &lanspeed_igs_entries') &&
+    nssKmodSource.includes('lanspeed_igs_cadence_min_ns') &&
+    nssKmodSource.includes('module_param_cb(telemetry_cadence') &&
+    nssControlByModule['hardware_telemetry.rs'].includes('parse_cadence') &&
+    nssControlByModule['genl.rs'].includes('A_IGS_CADENCE_LAST_NS') &&
+    nssKmodSource.includes('struct lanspeed_client_tag_table') &&
+    nssKmodSource.includes('struct lanspeed_local_prefix_table') &&
+    nssKmodSource.includes('v4_addresses[LANSPEED_MAX_TAG_ADDRESSES]') &&
+    nssKmodSource.includes('v6_addresses[LANSPEED_MAX_TAG_ADDRESSES]') &&
+    nssKmodSource.includes('v4_prefixes[LANSPEED_MAX_LOCAL_PREFIXES]') &&
+    nssKmodSource.includes('v6_prefixes[LANSPEED_MAX_LOCAL_PREFIXES]') &&
+    nssKmodSource.includes('first + (last - first) / 2') &&
+    nssKmodSource.includes('memmove(&table->v4_addresses') &&
+    nssKmodSource.includes('memmove(&table->v6_addresses') &&
+    nssKmodSource.includes('struct lanspeed_published_edge_set') &&
+    nssKmodSource.includes('lanspeed_published_edges_cleanup') &&
+    nssKmodSource.includes('rcu_dereference(lanspeed_client_tags)') &&
+    nssKmodSource.includes('rcu_dereference(lanspeed_local_prefixes)') &&
+    nssKmodSource.includes('lanspeed_trusted_ingress_contains(state->in)') &&
+    nssControlByModule['genl.rs'].includes('pub(super) fn read') &&
+    nssControlByModule['genl.rs'].includes('CMD_GET_CAPS') &&
+    nssControlByModule['genl.rs'].includes('pub(super) fn read_runtime') &&
+    nssControlByModule['genl.rs'].includes('pub(super) fn write_igs') &&
+    nssControlByModule['genl.rs'].includes('pub(super) fn write_peer_replace') &&
+    nssControlByModule['genl.rs'].includes('pub(super) fn write_tag_replace') &&
+    nssControlByModule['genl.rs'].includes('pub(super) fn write_trusted_ingress') &&
+    nssCpuPathByModule['trusted_ingress.rs'].includes('pub(super) fn sync') &&
+    nssControlByModule['genl.rs'].includes('parse_state_messages') &&
+    nssControlByModule['genl.rs'].includes('parse_stats_messages') &&
+    nssControlByModule['genl.rs'].includes('parse_health_messages') &&
+    nssKmodSource.includes('NF_IP_PRI_CONNTRACK + 2') &&
 	    nssControlByModule['capability.rs'].includes('"act_mirred"') &&
 	    nssPublishEntry.indexOf('NSS_IF_SET_IGS_NODE') <
       nssPublishEntry.indexOf('status = lanspeed_set_nexthop') &&
@@ -382,8 +452,8 @@ async function main() {
     daemonMakefile.includes('TARGET_qualcommax:kmod-sched-core') &&
     daemonMakefile.includes('LANSPEED_X86_CONTROL_DEPENDS:=+TARGET_x86:tc-full +TARGET_x86:ip +TARGET_x86:nftables +TARGET_x86:conntrack +TARGET_x86:kmod-ifb +TARGET_x86:kmod-sched-core +TARGET_x86:kmod-sched'),
     'NSS targets and hook devices must be dynamic while scheduler dependencies stay platform-scoped');
-  const hotRefresh = production.match(/fn refresh_connections[\s\S]*?\n    fn collect\(/)?.[0] || '';
-  assert(hotRefresh.includes('self.decorate_controls(&mut snapshot.clients);') &&
+  const hotRefresh = production.match(/fn refresh_controls[\s\S]*?\n    fn reconcile_control_state\(/)?.[0] || '';
+  assert(hotRefresh.includes('self.control.decorate_response(clients);') &&
     !hotRefresh.includes('self.refresh_controls(&mut snapshot.clients);'),
     'hot clients overlay must decorate rows without mutating the authoritative control inventory');
   const calls = [];

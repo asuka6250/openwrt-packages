@@ -82,6 +82,10 @@ const nssFusion = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/fus
 const nssOutput = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/output.rs');
 const nssEvidence = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/evidence.rs');
 const nssRuntime = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/runtime.rs');
+const nssHardwareVerifier = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/hardware_verifier.rs');
+const nssEvidenceLease = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/evidence_lease.rs');
+const nssRateMux = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/rate_mux.rs');
+const nssFastN = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/fast_n_runtime.rs');
 const nssModule = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/mod.rs');
 const nssBpfCoverage = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/bpf_coverage.rs');
 const nssTcSnapshot = read('net/lanspeedd/rust/crates/lanspeedd/src/platform/nss/tc_snapshot.rs');
@@ -106,6 +110,8 @@ const nssEbpf = collectFiles('net/lanspeedd/rust/crates/lanspeed-ebpf/src/nss')
   .map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 const production = `${read('net/lanspeedd/rust/crates/lanspeedd/src/production.rs')}\n${read(
   'net/lanspeedd/rust/crates/lanspeedd/src/production/rate_helpers.rs'
+)}\n${read(
+  'net/lanspeedd/rust/crates/lanspeedd/src/production/reload_worker.rs'
 )}`;
 const policy = read('net/lanspeedd/rust/crates/lanspeedd/src/policy.rs');
 const config = read('net/lanspeedd/rust/crates/lanspeedd/src/config.rs');
@@ -147,6 +153,42 @@ assert(model.ownership.pure_bpf_rate_owner === 'tc_lan_edge_map' &&
   'ECM+BPF must combine kernel-classified hardware and slow-path ownership');
 assert(model.ownership.overlapping_rate_owners_forbidden === true,
   'overlapping NSS/BPF rate ownership must be forbidden');
+assert(model.nss_hardware_verifier.client_rate_owner === false &&
+  model.nss_hardware_verifier.rate_mux_input === false &&
+  model.nss_hardware_verifier.scope ===
+    'ecm_bpf_upload_vs_aggregate_current_igs_nodes' &&
+  model.nss_hardware_verifier.generation_change === 'rebaseline_without_verdict' &&
+  nssHardwareVerifier.includes('formal_rate_owner') &&
+  nssHardwareVerifier.includes('hardware_generation_changed') &&
+  nssHardwareVerifier.includes('igs_sync_stalled') &&
+  nssRuntime.includes('hardware_verifier: HardwareVerifier') &&
+  production.includes('self.nss.observe_hardware_verifier(') &&
+  production.includes('"nss_hardware_verifier".into()'),
+  'kmod IGS counters must independently cross-check ECM-BPF without entering RateMux');
+assert(model.evidence_lease.lifetime_ms === 10000 &&
+  model.evidence_lease.transient_e_substitute === 'combined_fast_n_plus_fast_s_only' &&
+  model.evidence_lease.structural_e_client_total === 'forbidden' &&
+  model.evidence_lease.formal_selector ===
+    'rust/crates/lanspeedd/src/platform/nss/rate_mux.rs' &&
+  model.evidence_lease.substitute_rate_source === 'fast_routed_lease' &&
+  model.evidence_lease.substitute_byte_domain ===
+    'l2_with_fcs_from_ecm_plus_18_and_tc_plus_4_per_packet' &&
+  model.evidence_lease.fast_window_current_required === true &&
+  model.evidence_lease.explicit_internet_mode === 'internet_view_mode_routed' &&
+  model.evidence_lease.explicit_internet_rate_source === 'fast_routed_internet' &&
+  model.evidence_lease.explicit_internet_scope === 'routed_observed' &&
+  model.evidence_lease.ringbuf_drop_invalidates === false &&
+  nssEvidenceLease.includes('pub(crate) struct EvidenceLeaseBook') &&
+  nssEvidenceLease.includes('pub sample_available: bool') &&
+  nssRateMux.includes('pub(crate) struct RateMuxRuntime') &&
+  nssRateMux.includes('RoutedLeaseSubstitute') &&
+  production.includes('self.nss.select_rate_view(') &&
+  production.includes('fast_client_sample_current(fast_reference_ms') &&
+  production.includes('ModelRateSource::FastRoutedLease') &&
+  nssEvidenceLease.includes('leases.insert(') &&
+  nssEvidenceLease.includes('lease_invalidation(') &&
+  nssEvidenceLease.includes('retain_identities('),
+  'EvidenceLease must model bounded per-direction generations and structural invalidation');
 assert(model.ownership.manual_fallback_forbidden === true,
   'manual rate schemes must fail closed instead of silently switching');
 assert(model.ownership.rate_and_coverage_windows ===
@@ -184,7 +226,17 @@ assert(JSON.stringify(model.ecm_bpf_model.map_key) ===
   model.ecm_bpf_model.map_abi === 'EcmKey_v1_with_connection_and_generation_zeroed' &&
   model.ecm_bpf_model.map_capacity === 'at_least_2_times_max_clients' &&
   model.ecm_bpf_model.nss_context_key === 'pid_tgid' &&
-  model.ecm_bpf_model.nss_context_value === 'nested_callback_depth' &&
+  model.ecm_bpf_model.nss_context_value === 'nested_callback_depth_dirty_source_id' &&
+  model.ecm_bpf_model.event_hint.name === 'ECM_COUNTERS_UPDATED' &&
+  model.ecm_bpf_model.event_hint.map === 'lanspeed_ecm_event_ringbuf' &&
+  model.ecm_bpf_model.event_hint.semantics === 'counter_update_hint_only' &&
+  model.ecm_bpf_model.event_hint.round_end === 0 &&
+  JSON.stringify(model.ecm_bpf_model.event_hint.sources) ===
+    JSON.stringify(['ECM_SYNC_MANY_V4', 'ECM_SYNC_MANY_V6', 'ECM_NETDEV_V4', 'ECM_NETDEV_V6']) &&
+  JSON.stringify(model.ecm_bpf_model.event_hint.telemetry) ===
+    JSON.stringify(['event_emit', 'event_received', 'event_coalesced', 'ringbuf_reserve_fail',
+      'source_distribution', 'callback_interval_histogram', 'last_event_age']) &&
+  model.ecm_bpf_model.event_hint.drop_effect === 'telemetry_only' &&
   model.ecm_bpf_model.classification_role === 'N_nss_identified_only' &&
   model.ecm_bpf_model.active_auto_misaligned_rate_fallback === 'forbidden',
   'ECM hot accounting must aggregate by MAC+direction and use task-scoped NSS context');
@@ -318,13 +370,14 @@ assert(edgeModel.classification.E === 'access_edge_authoritative_total' &&
 assert(Object.values(edgeModel.classification.legacy_active_auto_inference_paths)
     .every((enabled) => enabled === false) &&
   production.includes('fn active_access_edge_owns_display_rate(') &&
+  production.includes('fn rate_mux_owns_display_rate(') &&
   production.includes('fn legacy_nss_rate_window_enabled(') &&
-  production.includes('!active_access_edge_owns_display_rate(access_edge_mode, rate_collector_mode)') &&
-  production.includes('Active Access Edge never falls through to the legacy NSS') &&
+  production.includes('!rate_mux_owns_display_rate(access_edge_mode, rate_collector_mode, internet_view_mode)') &&
+  production.includes('Formal RateMux never falls through to the legacy NSS') &&
   production.includes('no LAN allocation, previous distribution, directional') &&
   production.includes('interface floor, or smoothed rate may become E.'),
   'active+auto must not execute any legacy LAN allocation, gap fill, max, floor or smoothing path');
-assert(production.includes('Active-auto rates are owned exclusively by RateMux') &&
+assert(production.includes('Formal RateMux rates are owned exclusively by the selected') &&
   production.includes('client.tx_bytes = None;\n                client.rx_bytes = None;'),
   'active+auto must never retain cumulative totals from the displaced legacy pipeline');
 assert(model.ecm_bpf_window_model.rate_clock ===
@@ -499,17 +552,25 @@ assert(ecm.includes('unique_mac_owners'), 'ECM nodes must map only to unique MAC
 assert(ecm.includes('time_added') && ecm.includes('generation'), 'ECM node generations must be explicit');
 assert(ecmBpf.includes('EcmBpfRuntime') &&
   ecmBpf.includes('program.attach(ECM_UPDATE_FUNCTION, 0)') &&
-  ecmBpf.includes('ECM_NSS_ENTER_PROGRAM_NAME') &&
-  ecmBpf.includes('ECM_NSS_EXIT_PROGRAM_NAME') &&
+  ecmBpf.includes('attach_nss_context_links') &&
+  ecmBpf.includes('ECM_NSS_ENTER_SYNC_MANY_V4_PROGRAM_NAME') &&
+  ecmBpf.includes('ECM_NSS_EXIT_NETDEV_V6_PROGRAM_NAME') &&
   ecmBpf.includes('resolve_ecm_layout()'),
   'ECM+BPF userspace must resolve BTF and attach totals plus NSS context probes');
 assert(ecmBpfProgram.includes('ecm_db_connection_data_totals_update') &&
   ecmBpfProgram.includes('LANSPEED_ECM_CLIENTS') &&
+  ecmBpfProgram.includes('LANSPEED_ECM_FAST_COUNTERS') &&
+  ecmBpfProgram.includes('PerCpuHashMap<EcmKey, FastCounterValue>') &&
   ecmBpfProgram.includes('LANSPEED_ECM_NSS_CONTEXT') &&
   ecmBpfProgram.includes('if !nss') &&
   ecmBpfProgram.includes('generation_ptr.cast::<u32>()') &&
   ecmBpfProgram.includes('padding: [0; 4]'),
   'ECM+BPF program must exclude slow-path ECM calls before publishing hardware counters');
+assert(model.ecm_bpf_model.ecm_fast_counter.map === 'lanspeed_ecm_fast_counters' &&
+  nssFastN.includes('FastNRuntime') &&
+  nssFastN.includes('FastNKey') &&
+  ecmBpf.includes('read_fast_n_counters'),
+  'ECM FastN must have an isolated PerCPU map reader and runtime snapshot');
 assert(ebpfManifest.includes('default = ["x86-tc", "conntrack-kfunc"]') &&
   ebpfManifest.includes('x86-tc = ["tc"]') &&
   ebpfManifest.includes('nss-tc = ["tc"]') &&

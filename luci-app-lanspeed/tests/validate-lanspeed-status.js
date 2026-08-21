@@ -180,7 +180,8 @@ function createContext() {
 			location: { pathname: '/cgi-bin/luci/admin/status/lanspeed/overview' },
 			localStorage: {
 				getItem: function(key) { return storage.has(key) ? storage.get(key) : null; },
-				setItem: function(key, value) { storage.set(key, String(value)); }
+				setItem: function(key, value) { storage.set(key, String(value)); },
+				removeItem: function(key) { storage.delete(key); }
 			}
 		},
 		document: { createTextNode: function(value) { return String(value); }, body: {} },
@@ -212,7 +213,7 @@ function loadFormat(context) {
 function loadOverview(context, fmt, rpc, modules) {
 	modules = modules || {};
 	return vm.compileFunction(readModule('statusOverview.js'), [
-		'baseclass', 'fmt', 'lsRpc', 'statusIp', 'statusShell', 'statusRefresh'
+		'baseclass', 'fmt', 'lsRpc', 'statusIp', 'statusShell', 'statusRefresh', 'statusRateMeta'
 	], { filename: 'resources/lanspeed/statusOverview.js', parsingContext: context })(
 		{ extend: function(value) { return value; } },
 		fmt,
@@ -222,7 +223,17 @@ function loadOverview(context, fmt, rpc, modules) {
 			hideIpv6RangesValue: function(value) { return value || ''; }
 		},
 		modules.shell || { buildShell: function() { return { root: fakeElement('div'), refs: {} }; } },
-		modules.refresh || { refreshLive: function() {} }
+		modules.refresh || { refreshLive: function() {} },
+		modules.rateMeta || { routedCollector: function(meta) {
+			if (!meta || meta.scope !== 'routed_observed') return '';
+			var tx = meta.tx && meta.tx.source, rx = meta.rx && meta.rx.source;
+			var valid = function(source) {
+				return source === 'fast_routed_internet' || source === 'fast_routed_lease';
+			};
+			if (!valid(tx) || !valid(rx)) return '';
+			return tx === 'fast_routed_lease' || rx === 'fast_routed_lease'
+				? 'fast_routed_lease' : 'fast_routed_internet';
+		} }
 	);
 }
 
@@ -307,6 +318,58 @@ async function testIndependentRpcSettlement(context, fmt) {
 		'a hung live RPC must settle instead of stopping the refresh controller');
 	assert.strictEqual(timedOut.rpc.status.error.code, 'TIMEOUT');
 	assert.strictEqual(timedOut.rpc.clients.ok, true);
+}
+
+async function testAtomicRealtimeSnapshot(context, fmt) {
+	let realtimeCalls = 0, uciCalls = 0, legacyCalls = 0;
+	let sampleMs = 1000;
+	const rpc = {
+		realtime: function() {
+			realtimeCalls++;
+			return Promise.resolve({
+				status: {
+					access_edge_mode: 'active', rate_collector_mode: 'auto',
+					evidence: { platform: { profile: 'nss_aarch64' }, access_edge: { sample_ms: sampleMs } }
+				},
+				clients: {
+					clients: [ {
+						identity_key: 'client@lan', interface: 'br-lan',
+						collector_mode: 'access_edge', sample_ms: sampleMs,
+						tx_bps: sampleMs, rx_bps: sampleMs,
+						rate_meta: { tx: { source: 'edge_port' }, rx: { source: 'edge_port' } }
+					} ],
+					evidence: { access_edge: { sample_ms: sampleMs } }
+				},
+				interfaces: {
+					monotonic_ms: sampleMs,
+					interfaces: [ { name: 'br-lan', role: 'lan', sample_ms: sampleMs, rx_bps: 2, tx_bps: 3 } ]
+				}
+			});
+		},
+		status: function() { legacyCalls++; return Promise.resolve({}); },
+		clients: function() { legacyCalls++; return Promise.resolve({ clients: [] }); },
+		interfaces: function() { legacyCalls++; return Promise.resolve({ interfaces: [] }); },
+		uciGet: function() { uciCalls++; return Promise.resolve({ show_client_status: '1' }); }
+	};
+	const overview = loadOverview(context, fmt, rpc);
+	let now = 5000;
+	const clock = function() { return ++now; };
+	const first = await overview.loadAll(null, clock);
+	assert.strictEqual(realtimeCalls, 1);
+	assert.strictEqual(legacyCalls, 0, 'successful realtime must replace all three legacy live calls');
+	assert.strictEqual(uciCalls, 1);
+	assert.strictEqual(first.livePair.aligned, true);
+	assert.strictEqual(first.clients.clients[0].tx_bps, 1000);
+	assert.strictEqual(first.rpc.status.checkedAt, first.rpc.clients.checkedAt);
+	assert.strictEqual(first.rpc.clients.checkedAt, first.rpc.interfaces.checkedAt);
+
+	sampleMs = 2000;
+	const second = await overview.loadAll(first, clock);
+	assert.strictEqual(realtimeCalls, 2);
+	assert.strictEqual(legacyCalls, 0);
+	assert.strictEqual(uciCalls, 1, 'UCI display settings must be cached after the initial load');
+	assert.strictEqual(second.clients.clients[0].tx_bps, 2000);
+	assert.strictEqual(second.rpc.uci.cached, true);
 }
 
 async function testLiveSamplePairing(context, fmt) {
@@ -592,6 +655,41 @@ async function testLiveSamplePairing(context, fmt) {
 		'active Edge rate_meta must remain authoritative during a rolling upgrade with a legacy collector_mode');
 	assert.strictEqual(activeEdge.clients.clients[0].tx_bps, 1200,
 		'active Edge clients within the 50ms read-end skew must remain visible');
+
+	const routedRpc = {
+		status: function() {
+			return Promise.resolve({
+				access_edge_mode: 'active', internet_view_mode: 'routed', rate_collector_mode: 'auto',
+				evidence: { platform: { profile: 'nss_aarch64' }, access_edge: { sample_ms: 14000 } }
+			});
+		},
+		clients: function() {
+			return Promise.resolve({
+				clients: [ {
+					collector_mode: 'access_edge', sample_ms: 14200, tx_bps: 700, rx_bps: 800,
+					rate_meta: {
+						scope: 'routed_observed',
+						tx: { source: 'fast_routed_internet', sample_ms: 14200 },
+						rx: { source: 'fast_routed_internet', sample_ms: 14200 }
+					}
+				} ],
+				evidence: { effective_collector: 'nss_ecm_bpf' }
+			});
+		},
+		interfaces: function() {
+			return Promise.resolve({ monotonic_ms: 14200,
+				interfaces: [ { name: 'br-lan', sample_ms: 14200, rx_bps: 800, tx_bps: 700 } ] });
+		},
+		uciGet: function() { return Promise.resolve({}); }
+	};
+	const routedOverview = loadOverview(context, fmt, routedRpc);
+	const routedBatch = await routedOverview.loadAll(null, clock);
+	assert.strictEqual(routedBatch.livePair.coverageSampleMs, null,
+		'explicit routed view must not use the background Access Edge clock');
+	assert.strictEqual(routedBatch.livePair.hasClientRates, true,
+		'explicit routed view must pair FastN+FastS client metadata even with legacy collector_mode');
+	assert.strictEqual(routedBatch.livePair.clientSampleMs, 14200);
+	assert.strictEqual(routedBatch.livePair.aligned, true);
 }
 
 function fakeTimers() {
@@ -629,6 +727,12 @@ async function testControllerLifecycle(context, fmt) {
 		addEventListener: function(name, handler) { events[name] = handler; },
 		removeEventListener: function(name) { delete events[name]; }
 	};
+	const visibility = {
+		hidden: false,
+		visibilityState: 'visible',
+		addEventListener: function(name, handler) { events[name] = handler; },
+		removeEventListener: function(name) { delete events[name]; }
+	};
 	let refreshes = 0;
 	let busyRefreshes = 0;
 	let calls = 0;
@@ -645,6 +749,7 @@ async function testControllerLifecycle(context, fmt) {
 		load: function() { calls++; return deferred.promise; },
 		timerApi: timers,
 		eventTarget: target,
+		visibilityTarget: visibility,
 		now: function() { return now; }
 	});
 
@@ -785,7 +890,9 @@ function loadShellAndRefresh(context, fmt) {
 		{
 			effectiveCollector: function() { return 'bpf'; },
 			collectorClass: function() { return 'label label-success'; },
-			collectorLabel: function() { return 'BPF'; }
+			collectorLabel: function(mode) {
+				return mode === 'fast_routed_internet' ? 'FastN+FastS routed Internet' : 'BPF';
+			}
 		}, rateMeta,
 		fakeElement,
 		translate,
@@ -820,6 +927,24 @@ function testPaginationAndUiStates(context, fmt) {
 	assert.strictEqual(fmt.paginate(items, 99, 25).page, 3);
 	assert.strictEqual(fmt.paginate([], -5, 25).page, 1);
 	assert.strictEqual(fmt.paginate(items, 1, 17).pageSize, 25);
+	context.window.localStorage.setItem(fmt.LEGACY_PREF_KEY, JSON.stringify({
+		refreshMs: 3000,
+		nssRefreshMs: 2000,
+		pageSize: 50
+	}));
+	const migratedPrefs = fmt.loadPrefs();
+	assert.strictEqual(migratedPrefs.refreshMs, 1000,
+		'v4 refresh default must migrate to the one-second v5 default');
+	assert.strictEqual(migratedPrefs.nssRefreshMs, 1000,
+		'v4 NSS refresh default must migrate to the one-second v5 default');
+	assert.strictEqual(migratedPrefs.pageSize, 50,
+		'v4 migration must preserve explicit non-refresh preferences');
+	assert.deepStrictEqual(JSON.parse(context.window.localStorage.getItem(fmt.PREF_KEY)), {
+		refreshMs: 1000,
+		nssRefreshMs: 1000,
+		pageSize: 50
+	});
+	context.window.localStorage.removeItem(fmt.PREF_KEY);
 	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ pageSize: 17 }));
 	assert.strictEqual(fmt.loadPrefs().pageSize, 25);
 	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ pageSize: 50 }));
@@ -827,8 +952,8 @@ function testPaginationAndUiStates(context, fmt) {
 	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ nssRefreshMs: 8000 }));
 	assert.strictEqual(fmt.loadPrefs().nssRefreshMs, 8000);
 	context.window.localStorage.setItem(fmt.PREF_KEY, JSON.stringify({ nssRefreshMs: 3000 }));
-	assert.strictEqual(fmt.loadPrefs().nssRefreshMs, 2000,
-		'unsupported legacy NSS cadence must normalize to the safe two-second default');
+	assert.strictEqual(fmt.loadPrefs().nssRefreshMs, 1000,
+		'unsupported legacy NSS cadence must normalize to the safe one-second default');
 
 	const modules = loadShellAndRefresh(context, fmt);
 	let refreshCount = 0;
@@ -875,11 +1000,47 @@ function testPaginationAndUiStates(context, fmt) {
 		prefs: Object.assign({}, state.prefs, { nssRefreshMs: 8000 })
 	});
 	const nssBuilt = modules.shell.buildShell(nssState);
+	nssState.status.access_edge_mode = 'active';
+	nssState.status.rate_collector_mode = 'auto';
+	nssState.status.internet_view_mode = 'routed';
+	nssState.status.evidence.platform = { profile: 'nss_aarch64' };
+	nssState.clients = { clients: [ Object.assign({}, client(1), {
+		collector_mode: 'access_edge',
+		rate_meta: { scope: 'routed_observed',
+			tx: { source: 'fast_routed_internet' }, rx: { source: 'fast_routed_internet' } }
+	}) ] };
+	nssState.refs = nssBuilt.refs;
+	modules.refresh.refreshLive(nssState);
+	assert.strictEqual(nssState.refs.collectorPill.textContent, 'FastN+FastS routed Internet',
+		'explicit routed view must not be presented as automatic Access Edge');
+	assert(String(nssState.refs.collectorPill.title || '').includes('互联网/路由'),
+		'explicit routed view must describe its FastN+FastS scope');
+	const pendingClient = Object.assign({}, client(2), {
+		tx_bps: 0, rx_bps: 0, collector_mode: 'access_edge',
+		rate_meta: { scope: 'none',
+			tx: { source: 'none', coverage: 'unavailable' },
+			rx: { source: 'none', coverage: 'unavailable' } }
+	});
+	nssState.clients = { clients: [ pendingClient ] };
+	nssState.interfaces = { interfaces: [ {
+		name: 'br-lan', role: 'lan', rx_bps: 0, tx_bps: 0,
+		coverage: 'fast_routed_window_pending'
+	} ] };
+	nssState.livePair = { pendingClientSampleMs: 14200 };
+	modules.refresh.refreshLive(nssState);
+	assert.strictEqual(nssState.refs.mTx.textContent, '0');
+	assert.strictEqual(nssState.refs.mRx.textContent, '0');
+	assert.strictEqual(nssState.refs.mClients.textContent, '1');
+	assert(!textOf(nssState.refs.tbody.children[0]).includes('—'),
+		'routed rows must retain numeric zero instead of replacing it with a placeholder');
+	assert.strictEqual(textOf(nssState.refs.ifacesBody.children[0]), 'br-lan0000',
+		'routed interface rows must retain numeric zero values');
+	assert.strictEqual(nssState.refs.ifacesSummary.textContent, '↑ 0 · ↓ 0');
 	assert.strictEqual(nssBuilt.refs.intervalSel.disabled, false);
 	assert.deepStrictEqual(
 		Array.from(nssBuilt.refs.intervalSel.children).map(textOf),
-		[ '2s', '4s', '8s', '10s' ],
-		'ECM pages must expose only the four NSS-safe refresh cadences');
+		[ '1s', '2s', '4s', '8s', '10s' ],
+		'ECM pages must expose only the five NSS-safe refresh cadences');
 	modules.refresh.refreshIntervalControl(nssState, nssBuilt.refs, nssState.status);
 	assert.strictEqual(nssBuilt.refs.intervalSel.value, '8000');
 	nssBuilt.refs.intervalSel.value = '4000';
@@ -895,7 +1056,7 @@ function testPaginationAndUiStates(context, fmt) {
 	nssState.status.evidence.effective_collector = 'nss_ecm_node';
 	modules.refresh.refreshIntervalControl(nssState, nssBuilt.refs, nssState.status);
 	assert.strictEqual(nssBuilt.refs.intervalSel.disabled, false);
-	assert.strictEqual(nssBuilt.refs.intervalSel.children.length, 4);
+	assert.strictEqual(nssBuilt.refs.intervalSel.children.length, 5);
 	assert.strictEqual(nssBuilt.refs.intervalSel.value, '4000',
 		'automatic recovery to ECM must restore the independent NSS preference');
 	state.refreshLive = function() { refreshCount++; modules.refresh.refreshLive(state); };
@@ -1015,7 +1176,8 @@ function testPaginationAndUiStates(context, fmt) {
 	state.refreshLive();
 	assert.strictEqual(state.refs.root.attrs['data-state'], 'bad');
 	assert.strictEqual(state.refs.errorBox.attrs['aria-hidden'], 'false');
-	assert.ok(textOf(state.refs.errorTitle).includes('实时状态暂不可用'));
+	assert.ok(textOf(state.refs.errorTitle).includes('实时数据暂未更新'));
+	assert.ok(!textOf(state.refs.errorBox).includes('不可用'));
 	assert.strictEqual(state.refs.errorList.children.length, 4);
 	assert.ok(refreshCount >= 10);
 }
@@ -1024,12 +1186,13 @@ async function main() {
 	const context = createContext();
 	const fmt = loadFormat(context);
 	await testIndependentRpcSettlement(context, fmt);
+	await testAtomicRealtimeSnapshot(context, fmt);
 	await testLiveSamplePairing(context, fmt);
 	await testControllerLifecycle(context, fmt);
 	testRenderWiresLiveRefresh(context, fmt);
 	testPaginationAndUiStates(context, fmt);
 	console.log('validate-lanspeed-status: PASS');
-	console.log('  independent RPC settlement, paired sample clocks, hard failure, single-flight refresh');
+	console.log('  atomic realtime snapshot, legacy RPC fallback, paired clocks, hard failure, single-flight refresh');
 	console.log('  timer lifecycle, destroy invalidation, pagination, keyboard, ARIA, and empty states');
 }
 

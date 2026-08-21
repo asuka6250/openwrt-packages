@@ -327,7 +327,8 @@ const MODULE_REQUIRES = {
 		'lanspeed.rpc',
 		'lanspeed.statusIp',
 		'lanspeed.statusShell',
-		'lanspeed.statusRefresh'
+		'lanspeed.statusRefresh',
+		'lanspeed.statusRateMeta'
 	],
 	'statusShell.js': [
 		'baseclass',
@@ -1385,6 +1386,7 @@ function assertClientDetailStyleLeaf(name, src) {
 		[
 			'.lanspeed-connection-identity',
 			'.lanspeed-connection-summary',
+			'.lanspeed-connection-rate-meta',
 			'.lanspeed-connection-toolbar',
 			'.lanspeed-connection-detail-row',
 			'.lanspeed-connection-endpoint',
@@ -1393,6 +1395,8 @@ function assertClientDetailStyleLeaf(name, src) {
 			if (!css.includes(token))
 				fail(`${name} must provide the detail-only ${token} layout hook`);
 		});
+		if (!css.includes('font-variant-numeric:tabular-nums;white-space:nowrap'))
+			fail(`${name} must keep summary rate values on one line`);
 	}
 	if (name === 'clientDetailStyleAurora.js' &&
 	    (!css.includes('padding:1rem 1.25rem .85rem') ||
@@ -2432,11 +2436,12 @@ function assertClientDetailViewLifecycle(src) {
 		addEventListener: function(type, handler) { listeners[type] = handler; },
 		localStorage: {
 			getItem: function(key) {
-				return key === 'luci-app-lanspeed.detail-prefs.v1'
+				return key === 'luci-app-lanspeed.detail-prefs.v2' ||
+					key === 'luci-app-lanspeed.detail-prefs.v1'
 					? storedDetailPrefs : null;
 			},
 			setItem: function(key, value) {
-				if (key !== 'luci-app-lanspeed.detail-prefs.v1')
+				if (key !== 'luci-app-lanspeed.detail-prefs.v2')
 					fail('clientDetailView.js must not overwrite the LAN client preference key');
 				storedDetailPrefs = value;
 			}
@@ -2464,14 +2469,15 @@ function assertClientDetailViewLifecycle(src) {
 	};
 	const fmt = {
 		MIN_REFRESH_MS: 1000,
-		NSS_REFRESH_MS: 2000,
-		DEFAULT_PREFS: { refreshMs: 3000, nssRefreshMs: 2000 },
+		NSS_REFRESH_MS: 1000,
+		DEFAULT_PREFS: { refreshMs: 1000, nssRefreshMs: 1000 },
 		REFRESH_CHOICES: [
 			{ value: 1000, label: '1s' },
 			{ value: 3000, label: '3s' },
 			{ value: 5000, label: '5s' }
 		],
 		NSS_REFRESH_CHOICES: [
+			{ value: 1000, label: '1s' },
 			{ value: 2000, label: '2s' },
 			{ value: 4000, label: '4s' },
 			{ value: 8000, label: '8s' },
@@ -2482,8 +2488,8 @@ function assertClientDetailViewLifecycle(src) {
 			return effective === 'nss_ecm_node' || effective === 'nss_ecm_bpf';
 		},
 		normalizeNssRefreshMs: function(value) {
-			return [ 2000, 4000, 8000, 10000 ].includes(Number(value))
-				? Number(value) : 2000;
+			return [ 1000, 2000, 4000, 8000, 10000 ].includes(Number(value))
+				? Number(value) : 1000;
 		},
 		nextSort: nextDetailSort,
 		loadPrefs: function() { return { refreshMs: 250, paused: false }; }
@@ -2667,10 +2673,10 @@ function assertClientDetailViewLifecycle(src) {
 		const nssState = shellState;
 		if (nssState.refreshPolicy !== 'nss' || nssState.effectiveRefreshMs() !== 8000 ||
 		    JSON.stringify(nssState.refreshChoices.map(function(choice) { return choice.value; })) !==
-			JSON.stringify([ 2000, 4000, 8000, 10000 ]) ||
+			JSON.stringify([ 1000, 2000, 4000, 8000, 10000 ]) ||
 		    timers.size !== 1 || Array.from(timers.values())[0].interval !== 8000 ||
 		    nssState.prefs.refreshMs !== 1000) {
-			fail('clientDetailView.js must restrict only NSS detail pages to independent 2/4/8/10 second refresh choices');
+			fail('clientDetailView.js must restrict only NSS detail pages to independent 1/2/4/8/10 second refresh choices');
 		}
 		nssState.setRefreshMs(4000);
 		if (nssState.prefs.nssRefreshMs !== 4000 || nssState.prefs.refreshMs !== 1000 ||
@@ -2685,8 +2691,8 @@ function assertClientDetailViewLifecycle(src) {
 		nssReloadDeferred.resolve(fixture);
 		await nssReload;
 		if (nssState.refreshPolicy !== 'nss' || nssState.effectiveRefreshMs() !== 4000 ||
-		    nssState.refreshChoices.length !== 4 || timers.size !== 1 ||
-		    Array.from(timers.values())[0].interval !== 3000) {
+			nssState.refreshChoices.length !== 5 || timers.size !== 1 ||
+			Array.from(timers.values())[0].interval !== 3000) {
 			fail('clientDetailView.js must retain the NSS policy and deduct RPC time from its selected cadence when status refresh fails');
 		}
 		nssState.destroy();
@@ -2751,7 +2757,7 @@ function assertClientDetailGeoLifecycle(src) {
 	const refresh = { render: function() { renders++; } };
 	const fmt = {
 		MIN_REFRESH_MS: 1000,
-		DEFAULT_PREFS: { refreshMs: 3000 },
+		DEFAULT_PREFS: { refreshMs: 1000 },
 		nextSort: nextDetailSort,
 		loadPrefs: function() { return { refreshMs: 1000 }; }
 	};
@@ -2850,7 +2856,7 @@ function assertClientDetailIntegratedState(viewSrc) {
 		const queue = rpcResponses.slice();
 		const view = loadClientDetailViewModule(viewSrc, {
 			MIN_REFRESH_MS: 1000,
-			DEFAULT_PREFS: { refreshMs: 3000 },
+			DEFAULT_PREFS: { refreshMs: 1000 },
 			nextSort: nextDetailSort,
 			loadPrefs: function() { return Object.assign({}, prefs); }
 		}, {
@@ -2920,10 +2926,10 @@ function assertClientDetailIntegratedState(viewSrc) {
 				identityKey: 'fixture@lan', response: fixture, error: null
 			});
 			const interval = Array.from(invalidPrefs.timers.values())[0].interval;
-			if (invalidPrefs.state().prefs.refreshMs !== 3000 || interval !== 3000 ||
-			    !fakeElementText(invalidPrefs.built().refs.footer).includes('每 3 秒自动刷新') ||
+			if (invalidPrefs.state().prefs.refreshMs !== 1000 || interval !== 1000 ||
+			    !fakeElementText(invalidPrefs.built().refs.footer).includes('每 1 秒自动刷新') ||
 			    invalidPrefs.state().updatedAt !== now) {
-				fail('clientDetailView.js must normalize invalid refreshMs to 3000ms, schedule when enabled, and stamp direct initial responses');
+				fail('clientDetailView.js must normalize invalid refreshMs to 1000ms, schedule when enabled, and stamp direct initial responses');
 			}
 		}
 
@@ -3083,6 +3089,8 @@ function assertClientDetailRefreshBehavior(src) {
 	state.refs = built.refs;
 	const refs = state.refs;
 	refresh.render(state);
+	const identityHeader = findFakeElement(built.root, 'lanspeed-connection-identity-card')
+		.children.find(function(child) { return String(child.attrs.class || '').includes('lanspeed-header'); });
 
 	const meta = fakeElementText(refs.clientMeta);
 	const metaIps = findFakeElementsByClass(
@@ -3109,6 +3117,9 @@ function assertClientDetailRefreshBehavior(src) {
 	    JSON.stringify(metaCounts) !== JSON.stringify([ '2' ]) ||
 	    !fakeElementText(refs.connectionState).includes('有当前连接') ||
 	    refs.summaryTargets.textContent !== '2' || refs.summaryConnections.textContent !== '2' ||
+	    refs.summaryTx.textContent !== '40.00 Kbps' || refs.summaryRx.textContent !== '96.00 Kbps' ||
+	    refs.summaryRateMeta.parentNode !== identityHeader || refs.summary.children.includes(refs.summaryRateMeta) ||
+	    refs.summaryRateMeta.textContent !== '总速率采样：TC-BPF · 连接数据独立采样：Conntrack Netlink' ||
 	    refs.summaryUpdated.textContent !== '03:04:05' ||
 	    refs.summaryUpdated.textContent.includes('12345') || rows.length !== 4 ||
 	    JSON.stringify(initialGroupOrder) !== JSON.stringify([
@@ -3117,12 +3128,66 @@ function assertClientDetailRefreshBehavior(src) {
 	    refs.table.hidden || !refs.empty.hidden || !refs.error.hidden) {
 		fail('clientDetailRefresh.js must render identity/meta, real summaries, and destination groups with highest download speed first by default');
 	}
-		if (!footer.includes('连接数据') || !footer.includes('Conntrack Netlink') ||
-	    !footer.includes('显示 2 / 共 2 条') ||
+	const threeDigitResponse = JSON.parse(JSON.stringify(state.response));
+	threeDigitResponse.client.tx_bps = 123456789;
+	threeDigitResponse.client.rx_bps = 987654321;
+	state.response = threeDigitResponse;
+	refresh.render(state);
+	if (/\s/.test(refs.summaryTx.textContent.slice(-4, -3)) ||
+	    /\s/.test(refs.summaryRx.textContent.slice(-4, -3)) ||
+	    refs.summaryTx.textContent !== '123.46 Mbps' || refs.summaryRx.textContent !== '987.65 Mbps') {
+		fail('client detail summary rates must keep three-digit values and units on one line');
+	}
+	state.response = fixture;
+	refresh.render(state);
+			if (!footer.includes('连接数据') || !footer.includes('Conntrack Netlink') ||
+		    !footer.includes('NSS：总速率来自接入 Edge') ||
+		    !footer.includes('显示 2 / 共 2 条') ||
 	    !footer.includes('每 1 秒自动刷新') ||
 	    !footer.includes('国家/地区及中国省份按 IP 推测，由浏览器查询并缓存')) {
 			fail('clientDetailRefresh.js footer must report source/count/refresh meanings and disclose browser-cached IP inference');
 		}
+		const nssRateResponse = JSON.parse(JSON.stringify(fixture));
+		nssRateResponse.client.rate_collector_mode = 'access_edge';
+		nssRateResponse.client.rate_meta = {
+			version: 1, scope: 'unicast', generation: 8, stale: false, reason_codes: [],
+			window_ms: 17000, sample_ms: 12000,
+			tx: { source: 'edge_wifi', coverage: 'full', byte_domain: 'station_data' },
+			rx: { source: 'edge_wifi', coverage: 'full', byte_domain: 'station_data' },
+			attachment: { kind: 'wifi', ifname: 'phy1-ap0', trust: 'associated_station' }
+		};
+		state.response = nssRateResponse;
+		refresh.render(state);
+		if (refs.summaryRateMeta.textContent !==
+		    '总速率采样：Edge-WiFi · phy1-ap0 · 全覆盖 · 17 s 窗口 · 连接数据独立采样：Conntrack Netlink') {
+			fail('NSS detail summary must disclose the authoritative Edge-WiFi source and its real rolling window');
+		}
+		const routedRateResponse = JSON.parse(JSON.stringify(fixture));
+		routedRateResponse.client.rate_collector_mode = 'access_edge';
+		routedRateResponse.client.rate_meta = {
+			version: 1, scope: 'routed_observed', generation: 8, stale: false, reason_codes: [],
+			window_ms: 2000, sample_ms: 14000,
+			tx: { source: 'fast_routed_internet', coverage: 'degraded', byte_domain: 'l2_with_fcs' },
+			rx: { source: 'fast_routed_internet', coverage: 'degraded', byte_domain: 'l2_with_fcs' },
+			attachment: { kind: 'wifi', ifname: 'phy1-ap0', trust: 'associated_station' }
+		};
+		state.response = routedRateResponse;
+		state.status = {
+			evidence: { platform: { profile: 'nss_aarch64' } },
+			internet_view_mode: 'routed'
+		};
+		refresh.render(state);
+		const routedFooter = fakeElementText(refs.footer);
+		if (!routedFooter.includes('NSS：总速率来自 FastN+FastS 互联网/路由观察') ||
+		    routedFooter.includes('NSS：总速率来自接入 Edge')) {
+			fail('NSS routed detail footer must describe FastN+FastS observation instead of Access Edge');
+		}
+		state.status = { evidence: { platform: { profile: 'generic_x86_64' } } };
+		state.response = fixture;
+		refresh.render(state);
+		if (fakeElementText(refs.footer).includes('NSS：'))
+			fail('x86 detail footer must not inherit the NSS offload accuracy warning');
+		state.status = { evidence: { platform: { profile: 'nss_aarch64' } } };
 		const classifiedResponse = JSON.parse(JSON.stringify(fixture));
 		classifiedResponse.traffic_classification = {
 			state: 'aligned', window_start_ms: 120000, window_end_ms: 126000,
@@ -3132,52 +3197,21 @@ function assertClientDetailRefreshBehavior(src) {
 		};
 		state.response = classifiedResponse;
 		refresh.render(state);
-		if (refs.classificationCard.hidden || refs.classificationState.textContent !== '已对齐' ||
-		    refs.classificationTxDirectionState.textContent !== '已对齐' ||
-		    refs.classificationTxEdge.textContent !== '95.00 Mbps' ||
-		    refs.classificationTxNss.textContent !== '80.00 Mbps' ||
-		    refs.classificationRxSlow.textContent !== '5.00 Mbps' ||
-		    refs.classificationTxUnknown.textContent !== '5.00 Mbps' ||
-		    refs.classificationTxCoverage.textContent !== '95%' ||
-		    !refs.classificationWindow.textContent.includes('6 s')) {
-			fail('client detail classification card must render aligned N/S/U and coverage without adding them to total rate');
+		if (findFakeElement(built.root, 'lanspeed-classification-card') ||
+		    fakeElementText(built.root).includes('流量分类') ||
+		    fakeElementText(built.root).includes('NSS已识别')) {
+			fail('client detail must omit traffic classification even when the NSS response carries classification data');
 		}
-		classifiedResponse.traffic_classification = {
-			state: 'domain_mismatch', comparison_window_ms: 6000,
-			tx: { state: 'domain_mismatch', edge_bps: 95000000, nss_bps: 80000000, slow_bps: 10000000 },
-			rx: { state: 'domain_mismatch', edge_bps: 59000000, nss_bps: 50000000, slow_bps: 5000000 }
-		};
-		refresh.render(state);
-		if (refs.classificationState.textContent !== '字节域不匹配' ||
-		    refs.classificationTxUnknown.textContent !== '—' ||
-		    refs.classificationRxCoverage.textContent !== '—') {
-			fail('domain mismatch must retain observed N/S while omitting fabricated U and coverage');
-		}
-		classifiedResponse.traffic_classification = {
-			state: 'map_loss', tx: { state: 'map_loss' }, rx: { state: 'map_loss' }
-		};
-		refresh.render(state);
-		if (refs.classificationState.textContent !== '映射表数据丢失' ||
-		    refs.classificationTxCoverage.textContent !== '—') {
-			fail('map loss must remain explicit and must not render a zero classification coverage');
-		}
-		state.response = fixture;
-		refresh.render(state);
-		if (!refs.classificationCard.hidden)
-			fail('old detail responses without traffic_classification must keep the optional card hidden');
 		const x86State = Object.assign({}, state, {
-			response: classifiedResponse,
 			status: { evidence: { platform: { profile: 'x86_tc_bpf' } } },
 			nssPlatform: false
 		});
 		const x86Built = buildClientDetailShellForRefresh(x86State);
 		x86State.refs = x86Built.refs;
 		refresh.render(x86State);
-		if (x86Built.refs.classificationCard ||
-		    findFakeElement(x86Built.root, 'lanspeed-classification-card') ||
-		    fakeElementText(x86Built.root).includes('流量分类') ||
-		    fakeElementText(x86Built.root).includes('NSS已识别')) {
-			fail('x86 client detail must not construct classification DOM even when the response carries forged NSS fields');
+		if (findFakeElement(x86Built.root, 'lanspeed-classification-card') ||
+		    fakeElementText(x86Built.root).includes('流量分类')) {
+			fail('x86 client detail must omit classification DOM');
 		}
 		if (JSON.stringify(locationRequests[0]) !== JSON.stringify([
 		'2001:db8:ffff::20', '198.51.100.53'
@@ -3462,6 +3496,8 @@ function assertClientDetailRefreshBehavior(src) {
 	const incompleteFooter = fakeElementText(refs.footer);
 	if (refs.summaryTargets.textContent !== '—' ||
 	    refs.summaryConnections.textContent !== '—' ||
+	    refs.summaryTx.textContent !== '40.00 Kbps' || refs.summaryRx.textContent !== '96.00 Kbps' ||
+	    refs.summaryRateMeta.textContent !== '总速率采样：TC-BPF · 连接数据独立采样：Conntrack Netlink · 连接数据暂不可用' ||
 	    fakeElementText(refs.empty) !== '连接快照不完整，无法确认当前连接数量，请稍后重试。' ||
 	    !incompleteFooter.includes('告警：连接快照不完整') ||
 	    incompleteFooter.includes('显示 0') || incompleteFooter.includes('共 0')) {
@@ -3611,20 +3647,19 @@ function assertClientDetailShellInteraction(src) {
 	    !rootClasses.includes('lanspeed-connection-detail') || themedRoot !== built.root) {
 		fail('clientDetailShell.js root must reuse cbi-map/lanspeed-root, add the detail class and receive theme detection');
 	}
-		const sections = findFakeElementsByClass(built.root, 'cbi-section');
-		if (sections.length !== 3 || sections.some(function(section) {
+	const sections = findFakeElementsByClass(built.root, 'cbi-section');
+	if (sections.length !== 2 || sections.some(function(section) {
 			return !built.root.children.includes(section);
-		}) || !findFakeElement(built.root, 'lanspeed-connection-identity-card') ||
-		    !findFakeElement(built.root, 'lanspeed-classification-card') ||
-		    !findFakeElement(built.root, 'lanspeed-connections-card')) {
-			fail('clientDetailShell.js must render three peer sections for identity, classification and connections');
-		}
-		if (findFakeElementsByClass(built.root, 'lanspeed-header').length !== 3 ||
-		    findFakeElementsByClass(built.root, 'lanspeed-body').length !== 3 ||
-		    findFakeElementsByClass(built.root, 'lanspeed-toolbar').length !== 1 ||
-		    findFakeElementsByClass(built.root, 'lanspeed-table').length !== 2 ||
-		    findFakeElementsByClass(built.root, 'big').length) {
-			fail('clientDetailShell.js must reuse compact peer header/body/table structures without metric cards');
+	}) || !findFakeElement(built.root, 'lanspeed-connection-identity-card') ||
+	    !findFakeElement(built.root, 'lanspeed-connections-card')) {
+		fail('clientDetailShell.js must render only identity and connections sections');
+	}
+	if (findFakeElementsByClass(built.root, 'lanspeed-header').length !== 2 ||
+	    findFakeElementsByClass(built.root, 'lanspeed-body').length !== 2 ||
+	    findFakeElementsByClass(built.root, 'lanspeed-toolbar').length !== 1 ||
+	    findFakeElementsByClass(built.root, 'lanspeed-table').length !== 1 ||
+	    findFakeElementsByClass(built.root, 'big').length) {
+		fail('clientDetailShell.js must reuse compact peer header/body/table structures without metric cards');
 	}
 
 	const allowedSharedClasses = new Set([
@@ -3637,10 +3672,9 @@ function assertClientDetailShellInteraction(src) {
 	]);
 	walkFakeElements(built.root, function(node) {
 		String(node.attrs && node.attrs.class || '').split(/\s+/).filter(Boolean).forEach(function(className) {
-				if (!allowedSharedClasses.has(className) &&
-				    !className.startsWith('lanspeed-connection-') &&
-				    !className.startsWith('lanspeed-classification-') &&
-				    className !== 'lanspeed-connections-card') {
+					if (!allowedSharedClasses.has(className) &&
+					    !className.startsWith('lanspeed-connection-') &&
+					    className !== 'lanspeed-connections-card') {
 				fail(`clientDetailShell.js must prefix its new class ${className}`);
 			}
 		});
@@ -3649,14 +3683,8 @@ function assertClientDetailShellInteraction(src) {
 	const refs = built.refs;
 	[
 			'error', 'back', 'clientName', 'clientMeta', 'connectionState', 'summary',
-			'summaryTargets', 'summaryConnections', 'summaryUpdated', 'protocolAll',
+			'summaryTargets', 'summaryConnections', 'summaryTx', 'summaryRx', 'summaryRateMeta', 'summaryUpdated', 'protocolAll',
 			'protocolTcp', 'protocolUdp', 'filter', 'intervalSel', 'refresh', 'pause',
-			'classificationCard', 'classificationState', 'classificationWindow',
-			'classificationTxDirectionState', 'classificationRxDirectionState',
-			'classificationTxEdge', 'classificationRxEdge',
-			'classificationTxNss', 'classificationRxNss', 'classificationTxSlow',
-			'classificationRxSlow', 'classificationTxUnknown', 'classificationRxUnknown',
-			'classificationTxCoverage', 'classificationRxCoverage',
 			'sortHeaders', 'table', 'tbody',
 		'empty', 'footer'
 	].forEach(function(name) {
@@ -3666,18 +3694,16 @@ function assertClientDetailShellInteraction(src) {
 	const x86Built = shell.buildShell(Object.assign({}, viewState, { nssPlatform: false }));
 	if (findFakeElementsByClass(x86Built.root, 'cbi-section').length !== 2 ||
 	    findFakeElement(x86Built.root, 'lanspeed-classification-card') ||
-	    x86Built.refs.classificationCard ||
-	    fakeElementText(x86Built.root).includes('流量分类') ||
-	    fakeElementText(x86Built.root).includes('NSS已识别')) {
-		fail('clientDetailShell.js must build only identity and connections sections for x86 TC-BPF');
+	    fakeElementText(x86Built.root).includes('流量分类')) {
+		fail('clientDetailShell.js must build only identity and connections sections for every platform');
 	}
 
 	const copy = fakeElementText(built.root);
 	[
 		'返回客户端列表', 'LAN Speed 状态 / 客户端连接详情', '无法加载连接详情',
 		'客户端身份', '正在加载客户端身份…', 'MAC 与 IP 信息将在加载后显示',
-			'等待数据', '连接摘要', '目标 IP 数', '连接数', '更新时间',
-			'流量分类', '方向状态', 'Edge 同窗总速率', 'NSS已识别', 'CPU慢路径已识别', '未分类', '分类覆盖率',
+		'等待数据', '连接摘要', '目标 IP 数', '连接数', '上行总速率', '下行总速率', '页面更新时间',
+		'总速率采样口径将在加载后显示。',
 		'当前连接', '全部', 'TCP', 'UDP', '立即刷新', '目标 IP', '国家/地区', '目标端口',
 		'协议', '状态', '上行', '下行', '暂无连接', '连接数据加载后会显示来源、刷新间隔和 IP 位置说明。'
 	].forEach(function(text) {
@@ -3687,7 +3713,7 @@ function assertClientDetailShellInteraction(src) {
 		built.root, 'lanspeed-connection-summary-label'
 	).map(fakeElementText);
 	if (JSON.stringify(summaryLabels) !== JSON.stringify([
-		'目标 IP 数', '连接数', '更新时间'
+		'目标 IP 数', '连接数', '上行总速率', '下行总速率', '页面更新时间'
 	])) {
 		fail('clientDetailShell.js must label the grouped destination summary as target IP count');
 	}
@@ -4941,6 +4967,9 @@ function assertRpcModule(src) {
 	if (!src.includes("method: 'interfaces'") || !src.includes('interfaces: callInterfaces')) {
 		fail('lanspeed/rpc.js must expose interface throughput data');
 	}
+	if (!src.includes("method: 'realtime'") || !src.includes('realtime:')) {
+		fail('lanspeed/rpc.js must expose the compact atomic realtime snapshot');
+	}
 	if (!src.includes("method: 'health'") || !src.includes('health:')) {
 		fail('lanspeed/rpc.js must expose the dedicated runtime health method');
 	}
@@ -5324,8 +5353,9 @@ function assertStatusViewSourceOnlyState(src) {
 	if (src.includes("status.collector_mode;")) {
 		fail('LAN Speed status modules header must not show configured collector_mode as the current collector source');
 	}
-	if (!src.includes("return 'ECM'") || !src.includes("return 'ECM+BPF'")) {
-		fail('LAN Speed status modules must expose distinct ECM and ECM+BPF collector labels');
+	if (!src.includes("return 'ECM'") || !src.includes("return _('ECM+BPF')") ||
+	    !src.includes('FastN+FastS routed Internet')) {
+		fail('LAN Speed status modules must expose distinct ECM and Internet-routed collector labels');
 	}
 	if (!src.includes("mode === 'access_edge'") || !src.includes("自动精准") ||
 	    !src.includes("accessEdgeOwnsCurrentRate(status) ? 'access_edge'")) {
@@ -6290,8 +6320,10 @@ function assertConfigModelRewrite(src) {
 	const model = loadConfigModelModule(src);
 	const required = [
 		'refresh_interval_ms', 'active_client_window_ms', 'active_client_min_bps',
-			'overview_window_samples', 'rate_collector_mode', 'conn_collector_mode',
-			'access_edge_mode',
+		'overview_window_samples', 'rate_collector_mode', 'conn_collector_mode',
+		'access_edge_mode', 'internet_view_mode', 'nss_low_rate_window_ms',
+		'nss_low_rate_high_watermark_bps', 'nss_fifo_target_delay_ms',
+		'nss_fifo_min_queue_packets', 'rate_compensation_factor',
 			'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges',
 		'collector_mode', 'max_clients', 'ifname', 'interface_include',
 		'interface_exclude', 'observe', 'enable_bpf', 'enable_conntrack_fallback'
@@ -6304,6 +6336,7 @@ function assertConfigModelRewrite(src) {
 	const readableLabels = Object.fromEntries(model.FIELDS.map(field => [ field.name, field.label ]));
 	if (String(readableLabels.rate_collector_mode) !== '客户端网速模式' ||
 		String(readableLabels.access_edge_mode) !== '客户端总速率' ||
+		String(readableLabels.internet_view_mode) !== '互联网/路由视图' ||
 		String(readableLabels.enable_bpf) !== '启用 CPU 流量检测（BPF）') {
 		fail('configModel.js must present user-facing meanings instead of internal collector terminology');
 	}
@@ -6312,10 +6345,23 @@ function assertConfigModelRewrite(src) {
 	if (JSON.stringify(model.REMOVED_UCI_FIELDS) !== JSON.stringify([ 'dedicated_port' ]))
 		fail('configModel.js must keep removed UCI fields explicit for compatibility cleanup');
 	if (model.DEFAULTS.access_edge_mode !== 'active' ||
+		model.DEFAULTS.internet_view_mode !== 'off' ||
+		model.DEFAULTS.nss_low_rate_window_ms !== 18000 ||
+		model.DEFAULTS.nss_low_rate_high_watermark_bps !== 8000000 ||
+		model.DEFAULTS.nss_fifo_target_delay_ms !== 50 ||
+		model.DEFAULTS.nss_fifo_min_queue_packets !== 8 ||
+		model.DEFAULTS.rate_compensation_factor !== '1.10' ||
 		JSON.stringify(model.ACCESS_EDGE_MODES.map(item => String(item.label))) !== JSON.stringify([
 			'关闭精准检测', '仅后台验证（不用于显示）', '精准总速率（推荐）'
-		])) {
+		]) || JSON.stringify(model.INTERNET_VIEW_MODES.map(item => item.value)) !==
+		JSON.stringify([ 'off', 'routed' ])) {
 		fail('configModel.js automatic defaults and total-rate choices must make precise mode the clear recommendation');
+	}
+	if (!model.parseFactor('1.00', model.LIMITS.rate_compensation_factor).valid ||
+		!model.parseFactor('1.10', model.LIMITS.rate_compensation_factor).valid ||
+		model.parseFactor('1.001', model.LIMITS.rate_compensation_factor).valid ||
+		model.parseFactor('1.26', model.LIMITS.rate_compensation_factor).valid) {
+		fail('configModel.js must validate the NSS rate compensation factor without float coercion');
 	}
 	if (model.parseInteger('1000ms', model.LIMITS.refresh_interval_ms).valid ||
 		model.parseInteger('499', model.LIMITS.refresh_interval_ms).valid ||
@@ -6329,11 +6375,12 @@ function assertConfigModelRewrite(src) {
 	const invalid = model.normalize({
 		refresh_interval_ms: 'oops', hide_ipv6_ranges: 'not-a-cidr',
 		ifname: [ 'bad name' ],
-		access_edge_mode: 'guess', enable_bpf: 'maybe'
+		access_edge_mode: 'guess', internet_view_mode: 'ecm', enable_bpf: 'maybe'
 	});
 	if (invalid.valid || !invalid.errors.refresh_interval_ms ||
 		!invalid.errors.hide_ipv6_ranges || !invalid.errors.ifname ||
 		!invalid.errors.access_edge_mode ||
+		!invalid.errors.internet_view_mode ||
 		!invalid.errors.enable_bpf) {
 		fail('configModel.js must return field-scoped errors for malformed UCI values');
 	}
@@ -6401,6 +6448,12 @@ function assertConfigModelRewrite(src) {
 	}, { capabilities: { nss: true, nss_ecm_offload: true, bpf_package: true, bpf_object: true } });
 	if (combinedDisabled.valid || combinedDisabled.errors.rate_collector_mode !== 'bpf_disabled')
 		fail('configModel.js must require BPF to be enabled for ECM+BPF');
+	const internetDisabled = model.validate({
+		rate_collector_mode: 'nss_ecm_node', internet_view_mode: 'routed',
+		conn_collector_mode: 'auto', enable_bpf: '0', enable_conntrack_fallback: '1'
+	}, { capabilities: { nss: true, nss_ecm_offload: true } });
+	if (internetDisabled.valid || internetDisabled.errors.internet_view_mode !== 'bpf_disabled')
+		fail('configModel.js must require BPF to be enabled for the independent routed view');
 	const repairing = model.validate({
 		rate_collector_mode: 'bpf', conn_collector_mode: 'auto', enable_bpf: '1',
 		enable_conntrack_fallback: '1', interface_include: [ 'eth1' ]
@@ -6555,17 +6608,21 @@ function makeConfigFormState(model, overrides) {
 	overrides = overrides || {};
 	const values = configValues(model, overrides.values || {});
 	const numbers = [ 'refresh_interval_ms', 'active_client_window_ms', 'active_client_min_bps',
-		'overview_window_samples', 'max_clients' ];
+		'overview_window_samples', 'max_clients', 'nss_low_rate_window_ms',
+		'nss_low_rate_high_watermark_bps', 'nss_fifo_target_delay_ms',
+		'nss_fifo_min_queue_packets', 'rate_compensation_factor' ];
 	const booleans = [ 'show_client_status', 'show_ipv6', 'hide_private_ipv6',
 		'enable_bpf', 'enable_conntrack_fallback' ];
-	const editable = [ 'rate_collector_mode', 'access_edge_mode',
+	const editable = [ 'rate_collector_mode', 'access_edge_mode', 'internet_view_mode',
 		'conn_collector_mode', 'enable_bpf',
 		'enable_conntrack_fallback', 'refresh_interval_ms', 'overview_window_samples',
 		'max_clients', 'active_client_window_ms', 'active_client_min_bps',
+		'nss_low_rate_window_ms', 'nss_low_rate_high_watermark_bps',
+		'nss_fifo_target_delay_ms', 'nss_fifo_min_queue_packets', 'rate_compensation_factor',
 		'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges' ];
 	const inputs = {};
 	numbers.forEach(function(name) { inputs[name] = fakeElement('input', { value: String(values[name]) }); });
-	[ 'rate_collector_mode', 'access_edge_mode', 'conn_collector_mode' ].forEach(function(name) {
+	[ 'rate_collector_mode', 'access_edge_mode', 'internet_view_mode', 'conn_collector_mode' ].forEach(function(name) {
 		inputs[name] = fakeElement('select', { value: values[name] });
 		inputs[name].value = values[name];
 	});
@@ -6856,7 +6913,8 @@ function assertConfigFormRewrite(src) {
 		fail('configForm.js must never revert the whole package or bypass the LuCI UCI cache');
 	}
 	[ 'refresh_interval_ms', 'overview_window_samples', 'max_clients', 'enable_bpf',
-		'enable_conntrack_fallback', 'access_edge_mode', 'interface_exclude' ].forEach(name => {
+		'enable_conntrack_fallback', 'access_edge_mode', 'internet_view_mode',
+		'nss_low_rate_window_ms', 'nss_low_rate_high_watermark_bps', 'interface_exclude' ].forEach(name => {
 		if (!src.includes(name)) fail(`configForm.js must preserve ${name} in the owned data contract`);
 	});
 	if (!src.includes("values.dedicated_port = uci.get('lanspeed', 'main', 'dedicated_port')") ||
@@ -6878,6 +6936,7 @@ function matchingConfigStatus(values) {
 		confidence: 'high',
 		warnings: [],
 			rate_collector_mode: values.rate_collector_mode,
+			internet_view_mode: values.internet_view_mode,
 			access_edge_mode: values.access_edge_mode,
 			conn_collector_mode: values.conn_collector_mode,
 		refresh_interval_ms: values.refresh_interval_ms,
@@ -6967,18 +7026,21 @@ function assertConfigFormBehavior(src) {
 	const profileGuardForm = loadConfigFormModule(src, makeConfigUci(model),
 		{ status: function() { return Promise.resolve({}); } }, makeConfigIfaceStub(), model);
 	const unknownProfileState = makeConfigFormState(model, {
-		values: { rate_collector_mode: 'nss_ecm_bpf', access_edge_mode: 'shadow' },
+		values: { rate_collector_mode: 'nss_ecm_bpf', access_edge_mode: 'shadow', internet_view_mode: 'routed' },
 		runtimeStatus: {}
 	});
+	unknownProfileState.originalRaw.internet_view_mode = 'routed';
 	const unknownProfilePlan = profileGuardForm.prepareSave(unknownProfileState);
 	if (unknownProfilePlan.values.rate_collector_mode !== 'nss_ecm_bpf' ||
 	    Object.prototype.hasOwnProperty.call(unknownProfilePlan.patch.set, 'access_edge_mode') ||
-	    unknownProfilePlan.patch.unset.indexOf('access_edge_mode') !== -1) {
+	    Object.prototype.hasOwnProperty.call(unknownProfilePlan.patch.set, 'internet_view_mode') ||
+	    unknownProfilePlan.patch.unset.indexOf('access_edge_mode') !== -1 ||
+	    unknownProfilePlan.patch.unset.indexOf('internet_view_mode') !== -1) {
 		fail('configForm.js must preserve NSS mode and Access Edge UCI when the runtime platform is temporarily unknown');
 	}
 	const x86ProfileState = makeConfigFormState(model, {
 		values: {
-			rate_collector_mode: 'nss_ecm_bpf', access_edge_mode: 'active',
+			rate_collector_mode: 'nss_ecm_bpf', access_edge_mode: 'active', internet_view_mode: 'routed',
 			interface_include: [ 'br-lan' ]
 		},
 		runtimeStatus: { evidence: { platform: { profile: 'x86_tc_bpf' } } }
@@ -6986,9 +7048,12 @@ function assertConfigFormBehavior(src) {
 	const x86ProfilePlan = profileGuardForm.prepareSave(x86ProfileState);
 	if (x86ProfilePlan.values.rate_collector_mode !== 'bpf' ||
 	    x86ProfilePlan.values.access_edge_mode !== 'off' ||
+	    x86ProfilePlan.values.internet_view_mode !== 'off' ||
 	    x86ProfilePlan.patch.set.rate_collector_mode !== 'bpf' ||
 	    Object.prototype.hasOwnProperty.call(x86ProfilePlan.patch.set, 'access_edge_mode') ||
-	    x86ProfilePlan.patch.unset.indexOf('access_edge_mode') === -1) {
+	    Object.prototype.hasOwnProperty.call(x86ProfilePlan.patch.set, 'internet_view_mode') ||
+	    x86ProfilePlan.patch.unset.indexOf('access_edge_mode') === -1 ||
+	    x86ProfilePlan.patch.unset.indexOf('internet_view_mode') === -1) {
 		fail('configForm.js must normalize forged NSS settings only for an explicit x86 profile');
 	}
 
@@ -7504,6 +7569,7 @@ if (fs.existsSync(statusViewFile)) {
 		...STATUS_STYLE_PARTS.map(readModuleByName),
 		readModuleByName('statusIp.js'),
 		readModuleByName('statusCollector.js'),
+		readModuleByName('statusRateMeta.js'),
 		readModuleByName('statusShell.js'),
 		readModuleByName('statusRefresh.js'),
 		readModuleByName('vocab.js')
