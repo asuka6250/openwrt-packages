@@ -74,8 +74,8 @@ grep -F "./scripts/feeds install -p lanspeed luci-app-lanspeed" "$DRY_RUN_EVIDEN
 grep -F "make defconfig" "$DRY_RUN_EVIDENCE" >/dev/null
 grep -F "make package/lanspeedd/compile V=s" "$DRY_RUN_EVIDENCE" >/dev/null
 grep -F "make package/luci-app-lanspeed/compile V=s" "$DRY_RUN_EVIDENCE" >/dev/null
-grep -F "package APK files through an isolated root-only user database" "$DRY_RUN_EVIDENCE" >/dev/null
-grep -F "FAKEROOT=$ROOT/scripts/apk-userns-fakeroot.sh" "$DRY_RUN_EVIDENCE" >/dev/null
+grep -F "package APK files through the SDK fakeroot ownership database" "$DRY_RUN_EVIDENCE" >/dev/null
+grep -F "FAKEROOT=$ROOT/scripts/apk-owner-fakeroot.sh" "$DRY_RUN_EVIDENCE" >/dev/null
 grep -F "./scripts/feeds install -p lanspeed lanspeedd-bpf" "$DRY_RUN_EVIDENCE" >/dev/null
 grep -F "select CONFIG_PACKAGE_lanspeedd=m before compiling package/lanspeedd/compile" "$DRY_RUN_EVIDENCE" >/dev/null
 grep -F "disable CONFIG_PACKAGE_lanspeedd-bpf before compiling package/lanspeedd/compile" "$DRY_RUN_EVIDENCE" >/dev/null
@@ -105,6 +105,14 @@ if SDK_DIR=/tmp/fake-sdk DRY_RUN=1 SDK_FEEDS_PREPARED=invalid "$ROOT/scripts/bui
 	exit 1
 fi
 grep -F "SDK_FEEDS_PREPARED must be 0 or 1" "$PREPARE_FEEDS_EVIDENCE" >/dev/null
+
+APK_OWNER_FAKEROOT_SOURCE=$(cat "$ROOT/scripts/apk-owner-fakeroot.sh")
+printf '%s\n' "$APK_OWNER_FAKEROOT_SOURCE" | grep -F 'chown -R 0:0 "$files"' >/dev/null
+printf '%s\n' "$APK_OWNER_FAKEROOT_SOURCE" | grep -F 'exec "$fakeroot_tool"' >/dev/null
+if printf '%s\n' "$APK_OWNER_FAKEROOT_SOURCE" | grep -Eq 'sudo|unshare'; then
+	printf '%s\n' "APK ownership wrapper must not use sudo or namespaces" >&2
+	exit 1
+fi
 
 TMP_SDK=$(mktemp -d "${TMPDIR:-/tmp}/lanspeed-sdk.XXXXXX")
 mkdir -p "$TMP_SDK/bin" "$TMP_SDK/scripts/config"

@@ -16,7 +16,7 @@ SDK_FEEDS_HASH=${SDK_FEEDS_HASH:-}
 SDK_RUST_VERSION=${SDK_RUST_VERSION:-}
 SDK_RUST_RECIPE_HASH=${SDK_RUST_RECIPE_HASH:-}
 SDK_RUST_IDENTITY_SCRIPT="$REPO_ROOT/scripts/sdk-rust-identity.sh"
-APK_USERNS_FAKEROOT="$REPO_ROOT/scripts/apk-userns-fakeroot.sh"
+APK_OWNER_FAKEROOT="$REPO_ROOT/scripts/apk-owner-fakeroot.sh"
 
 die() {
 	printf '%s\n' "error: $*" >&2
@@ -393,19 +393,15 @@ compile_package() {
 configure_package_fakeroot() {
 	PACKAGE_FAKEROOT=
 	if [ "$DRY_RUN" = 1 ]; then
-		PACKAGE_FAKEROOT=$APK_USERNS_FAKEROOT
-		printf '+ package APK files through an isolated root-only user database\n'
+		PACKAGE_FAKEROOT=$APK_OWNER_FAKEROOT
+		printf '+ package APK files through the SDK fakeroot ownership database\n'
 		return 0
 	fi
 	grep -q '^CONFIG_USE_APK=y$' "$SDK_PATH/.config" 2>/dev/null || return 0
 	[ "$(id -u)" -ne 0 ] || return 0
-	[ -x "$APK_USERNS_FAKEROOT" ] || \
-		die "APK user namespace wrapper is missing or not executable"
-	command -v unshare >/dev/null 2>&1 || \
-		die "APK packaging as a non-root user requires unshare"
-	unshare -Ur true >/dev/null 2>&1 || \
-		die "APK packaging cannot create an unprivileged root user namespace"
-	PACKAGE_FAKEROOT=$APK_USERNS_FAKEROOT
+	[ -x "$APK_OWNER_FAKEROOT" ] || \
+		die "APK fakeroot ownership wrapper is missing or not executable"
+	PACKAGE_FAKEROOT=$APK_OWNER_FAKEROOT
 }
 
 set_config_module() {
