@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-`luci-theme-footstrap` — a LuCI theme for **OpenWrt 23.05 and newer** (and ImmortalWrt). Standalone:
+`luci-theme-footstrap` — a LuCI theme for **OpenWrt 24.10 and newer** (and ImmortalWrt). Standalone:
 it ships no framework and depends on nothing but `luci-base`. Page content is rendered client-side
 by app view-JS, so the theme is server chrome (`ucode/template/themes/footstrap/*.ut`) + one
 generated `cascade.css` + `fs-*.js` in `htdocs/luci-static/resources/`.
@@ -78,10 +78,24 @@ compile.
 - **Every gate is static; not one opens a page.** A behaviour change is not finished until it has
   run on a real userland on **both** package managers (25.12/apk and 24.10/opkg). A stubbed node
   harness proves a module initialises, nothing more — say which of the two you did.
-- **A TAG also requires 23.05** (`owrt2305`), and that is a rule with a bill attached: `ui.RangeSlider`
-  does not exist there, the Appearance tab is built in one try/catch, and the whole tab died on that
-  release for as long as it took a user to report it. `npm run live -- --all` covers it now, and
-  `upstream-contract` states the assumption; neither existed when it broke. docs/releasing.md.
+- **23.05 is over, at 0.14.2.** It cost one widget (`ui.RangeSlider` arrived in 24.10, the Appearance
+  tab is built in one try/catch, and the whole tab died there until a user reported it) and upstream
+  declined to carry that code (openwrt/luci#8978). `install.sh` serves a 23.05 router the pinned
+  0.14.2 and says it is the last one; the stand, the contract entry and the fallback are gone. The
+  floor is 24.10 — `npm run live -- --all` covers what is left. docs/releasing.md.
+- **One fault, one mechanism — and prove that one holds alone.** A second mechanism added "to be
+  safe" must be measured with the first one on its own: if the probe still passes, the spare was
+  never needed and does not ship. The Appearance tab's vanishing after a Save (openwrt/luci#8981)
+  went in with an attribute watch AND a retry ladder, both landed together, both passed; the ladder
+  turned out to catch nothing, and a maintainer had to ask. A suspicion about risk is an experiment
+  to run, not a justification to write into a comment.
+- **`/security-review` before every release and every upstream PR.** It reads the branch diff, so it
+  is run once the branch is final and before the tag or the `gh pr create` — not after. The surface
+  worth the pass is small and always the same: the installer's signature chain, any new shell that
+  runs over a build tree, the login template (that page is unauthenticated), sinks in the browser JS,
+  and the packaging pipeline. A maintainer asked outright whether one had been done
+  (openwrt/luci#8981); "yes, and here is what it covered" is a one-line answer only if the pass
+  actually happened.
 - **Prove a CSS change with a computed-style diff, not screenshots.** Live counters move 0.5–1.3% of
   pixels between two runs of the *same* sheet while a real regression weighs 0.19%.
 - Screenshots and any other scratch artefact go in `../tmp/`, never inside the checkout.

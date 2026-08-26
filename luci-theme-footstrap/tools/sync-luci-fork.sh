@@ -3,36 +3,26 @@
 #
 #   ./tools/sync-luci-fork.sh ../luci
 #
-# The difference from what lives here is one decision: THE LUCI TREE GETS THE BUILT STYLESHEET,
-# not the source that generates it. Here, `styles/` is the source of truth — thirty-nine files in
-# four cascade layers whose ORDER is the whole design, and `cascade.css` is a build artefact this
-# repository does not even track. There, the other four themes each commit one `cascade.css` and
-# have no build step at all, and a theme arriving with a 500-line shell script in `Build/Prepare`
-# is asking a reviewer to audit a build system before they can read a stylesheet.
+# One decision separates the two: the luci tree gets the BUILT stylesheet, not the source that
+# generates it. Here `styles/` is the source of truth and `cascade.css` is an untracked artefact;
+# there the other themes each commit one `cascade.css` and have no build step, and a theme arriving
+# with a 500-line shell script in `Build/Prepare` asks a reviewer to audit a build system before
+# they can read a stylesheet. The cost is that the sheet has to be regenerated and re-copied
+# whenever `styles/` changes, which is what this script is.
 #
-# So: this side keeps the layers, that side gets the sheet. The cost is that the sheet has to be
-# regenerated and re-copied whenever `styles/` changes, which is what this script is.
+# What is deliberately NOT done to the copy:
 #
-# WHAT IS DELIBERATELY *NOT* DONE TO THE COPY:
+#   * the custom properties are not mangled — readability wins in a tree somebody has to review and
+#     patch, bytes win in a release artefact;
+#   * the templates and the shell keep their comments, stripping being a packaging step;
+#   * the JS is untouched: luci.mk runs jsmin over it at package time;
+#   * `po/` does not travel at all. Upstream's CONTRIBUTING.md is explicit that translations are
+#     made in Weblate, which writes straight into that tree, so a sync carrying our catalogues would
+#     overwrite whatever translators had done. A changed msgid is a deliberate PR of its own.
 #
-#   * the custom properties are NOT mangled. `mangle-tokens.sh` renames the private `--fs-*` tier
-#     to two-character names and saves ~16% — worth it in a release artefact, indefensible in a
-#     tree somebody has to review and patch. Readability wins there; bytes win here.
-#   * the templates and the shell keep their comments. `strip-templates.sh`/`strip-shell.sh` are a
-#     packaging step, and the luci tree is source.
-#   * the JS is untouched: luci.mk runs jsmin over it at package time, which is exactly what the
-#     other themes get.
-#   * `po/` does not travel AT ALL. Upstream's CONTRIBUTING.md is explicit — translations are made
-#     in Weblate, not by editing the files — and Weblate writes straight into that tree. A sync
-#     that carried our catalogues would overwrite whatever translators had done since the last
-#     one, silently and in the direction nobody wants. When a msgid CHANGES, that is a deliberate
-#     PR of its own against `themes/luci-theme-footstrap/po/templates/`, not a side effect of this
-#     script.
-#
-# WHAT THIS SCRIPT CANNOT DO FOR YOU: the Makefile is maintained by hand on the far side (it uses
-# `include ../../luci.mk` and PKG_MAINTAINER, see docs/package.md), so a change to OUR Makefile —
-# postinst, postrm, conffiles — does not travel and has to be made there too. It is the one file
-# that can drift without anything noticing, so the sync ends by saying whether it has.
+# What this script cannot do for you: the Makefile is maintained by hand on the far side, so a
+# change to OUR Makefile — postinst, postrm, conffiles — does not travel and has to be made there
+# too. It is the one file that can drift unnoticed, so the sync ends by saying whether it has.
 set -eu
 
 DEST="${1:-}"
@@ -56,6 +46,7 @@ rsync -a --delete \
 	--exclude 'mangle-tokens.sh' \
 	--exclude 'strip-templates.sh' \
 	--exclude 'strip-shell.sh' \
+	--exclude 'strip-probes.sh' \
 	--exclude 'build-apk.sh' \
 	--exclude 'dev-sync.sh' \
 	--exclude 'update-po.sh' \
@@ -71,9 +62,14 @@ rsync -a --delete \
 # `po` is NOT in this list on purpose: it is excluded from the send because Weblate owns it there,
 # which means the copy that is already in that tree must be left exactly where it is.
 for stale in styles build-css.sh mangle-tokens.sh strip-templates.sh strip-shell.sh \
-             build-apk.sh dev-sync.sh update-po.sh luci-upstream.pin README.md; do
+             strip-probes.sh build-apk.sh dev-sync.sh update-po.sh luci-upstream.pin README.md; do
 	rm -rf "$OUT/$stale"
 done
+
+# The gate-only exports do not travel either. They exist so a gate in THIS repository can call a
+# module-private function; upstream has no such gate, and a module surface nobody calls is dead
+# weight there. The functions stay — only the export line goes (strip-probes.sh).
+sh "$SRC/strip-probes.sh" "$OUT/htdocs/luci-static/resources"
 
 # the artefact the far side commits, generated from the layers on this side
 sh "$SRC/build-css.sh" "$OUT/htdocs/luci-static/footstrap/cascade.css"

@@ -1,19 +1,13 @@
 #!/usr/bin/env node
-/* THE COUPLING REGISTRY: every assumption this theme makes about luci-base, checked against the
+/* The coupling registry: every assumption this theme makes about luci-base, checked against the
  * luci-base a router actually runs.
  *
- * The theme ships no framework and depends on `+luci-base` alone, which means every fs-*.js module
- * is written against somebody else's code — and against parts of it that are not an API. `L.Poll` is
- * a deprecated alias; `uci.state.values` and `uci.loaded` are private; `L.env.dispatchpath` is
- * re-pointed by us on a client navigation; `network.js` loads three uci packages exactly once and
- * answers out of that cache forever. None of those is a promise anyone made, and each is load-
- * bearing here.
- *
- * What made this file necessary: the network.js coupling broke in the field, not in a gate. The
- * router flushed uci's cache on navigation, network.js never reloaded it, and Status → Channel
- * Analysis and Network → Switch came back empty — reported by a reviewer on the upstream PR, three
- * days after the flush shipped. Every static gate was green, because the fact that broke lives in
- * another package's source.
+ * The theme ships no framework and depends on `+luci-base` alone, so every fs-*.js module is written
+ * against somebody else's code — and against parts of it that are not an API: `L.Poll` is a
+ * deprecated alias, `uci.state.values` and `uci.loaded` are private, `L.env.dispatchpath` is
+ * re-pointed by us on a client navigation, and network.js loads three uci packages exactly once and
+ * answers out of that cache forever. None of those is a promise anyone made, and each is
+ * load-bearing here.
  *
  * Each entry names WHAT is assumed, WHO in this repo assumes it, and a probe that answers on a live
  * page. A failure is not "the theme is broken" — it is "this luci-base moved, and the module named
@@ -22,8 +16,7 @@
  *   node tools/upstream-contract.mjs [--only owrt2512,owrt2410] [--verbose]
  *
  * Needs a running owlab router (docs/development.md); run it against SNAPSHOT too, which is where
- * luci-base's master lands first.
- */
+ * luci-base's master lands first. */
 import { chromium } from 'playwright';
 import { stands, login, requireStands } from './lib/stands.mjs';
 
@@ -185,49 +178,21 @@ const CONTRACT = [
 		},
 	},
 	{
-		id: 'widget-base-class',
-		what: 'ui.AbstractElement is the base widget class on every supported release, and it carries '
-			+ 'setUpdateEvents/setChangeEvents — the seam a widget publishes widget-update/widget-change through',
-		used_by: 'fs-appearance.js builds its own range slider from it where ui.RangeSlider does not exist',
-		fn: async () => {
-			const ui = await L.require('ui');
-			if (!ui.AbstractElement) return 'ui.AbstractElement is gone; the Appearance sliders have no base class';
-			for (const m of [ 'setUpdateEvents', 'setChangeEvents', 'getValue', 'setValue' ])
-				if (typeof ui.AbstractElement.prototype[m] !== 'function')
-					return 'ui.AbstractElement.prototype has no ' + m;
-			return true;
-		},
-	},
-	{
 		id: 'slider-widget-available',
-		/* ui.RangeSlider arrived in 24.10. On 23.05 its absence took the WHOLE Appearance tab down —
-		 * one try/catch, one console line, and a user to report it, because no gate had ever opened a
-		 * 23.05 router. Either path is fine; having neither is not. */
-		what: 'a range widget is reachable: ui.RangeSlider (24.10+), or ui.AbstractElement to build one from (23.05)',
+		/* `ui.RangeSlider` arrived in 24.10, which is the oldest release this theme claims. It was
+		 * once probed with a fallback built from `ui.AbstractElement`, because 23.05 has no such
+		 * widget and its absence took the WHOLE Appearance tab down — the panel is built inside one
+		 * try/catch. That release is EOL and support for it is gone, so what is left to check is that
+		 * the real widget is still there and still renders a range input. */
+		what: 'ui.RangeSlider exists and renders an input[type=range]',
 		used_by: 'fs-appearance.js: the number axes — rounding, tint strength, pattern size/strength, photo dim',
 		fn: async () => {
 			const ui = await L.require('ui');
-			if (ui.RangeSlider) {
-				const w = new ui.RangeSlider('5', { min: 0, max: 10 });
-				const node = w.render();
-				const input = node.querySelector('input[type="range"]');
-				return input ? true : 'ui.RangeSlider no longer renders an input[type=range]';
-			}
-			if (!ui.AbstractElement) return 'no ui.RangeSlider and no ui.AbstractElement: nothing to build a slider from';
-			/* the fallback's own machinery, exercised rather than assumed */
-			const Slider = ui.AbstractElement.extend({
-				/* `options` is not optional: setUpdateEvents reads options.datatype off it */
-				__init__(value) { this.value = value; this.options = {}; },
-				render() {
-					this.el = E('input', { type: 'range', min: 0, max: 10, value: this.value });
-					this.setUpdateEvents(this.el, 'input');
-					this.setChangeEvents(this.el, 'change');
-					return E('div', { class: 'cbi-range-slider' }, [ this.el ]);
-				},
-				getValue() { return this.el.value; }
-			});
-			const node = new Slider('5').render();
-			return node.querySelector('input[type="range"]') ? true : 'ui.AbstractElement can no longer carry a slider';
+			if (!ui.RangeSlider) return 'ui.RangeSlider is gone; the Appearance number axes have no widget';
+			const w = new ui.RangeSlider('5', { min: 0, max: 10 });
+			const node = w.render();
+			const input = node.querySelector('input[type="range"]');
+			return input ? true : 'ui.RangeSlider no longer renders an input[type=range]';
 		},
 	},
 	{
