@@ -603,9 +603,13 @@ function assertProductDesignSystem() {
 		fail('designSystemArgon.js must override Argon native low-contrast placeholders with dynamic text tokens');
 	if (!auroraCss.includes('color:var(--lanspeed-text-muted)!important;opacity:1}'))
 		fail('designSystemAurora.js must keep native-token placeholders readable in both color modes');
+	if (!auroraCss.includes('#tabmenu[data-lanspeed-page-theme="aurora"] .tabs>li.active{border-bottom-color:var(--brand)}')) {
+		fail('designSystemAurora.js must keep the LAN Speed page tabs on the active Aurora preset brand');
+	}
 	if (!bootstrapCss.includes('textarea)::placeholder{color:var(--lanspeed-text-subtle);opacity:.74}'))
 		fail('designSystemBootstrap.js must keep compact native placeholders above normal-text contrast');
-	if (!auroraCss.includes('@media (max-width:700px){#floating-toolbar~#maincontent #view{') ||
+	if (!auroraCss.includes('@media (max-width:700px){') ||
+	    !auroraCss.includes('#floating-toolbar~#maincontent #view{') ||
 	    !auroraCss.includes('padding-right:calc(var(--spacing,.25rem)*12)}') ||
 	    !auroraCss.includes('#floating-toolbar~#maincontent ' +
 		'.lanspeed-theme-aurora{width:100%!important;max-width:none!important;margin-right:0}}')) {
@@ -722,6 +726,8 @@ function assertAuroraNativeVisualSystem() {
 	const auroraCss = loadStyleLeaf('designSystemAurora.js').CSS;
 	const statusCss = loadStyleLeaf('statusStyleAurora.js').CSS;
 	const diagnosticsCss = loadStyleLeaf('diagnosticsStyleAurora.js').CSS;
+	const configCss = loadStyleLeaf('configStyleAurora.js').CSS;
+	const detailCss = loadStyleLeaf('clientDetailStyleAurora.js').CSS;
 	const diagnosticsResponsiveCss = loadStyleLeaf('diagnosticsStyleResponsive.js').CSS;
 
 	function declaration(css, name) {
@@ -793,6 +799,32 @@ function assertAuroraNativeVisualSystem() {
 	  'lanspeed-control-height' ].forEach(function(name) {
 		if (!declaration(auroraCss, name).includes('var(--spacing'))
 			fail(`designSystemAurora.js must derive --${name} from Aurora --spacing`);
+	});
+
+	if (declaration(auroraCss, 'lanspeed-surface-raised') !== 'var(--surface-overlay)' ||
+	    !auroraCss.includes('padding:var(--lanspeed-section-x);overflow:visible;') ||
+	    !auroraCss.includes('border-bottom-color:var(--lanspeed-border);background-color:transparent}')) {
+		fail('designSystemAurora.js must use the native Aurora card surface and inset transparent heading treatment');
+	}
+	[
+		[ 'statusStyleAurora.js', statusCss ],
+		[ 'diagnosticsStyleAurora.js', diagnosticsCss ],
+		[ 'configStyleAurora.js', configCss ],
+		[ 'clientDetailStyleAurora.js', detailCss ]
+	].forEach(function(entry) {
+		if (!entry[1].includes('margin:0 0 var(--lanspeed-section-y);') ||
+		    !entry[1].includes('padding:0 0 var(--lanspeed-section-y);') ||
+		    !entry[1].includes('background:transparent')) {
+			fail(`${entry[0]} must match the inset transparent Aurora native card heading`);
+		}
+	});
+	[
+		[ 'statusStyleAurora.js', statusCss, '.lanspeed-body' ],
+		[ 'diagnosticsStyleAurora.js', diagnosticsCss, '.lanspeed-body' ],
+		[ 'configStyleAurora.js', configCss, '.lanspeed-config-body' ]
+	].forEach(function(entry) {
+		if (!entry[1].includes(entry[2]) || !entry[1].includes('padding:0}'))
+			fail(`${entry[0]} card bodies must consume the native Aurora outer card padding`);
 	});
 
 	if (!baseCss.includes('border-radius:var(--lanspeed-radius-input)!important'))
@@ -2124,13 +2156,13 @@ function loadStatusRefreshModule(src, fakeWindow) {
 		[ 'baseclass', 'E', '_' ])(fakeBaseclass, fakeElement, fakeTranslate);
 	return vm.compileFunction(src,
 		[ 'baseclass', 'vocab', 'fmt', 'clientConnections', 'clientControl', 'lsVersion',
-		  'statusIp', 'statusCollector', 'statusRateMeta', 'E', '_', 'window' ],
+		  'statusIp', 'statusCollector', 'statusRateMeta', 'E', '_', 'window', 'document' ],
 		{ filename: 'resources/lanspeed/statusRefresh.js' })(
 			fakeBaseclass, vocab, {},
 			loadClientConnectionsModule(readModuleByName('clientConnections.js')),
 			{ cell: function() { return fakeElement('td'); } },
 			{ FULL_VERSION: 'test' }, {}, {}, rateMeta, fakeElement, fakeTranslate,
-			fakeWindow || { location: { pathname: '/admin/status/lanspeed/overview' } }
+			fakeWindow || { location: { pathname: '/admin/status/lanspeed/overview' } }, fakeDocument
 		);
 }
 
@@ -2144,7 +2176,10 @@ function fakeElement(tag, attrs, children) {
 		listeners: {},
 		parentNode: null,
 		style: {},
-		focus: function() { fakeDocument.activeElement = this; },
+		focus: function(options) {
+			this.focusOptions = options || null;
+			fakeDocument.activeElement = this;
+		},
 		addEventListener: function(type, handler) { this.listeners[type] = handler; },
 		setAttribute: function(name, value) {
 			this.attrs[name] = String(value);
@@ -3425,8 +3460,9 @@ function assertClientDetailRefreshBehavior(src) {
 	if (currentGroups[1] === focusedGroup ||
 	    currentGroups[1].attrs['data-remote-ip'] !== '198.51.100.53' ||
 	    fakeDocument.activeElement !== currentGroups[1] ||
+	    !currentGroups[1].focusOptions || currentGroups[1].focusOptions.preventScroll !== true ||
 	    currentGroups[1].attrs['aria-expanded'] !== 'true' || currentDetails[1].hidden) {
-		fail('clientDetailRefresh.js refresh renders must restore keyboard focus to the rebuilt row for the same remote IP');
+		fail('clientDetailRefresh.js refresh renders must restore keyboard focus without scrolling to the rebuilt row for the same remote IP');
 	}
 
 	state.protocol = 'tcp';
@@ -4171,6 +4207,20 @@ function assertStatusRefreshSortingInteraction(src) {
 		    retainedC.className !== 'idle' || fakeElementText(retainedC) !== 'C newest' ||
 		    fakeElementText(originalA) !== 'A newest') {
 			fail('statusRefresh.js must move existing keyed rows without recreating them');
+		}
+
+		const focusedOld = fakeElement('button', { 'data-client-action': 'limit' }, '限速');
+		const focusedRow = fakeElement('tr', { 'data-client-key': 'focus@lan' },
+			fakeElement('td', {}, focusedOld));
+		tbody.children.slice().forEach(function(child) { tbody.removeChild(child); });
+		tbody.appendChild(focusedRow);
+		fakeDocument.activeElement = focusedOld;
+		const focusedNew = fakeElement('button', { 'data-client-action': 'limit' }, '限速');
+		mod.reconcileClientRows(tbody, [ fakeElement('tr', { 'data-client-key': 'focus@lan' },
+			fakeElement('td', {}, focusedNew)) ]);
+		if (tbody.children[0] !== focusedRow || fakeDocument.activeElement !== focusedNew ||
+		    !focusedNew.focusOptions || focusedNew.focusOptions.preventScroll !== true) {
+			fail('statusRefresh.js must keep focus without scrolling on the same client action while live data updates its row');
 		}
 
 		const scrolls = [];
@@ -5434,6 +5484,9 @@ function assertThemeModule(src) {
 	    !src.includes('removeEventListener') ||
 	    !src.includes('MutationObserver') ||
 	    !src.includes('data-lanspeed-color-mode') ||
+	    !src.includes('data-lanspeed-page-theme') ||
+	    !src.includes('function applyPageChrome') ||
+	    !src.includes('function releasePageChrome') ||
 	    !src.includes('applyRoot: function(root') ||
 	    !src.includes('releaseRoot: function(root')) {
 		fail('resources/lanspeed/theme.js must detect Aurora from theme assets and shell markers before applying the scoped class');
@@ -5487,15 +5540,20 @@ function assertThemeBehavior(src) {
 		let callback = null;
 		let disconnected = 0;
 		let observed = false;
+		const observations = [];
 		function FakeMutationObserver(listener) {
 			callback = listener;
-			this.observe = function() { observed = true; };
+			this.observe = function(target, options) {
+				observed = true;
+				observations.push({ target: target, options: options });
+			};
 			this.disconnect = function() { disconnected++; };
 		}
 		return {
 			MutationObserver: FakeMutationObserver,
 			emit: function(records) { if (callback) callback(records); },
 			isObserved: function() { return observed; },
+			observations: function() { return observations.slice(); },
 			disconnectCount: function() { return disconnected; }
 		};
 	}
@@ -5540,16 +5598,22 @@ function assertThemeBehavior(src) {
 
 	function auroraDocument(media, observer) {
 		let mode = 'light';
+		let computedStyleCalls = 0;
+		const tabmenu = rootNode();
 		const tokens = {
 			light: {
 				'--brand': '#7c9082', '--brand-hover': '#7c9082',
 				'--brand-subtle': '#e8eae6', '--on-brand': '#ffffff',
-				'--text': '#1a1f2e', '--surface': '#ffffff', '--surface-overlay': '#fdfcf9'
+				'--text': '#1a1f2e', '--text-muted': '#7f7c70', '--text-subtle': '#99968a',
+				'--bg': '#fffefa', '--surface': '#faf9f5', '--surface-sunken': '#f8f7f3',
+				'--surface-overlay': '#fffefa', '--control-bg': '#fffefa'
 			},
 			dark: {
 				'--brand': '#7c9082', '--brand-hover': '#7c9082',
 				'--brand-subtle': '#1a1c1a', '--on-brand': '#ffffff',
-				'--text': '#f5f5f5', '--surface': '#121212', '--surface-overlay': '#161616'
+				'--text': '#f5f5f5', '--text-muted': '#a6a6a6', '--text-subtle': '#888888',
+				'--bg': '#101010', '--surface': '#121212', '--surface-sunken': '#0d0d0d',
+				'--surface-overlay': '#161616', '--control-bg': '#121212'
 			}
 		};
 		const body = {
@@ -5566,13 +5630,16 @@ function assertThemeBehavior(src) {
 		return {
 			body: body,
 			documentElement: html,
+			tabmenu: tabmenu,
 			setMode: function(nextMode) {
 				mode = nextMode;
 				body.backgroundColor = mode === 'dark' ? '#121212' : '#ffffff';
 				html.backgroundColor = body.backgroundColor;
 			},
+			getComputedStyleCalls: function() { return computedStyleCalls; },
 			defaultView: {
 				getComputedStyle: function(node) {
+					computedStyleCalls++;
 					return {
 						backgroundColor: node && node.backgroundColor || 'transparent',
 						getPropertyValue: function(name) { return tokens[mode][name] || ''; }
@@ -5582,7 +5649,9 @@ function assertThemeBehavior(src) {
 				MutationObserver: observer && observer.MutationObserver
 			},
 			querySelector: function(selector) {
-				return selector === 'link[href*="/luci-static/aurora/"]' ? {} : null;
+				if (selector === 'link[href*="/luci-static/aurora/"]') return {};
+				if (selector === '#tabmenu') return tabmenu;
+				return null;
 			}
 		};
 	}
@@ -5616,14 +5685,27 @@ function assertThemeBehavior(src) {
 	const auroraRoot = rootNode();
 	theme.applyRoot(auroraRoot, auroraDoc);
 	if (auroraRoot.attrs['data-lanspeed-color-mode'] !== 'light' ||
+	    auroraDoc.tabmenu.attrs['data-lanspeed-page-theme'] !== 'aurora' ||
 	    auroraRoot.styleValues['--lanspeed-action-text-safe'] !== 'rgb(26, 31, 46)' ||
 	    auroraRoot.styleValues['--lanspeed-action-hover-text-safe'] !== 'rgb(26, 31, 46)' ||
+	    !/^rgb\(/.test(auroraRoot.styleValues['--lanspeed-muted-text-safe'] || '') ||
+	    auroraRoot.styleValues['--lanspeed-muted-text-safe'] === 'rgb(127, 124, 112)' ||
+	    !/^rgb\(/.test(auroraRoot.styleValues['--lanspeed-subtle-text-safe'] || '') ||
 	    auroraRoot.styleValues['--lanspeed-normal-text-safe'] !== 'rgb(26, 31, 46)' ||
 	    auroraRoot.styleValues['--lanspeed-focus-color-safe'] !== 'rgb(124, 144, 130)') {
 		fail('theme.js must replace low-contrast Aurora light brand text with safe native text tokens');
 	}
+	if (auroraObserver.observations().some(function(entry) { return entry.options.subtree; })) {
+		fail('theme.js must not subscribe to live page subtree mutations');
+	}
+	const styleCallsBeforeLiveMutation = auroraDoc.getComputedStyleCalls();
+	auroraObserver.emit([{ type: 'childList', target: auroraRoot, removedNodes: [] }]);
+	if (auroraDoc.getComputedStyleCalls() !== styleCallsBeforeLiveMutation) {
+		fail('theme.js must ignore live page subtree mutations when watching shell-level theme changes');
+	}
 	auroraDoc.setMode('dark');
-	auroraObserver.emit([{ type: 'attributes', attributeName: 'data-darkmode', removedNodes: [] }]);
+	auroraObserver.emit([{ type: 'attributes', target: auroraDoc.documentElement,
+		attributeName: 'data-darkmode', removedNodes: [] }]);
 	if (auroraRoot.attrs['data-lanspeed-color-mode'] !== 'dark' ||
 	    auroraRoot.styleValues['--lanspeed-action-text-safe'] !== 'rgb(18, 18, 18)' ||
 	    auroraRoot.styleValues['--lanspeed-action-hover-text-safe'] !== 'rgb(18, 18, 18)' ||
@@ -5637,6 +5719,8 @@ function assertThemeBehavior(src) {
 	})) {
 		fail('theme.js releaseRoot must remove generated Aurora contrast tokens');
 	}
+	if (auroraDoc.tabmenu.attrs['data-lanspeed-page-theme'])
+		fail('theme.js releaseRoot must remove the Aurora page-chrome marker');
 
 	const lightMedia = mediaController();
 	const lightRoot = rootNode();
@@ -6324,7 +6408,8 @@ function assertConfigModelRewrite(src) {
 		'access_edge_mode', 'internet_view_mode', 'nss_low_rate_window_ms',
 		'nss_low_rate_high_watermark_bps', 'nss_fifo_target_delay_ms',
 		'nss_fifo_min_queue_packets', 'rate_compensation_factor',
-			'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges',
+		'enable_proxy_connections', 'mihomo_controller_port', 'mihomo_controller_secret',
+		'show_client_status', 'show_ipv6', 'hide_private_ipv6', 'hide_ipv6_ranges',
 		'collector_mode', 'max_clients', 'ifname', 'interface_include',
 		'interface_exclude', 'observe', 'enable_bpf', 'enable_conntrack_fallback'
 	];
@@ -6337,6 +6422,8 @@ function assertConfigModelRewrite(src) {
 	if (String(readableLabels.rate_collector_mode) !== '客户端网速模式' ||
 		String(readableLabels.access_edge_mode) !== '客户端总速率' ||
 		String(readableLabels.internet_view_mode) !== '互联网/路由视图' ||
+		String(readableLabels.enable_proxy_connections) !== '代理连接补全' ||
+		String(readableLabels.mihomo_controller_secret) !== 'Mihomo API 认证码' ||
 		String(readableLabels.enable_bpf) !== '启用 CPU 流量检测（BPF）') {
 		fail('configModel.js must present user-facing meanings instead of internal collector terminology');
 	}
@@ -6351,6 +6438,9 @@ function assertConfigModelRewrite(src) {
 		model.DEFAULTS.nss_fifo_target_delay_ms !== 50 ||
 		model.DEFAULTS.nss_fifo_min_queue_packets !== 8 ||
 		model.DEFAULTS.rate_compensation_factor !== '1.10' ||
+		model.DEFAULTS.enable_proxy_connections !== '1' ||
+		model.DEFAULTS.mihomo_controller_port !== 0 ||
+		model.DEFAULTS.mihomo_controller_secret !== '' ||
 		JSON.stringify(model.ACCESS_EDGE_MODES.map(item => String(item.label))) !== JSON.stringify([
 			'关闭精准检测', '仅后台验证（不用于显示）', '精准总速率（推荐）'
 		]) || JSON.stringify(model.INTERNET_VIEW_MODES.map(item => item.value)) !==
@@ -6362,6 +6452,11 @@ function assertConfigModelRewrite(src) {
 		model.parseFactor('1.001', model.LIMITS.rate_compensation_factor).valid ||
 		model.parseFactor('1.26', model.LIMITS.rate_compensation_factor).valid) {
 		fail('configModel.js must validate the NSS rate compensation factor without float coercion');
+	}
+	if (!model.parseBearerSecret('').valid || !model.parseBearerSecret('token-123').valid ||
+		model.parseBearerSecret('has space').valid || model.parseBearerSecret('line\nfeed').valid ||
+		model.parseBearerSecret('x'.repeat(1025)).valid) {
+		fail('configModel.js must validate an optional bounded HTTP Bearer secret');
 	}
 	if (model.parseInteger('1000ms', model.LIMITS.refresh_interval_ms).valid ||
 		model.parseInteger('499', model.LIMITS.refresh_interval_ms).valid ||
@@ -6375,13 +6470,15 @@ function assertConfigModelRewrite(src) {
 	const invalid = model.normalize({
 		refresh_interval_ms: 'oops', hide_ipv6_ranges: 'not-a-cidr',
 		ifname: [ 'bad name' ],
-		access_edge_mode: 'guess', internet_view_mode: 'ecm', enable_bpf: 'maybe'
+		access_edge_mode: 'guess', internet_view_mode: 'ecm', enable_bpf: 'maybe',
+		mihomo_controller_port: '65536', mihomo_controller_secret: 'has space'
 	});
 	if (invalid.valid || !invalid.errors.refresh_interval_ms ||
 		!invalid.errors.hide_ipv6_ranges || !invalid.errors.ifname ||
 		!invalid.errors.access_edge_mode ||
 		!invalid.errors.internet_view_mode ||
-		!invalid.errors.enable_bpf) {
+		!invalid.errors.enable_bpf || !invalid.errors.mihomo_controller_port ||
+		!invalid.errors.mihomo_controller_secret) {
 		fail('configModel.js must return field-scoped errors for malformed UCI values');
 	}
 	const edge = model.normalize({ access_edge_mode: 'active' });
@@ -6488,6 +6585,19 @@ function assertConfigModelRewrite(src) {
 	if (JSON.stringify(removedPortPatch.unset) !== JSON.stringify([ 'dedicated_port' ]) ||
 		Object.prototype.hasOwnProperty.call(removedPortPatch.set, 'dedicated_port'))
 		fail('configModel.js must clean the removed dedicated-port option on the next save');
+	const manualMihomoPatch = model.buildUciPatch(Object.assign({}, model.DEFAULTS, {
+		mihomo_controller_port: 9091, mihomo_controller_secret: 'manual-token'
+	}), {});
+	if (manualMihomoPatch.set.enable_proxy_connections !== '1' ||
+		manualMihomoPatch.set.mihomo_controller_port !== '9091' ||
+		manualMihomoPatch.set.mihomo_controller_secret !== 'manual-token')
+		fail('configModel.js must persist x86 Mihomo manual overrides through its owned UCI patch');
+	const automaticMihomoPatch = model.buildUciPatch(model.DEFAULTS, {
+		mihomo_controller_secret: 'old-token'
+	});
+	if (automaticMihomoPatch.unset.indexOf('mihomo_controller_secret') === -1 ||
+		Object.prototype.hasOwnProperty.call(automaticMihomoPatch.set, 'mihomo_controller_secret'))
+		fail('configModel.js must remove a manual secret when returning to OpenClash auto detection');
 	if (!src.includes('legacy-enum') || !src.includes('compatibility: true') ||
 		!src.includes('MAX_INTERFACE_NAMES'))
 		fail('configModel.js must explicitly identify compatibility fields and interface limits');
@@ -6847,6 +6957,13 @@ function assertIfaceConfigBehavior(src) {
 		if (!result || state.ifcfgState['br-lan'] !== 'collect' || state.ifcfgState.wan !== 'observe') {
 			fail('ifaceConfig.js scan must render the staged UCI selection instead of overwriting it with stale runtime flags');
 		}
+		const collectButton = state.ifcfgControls && state.ifcfgControls['br-lan'] &&
+			state.ifcfgControls['br-lan'].collect;
+		iface.render(state);
+		if (!collectButton || state.ifcfgControls['br-lan'].collect !== collectButton ||
+		    collectButton.attrs['aria-checked'] !== 'true') {
+			fail('ifaceConfig.js must update stable interface controls in place instead of rebuilding the table');
+		}
 		const before = cloneConfigRecord(state.ifcfgState);
 		const pending = iface.load(state);
 		const duplicate = iface.load(state);
@@ -6914,7 +7031,8 @@ function assertConfigFormRewrite(src) {
 	}
 	[ 'refresh_interval_ms', 'overview_window_samples', 'max_clients', 'enable_bpf',
 		'enable_conntrack_fallback', 'access_edge_mode', 'internet_view_mode',
-		'nss_low_rate_window_ms', 'nss_low_rate_high_watermark_bps', 'interface_exclude' ].forEach(name => {
+		'nss_low_rate_window_ms', 'nss_low_rate_high_watermark_bps', 'interface_exclude',
+		'enable_proxy_connections', 'mihomo_controller_port', 'mihomo_controller_secret' ].forEach(name => {
 		if (!src.includes(name)) fail(`configForm.js must preserve ${name} in the owned data contract`);
 	});
 	if (!src.includes("values.dedicated_port = uci.get('lanspeed', 'main', 'dedicated_port')") ||
@@ -6928,6 +7046,10 @@ function assertConfigFormRewrite(src) {
 	if (!src.includes("data-disabled") || !src.includes('hide_private_ipv6.disabled') ||
 		!src.includes('modeChoices('))
 		fail('configForm.js must implement dependent disabled states and capability-gated choices');
+	if (!src.includes("'type': 'password'") || !src.includes("'autocomplete': 'new-password'") ||
+		!src.includes('showProxyConnections') ||
+		!src.includes("_('留空自动读取 OpenClash 认证码"))
+		fail('configForm.js must render x86 Mihomo overrides as an explicitly gated password form');
 }
 
 function matchingConfigStatus(values) {
