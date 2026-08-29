@@ -90,6 +90,7 @@ ships. Locally it is all one command, `npm run check`; the full table of what ea
 | `a11y-gallery.mjs` | axe-core, WCAG 2.2 AA over `docs/gallery.html`, {light,dark} × {footstrap,hicontrast,bootstrap} × {untinted,60°,260°} — **18 combinations** |
 | `export-tier.mjs` | the `--*-color-*` contract with foreign apps — axe cannot see it, their widgets are not in the gallery. 42 palette × mode × tint combinations, then the six untinted ones again with `prefers-contrast: more` emulated, since that query re-states the ink tokens and so publishes a second tier |
 | `css-metrics.mjs` | ratchet: `!important` ≤ 27, max specificity, empty rules |
+| `css-floor.mjs` | the browser floor derived from the built sheet against the one stated in `docs/css.md`, plus the two shapes that break below it: a `:has()` compound sharing a selector list with one that has none, and a CSS feature nobody has classified |
 | `fs-orphans.mjs` | dead `fs-*` selectors (safe only inside our namespace) |
 | `css-dup.mjs` | identical declaration bodies under different guards — no linter calls this an error |
 | `mirror.mjs` | `@mirror`-pinned copies still byte-identical (CSS **and** shell) |
@@ -179,10 +180,13 @@ The steps:
    subscribers. Here two noarch packages ride as release assets and expand into no architectures, so
    the flag buys nothing and costs a red release on every OpenWrt point release. The committed lock
    still pins which SDK the host `apk` comes from, so the toolchain does not float.
-4. **Assert the catalogues are in the package.** It is compiled in and absent from git, and a
-   silently missing `.lmo` means every `_()` renders the English msgid with nobody reporting
-   anything. Counted against the number of languages in the tree, so adding a language and
-   forgetting is a red build rather than quiet English for some users.
+4. **Assert the catalogues.** A `.lmo` is compiled in and absent from git, and a silently missing
+   one means every `_()` renders the English msgid with nobody reporting anything. Each language
+   ships as its own `luci-i18n-footstrap-<lang>`, so the assertion is one catalogue named
+   `footstrap.<lang>.lmo` per language package, a uci-defaults line registering that language, and
+   **none in the theme** — two packages owning one path is an install apk refuses. Counted against
+   the languages in `po/`, so adding one and forgetting to declare its package is a red build
+   rather than quiet English for some users.
 5. **Flatten the packages into `dist/`** (owfeed writes `dist/noarch` and `dist/all`; apk derives
    the filename from name and version, so two architectures cannot share a directory). CI requires
    that the theme resolve to exactly one asset per format under a name-anchored regex
