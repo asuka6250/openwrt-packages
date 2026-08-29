@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.14.3] — 2026-08-29
 
 ### Changed
 
@@ -111,6 +111,10 @@
 - **The Status → Overview grid stopped being maintained after any client navigation, and now is not.** `fs-overview` binds its observer on the `data-page` stamp, exactly as `fs-appearance` did — and hits exactly the same fault: the router builds a fresh `#view` before inserting it and swaps it in afterwards, so the node bound at stamp time is an orphan. Measured over 12 seconds sitting on the page: 6 re-arranges on a full load, and **0** after one navigation away and back, silently, until the next full page load. Bound to `#maincontent` it is 6 either way. Found by asking whether the fault just fixed in `fs-appearance` had siblings; `fs-fit` was checked too and is fine, because it binds once at load rather than on the stamp.
 
 - **The pre-paint minifier's script-tag regexp no longer stops at the first spelling it expects.** It matched `<\/script>` literally and case-sensitively, so a `</script foo="bar">` or a `</SCRIPT>` — both of which browsers' parsers accept — would not end the block: `[\s\S]*?` ran on to the NEXT block's closing tag and the replacement swallowed every byte of template between the two. Demonstrated on a minimal case, where the old pattern returned one match spanning the markup and the new one returns two. Our templates are all lower case today and the output is byte-identical either way (8 blocks, 11,441 → 4,154 B), so this changes nothing that ships — it removes the assumption that they stay that way, which nothing enforces. Reported by CodeQL as `js/bad-tag-filter`; it is not a sanitiser and there is no XSS here, the cost is a silently mangled page at package time.
+
+- **A poll tick no longer leaves the reader 58px off where an anchoring engine put them.** The residual check refused to run unless the offset still equalled the reference it was taken at — but an engine that anchors moves the offset ITSELF to hold the reader over content that grew, measured on webkit/Overview as +658px against 600px of growth. Any offset that merely differed read as "the reader scrolled", so the engine's own residual (58px) was never corrected. It asks whether the page is STILL instead, over `SCROLL_IDLE`, the interval this file already defines as nobody scrolling: a frame is not long enough to tell the two apart, since a flick moves the offset in steps of tens of milliseconds and two rAFs fall inside one step. Measured across four stands and three engines: the 58px is gone on 25.12, and so is the 160px correction that used to land inside a flick on webkit/Overview at 1440.
+
+  Known and not fixed: ImmortalWrt 24.10 still reports the same 58px, and only when the whole sweep runs — growth, then a flick, then two swap passes. Reproduced by hand at that width, density and layout, the same sequence moves the reader 0px, the floor holds the document to within 1px and the engine lands the offset exactly. That stand was already red before this release, with a different finding (a 161px correction inside a flick), and no CI job measures it.
 
 ### Security
 
@@ -4151,6 +4155,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.14.3]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.13.5...v0.14.0
