@@ -362,6 +362,42 @@ If a change needs a real kernel — not this theme's usual case — a router can
 Every one of these cost a measurement that read as a regression in the theme. They are written down
 because each was hit more than once.
 
+**`docs/playground.html` draws Port status as STOCK, and that is the build's doing, not the theme's.**
+The whole port reskin in `styles/pages/20-overview.css` is scoped to
+`.ifacebox:has(img[src*="/port_"])`, and `tools/devkit-build.mjs` inlines every asset as a `data:`
+URI on its way into the page — so the icon's `src` no longer contains `/port_`, not one of those
+rules matches, and the tiles render as luci-mod-status shipped them: icon visible, name centred, zone
+bar unplaced. Reading that as "the reskin regressed" is the trap; the tiles are correct on a router
+and under `owlab`. Tell the two apart without leaving the browser — 0 on the playground, one per
+port on a real page:
+
+```js
+document.querySelectorAll('#view .ifacebox:has(img[src*="/port_"])').length
+```
+
+Everything else on that page — System, Memory, Storage, Network, DHCP, Wireless — is faithful, so the
+playground stays the cheap way to judge a card's typography. Only the port tiles are off.
+
+**`RPC call to uci/get failed: Access denied` on arrival is LuCI's, not the theme's.** It is thrown
+once, BEFORE the login form is submitted: `luci.js` asks for `uci get luci` with the all-zero session
+id and rpcd refuses, which is what it is supposed to do. It reads as a regression because a
+`pageerror` listener attached before the first navigation catches it and reports it against whatever
+was being measured. Prove whose it is by splitting the capture at the login — the same error appears
+on a stand carrying no local change:
+
+```
+before login: RPC call to uci/get failed with error -32002: Access denied
+after  login: none
+```
+
+**A page-scoped rule is invisible to `computed-diff` and `a11y`.** Both gates load
+`docs/gallery.html`, which carries no `body[data-page]`, so a rule written
+`body[data-page="admin-status-overview"] …` matches nothing there: the diff reports 0 differences and
+axe reports no violations, and neither has looked at the change. Green on such an edit means "not
+measured", not "no effect" — take the reading off the playground or a stand, and compute any contrast
+the rule introduces by hand. Measured this way for the Overview card restyle: `--fs-good` on
+`--fs-panel2` is 4.59:1 at its worst (footstrap/dark) across all four palettes, both modes.
+
 **`owlab sync` does not ship what a router gets.** It copies `htdocs/` and `ucode/` straight from the
 checkout and builds `cascade.css` with `--dev`: no minifier, no pre-paint minifier, no template
 strip, no token mangle, no PNG repack. Anything touching the build pipeline has to be measured on a
@@ -407,11 +443,20 @@ containers. Either take the stands down first, or assert the five `verify` thing
 running stand. If you do it by hand, log IN: an unauthenticated `curl` answers 403 and proves
 nothing.
 
-**Two live-audit findings are never the theme.** `/admin/services/banip/processing_log` prints the
-system log, and the log grows with every sync and restart done while working, so a long session
-manufactures its own findings — `owlab exec <stand> -- /etc/init.d/log restart` and re-measure (309
-lines gave 3 findings, 1 line gave none). `/admin/services/acme/logread` has a `textarea` with no
-accessible name in 25.12's app; 24.10 does not render it at all.
+**Reset the syslog BEFORE a live run, not after it reports.**
+`/admin/services/banip/processing_log` prints the system log as page content, so the page grows with
+every install, sync and `rpcd reload` done while working — a long session manufactures its own
+findings (309 lines gave 3, one line gave none). Treating that as something to diagnose afterwards
+costs a full re-run each time; it cost three in one session here. Put it in the run instead:
+
+```sh
+for c in owrt2512 owrt2410 owrtsnap; do
+    docker exec owlab-luci-theme-footstrap-$c /etc/init.d/log restart
+done
+```
+
+`/admin/services/acme/logread` has a `textarea` with no accessible name in 25.12's app; 24.10 does
+not render it at all.
 
 **A live gate that says "no owlab router is running" may be looking at the wrong PATH.** Every one
 of them shells out to `owlab status -json` (`tools/lib/stands.mjs`) and treats a failed spawn as
@@ -426,7 +471,27 @@ Target page, context or browser has been closed` with an empty `log: []` is the 
 SIGTERMed mid-run — `live-audit` over two routers is 113 page renders and does not fit in five
 minutes. The two apart: a real finding prints `path|width|kind|element` lines and a count; a
 killed run prints a Playwright stack. Never re-run it with a bigger timeout — that is what T2
-means: `tools/bg.sh`, report the run-id, read the log in a later turn.
+means: `tools/bg.sh`, report the run-id, and pair it with a waiter (below).
+
+**A detached run needs a waiter, or it is a run nobody reads.** `tools/bg.sh` calls `setsid`: the
+process outlives the shell that started it and nothing announces its end. The log and a `.status`
+file next to it are the whole interface, and `.status` appears only when the run is over — which
+makes "is it done?" a question you have to keep asking, and therefore one that gets forgotten. It
+was forgotten three times in a single session here, twice while somebody was waiting on the answer,
+each time for 15-30 minutes after the chain had already finished.
+
+Start the waiter in the same turn as the run, so finishing wakes you instead of you polling it:
+
+```sh
+tools/bg.sh sh -c '…'            # prints run-id and log path
+# then, as a background command of its own:
+until [ -f ../tmp/<run-id>.status ]; do sleep 30; done
+echo "exit: $(cat ../tmp/<run-id>.status)"; grep -E '^[a-z-]+:' ../tmp/<run-id>.log
+```
+
+The waiter costs nothing while the run is going and turns the result into an event. A run whose log
+nobody opened is not a green gate — that rule is older than this note; the waiter is what makes it
+practical to honour.
 
 **"It is the app's markup" is a claim, and switching the stand to bootstrap is how you check it.**
 A finding on a third-party page reads as the app's, and the reflex is to write it into the baseline.

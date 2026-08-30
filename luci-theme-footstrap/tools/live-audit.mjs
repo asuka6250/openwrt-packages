@@ -36,7 +36,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as pw from 'playwright';
-import { stands, login, menuPaths, DESTRUCTIVE, requireStands } from './lib/stands.mjs';
+import { stands, login, menuPaths, DESTRUCTIVE, requireStands, sealToRouter } from './lib/stands.mjs';
 import { classify, representatives, reportReduction, PINNED } from './lib/page-shapes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -123,7 +123,12 @@ const CHECK = function () {
 	};
 
 	const host = document.getElementById('view') || document.body;
-	const hostRight = host.getBoundingClientRect().right;
+	const hostRect = host.getBoundingClientRect();
+	const hostRight = hostRect.right;
+	/* A vertical scrollbar takes width from the content column but not from its border box, so a
+	 * page long enough to scroll measures differently from the same page that is not — which is why
+	 * a finding seen in CI need not reproduce on a stand. Reported with every overflow. */
+	const scrollbar = Math.round(window.innerWidth - document.documentElement.clientWidth);
 
 	/* 1. the document itself */
 	const docScroll = Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -139,7 +144,25 @@ const CHECK = function () {
 	for (const el of host.querySelectorAll('*')) {
 		if (!vis(el) || inScroller(el) || el.ownerSVGElement) continue;
 		const r = el.getBoundingClientRect();
-		if (r.width && r.right > hostRight + 1.5) out.push({ kind: 'overflow', el: label(el), by: Math.round(r.right - hostRight) });
+		if (!r.width || r.right <= hostRight + 1.5) continue;
+		/* THE NUMBER ALONE IS NOT ACTIONABLE. `table#packages (2)` says two pixels and nothing about
+		 * WHICH box is two pixels too wide — the element itself, or a parent it fills at 100%. That
+		 * is a day of guessing on a finding that does not reproduce off the runner, so the boxes are
+		 * printed with it: the element, the column it overflows, its parent, and whether a scrollbar
+		 * was taking width at the time. Only `by` carries this; the signature the baseline is keyed
+		 * on stays `path|width|kind|element`. */
+		const p = el.parentElement;
+		const pr = p ? p.getBoundingClientRect() : null;
+		const px = (n) => Math.round(n);
+		out.push({
+			kind: 'overflow',
+			el: label(el),
+			by: `${px(r.right - hostRight)}px  el ${px(r.width)}`
+				+ ` · host ${px(hostRect.width)}`
+				+ (pr ? ` · parent ${label(p)} ${px(pr.width)}` : '')
+				+ ` · ${getComputedStyle(el).boxSizing}`
+				+ (scrollbar ? ` · scrollbar ${scrollbar}` : ''),
+		});
 	}
 
 	/* 3. clipped: a non-scrolling box holding content wider than itself. Only the containers the
@@ -218,10 +241,37 @@ let checked = 0;
 await Promise.all(list.map(async (stand) => {
 	let here = 0;
 	const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+	await sealToRouter(ctx, stand.base);
 	const page = await ctx.newPage();
 	const errs = [];
-	page.on('pageerror', (e) => errs.push(String(e).replace(/\s+/g, ' ').slice(0, 120)));
-	page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().replace(/\s+/g, ' ').slice(0, 120)); });
+	/* A FETCH THAT FAILED IS NOT THIS THEME'S. The theme reaches no third-party host at run time —
+	 * that is a rule of the package, not an accident (CLAUDE.md; the one convenience tool that ever
+	 * wanted `curl` was refused over it) — so a console line about a resource that would not load,
+	 * or an app's own updater giving up on an HTTP status, can only belong to somebody else's code.
+	 *
+	 * They are dropped rather than baselined because the text carries the stand's own port
+	 * (`http://localhost:8024/…`), so a baseline entry would be keyed to a port and go stale the
+	 * moment owlab hands out a different one.
+	 *
+	 * Measured: `luci-app-ssclash` asks GitHub for the latest mihomo release on two of its pages,
+	 * and on a GitHub Actions runner — whose egress IP is shared and rate-limited — that answers
+	 * 403. Nine findings across three routers, none of them reproducible here, all of them the
+	 * runner's network rather than the page's markup. Anything that is not a network failure is
+	 * still recorded: a TypeError out of a view, an unhandled rejection, our own broken require. */
+	/* Every spelling a blocked or failed request reaches the console in. `Failed to fetch` is
+	 * Chromium's rejection of a fetch(), `Load failed` is WebKit's and `NetworkError` Firefox's;
+	 * `net::ERR_` is what stands.mjs's own seal produces when it aborts the request. An app may
+	 * wrap any of them in its own sentence, in its own language — ssclash says
+	 * `Не удалось получить последний релиз: TypeError: Failed to fetch` — so the match is on the
+	 * engine's words inside the line, never on the app's. */
+	const NETWORK_NOISE =
+		/Failed to load resource|Failed to fetch|Load failed|NetworkError|net::ERR_|ERR_INTERNET_DISCONNECTED|HTTP \d{3}\b/i;
+	const note = (text) => {
+		const line = text.replace(/\s+/g, ' ').slice(0, 120);
+		if (!NETWORK_NOISE.test(line)) errs.push(line);
+	};
+	page.on('pageerror', (e) => note(String(e)));
+	page.on('console', (m) => { if (m.type() === 'error') note(m.text()); });
 	await login(page, stand.base);
 
 	/* Baselines are per ENGINE as well as per router: a second engine finds different things (the

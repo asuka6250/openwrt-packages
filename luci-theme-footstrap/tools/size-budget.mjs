@@ -27,8 +27,14 @@ const LIMITS = {
 	 * token being declared per mode or the block does not fully apply.
 	 *
 	 * 125,795 B on 2026-08-27, down 1,051 B when the squeeze learned that `>` is a delimiter like
-	 * `{` and `,`: 516 child combinators were carrying a space either side. */
-	cascadeCss: 127_400,
+	 * `{` and `,`: 516 child combinators were carrying a space either side.
+	 *
+	 * 127,699 B on 2026-08-30, up 299 B for the Overview card restyle: the key/value dividers gone,
+	 * the label demoted below the figure it introduces, the active interface head saying "up" in the
+	 * status colour instead of a full-bleed accent fill, and the data tables one step tighter. All
+	 * of it keyed on the SHAPE of a table rather than on the three cards the grid used to name, so a
+	 * third-party include of the same shape gets it too. */
+	cascadeCss: 128_000,
 	/* The FLASH cost of the shipped modules, terser with top-level mangling: every module ships,
 	 * whether or not a given page loads it. 86,737 B on 2026-08-27.
 	 *
@@ -55,8 +61,23 @@ const LIMITS = {
 	 * address bar, the Android task-switcher card, an installed PWA's title bar — painted white over
 	 * a dark page, because the theme shipped no `<meta name="theme-color">` and a static one cannot
 	 * follow a palette. One observer on :root covers all 25 axes; a call in each applier would have
-	 * been the cheaper bytes and the more expensive rule. */
-	resourcesJs: 88_450,
+	 * been the cheaper bytes and the more expensive rule.
+	 *
+	 * 88,701 B on 2026-08-30, up 219 B for `swapIn()`: the router's commit is wrapped in a view
+	 * transition, so a navigation cross-fades where the browser has the API and cuts where it does
+	 * not. The bytes are the feature — there is no CSS-only form of it, the animation has to be
+	 * started from the one synchronous frame in the navigation. The 32 B ahead of it came in with
+	 * `fix(fit): see a table that grew past its parent`, which raised no budget.
+	 *
+	 * 89,347 B on 2026-08-30, up 646 B for the companion-package seam. Three parts, measured
+	 * separately: `fs-search` builds its result pool from its own index PLUS the functions on
+	 * `window.__fsSearchSources`, and calls a row's `onTake()` when it is chosen (427 B, and the
+	 * palette is lazy, so this half is flash only); the chrome requires whatever
+	 * `footstrap.settings.plugin` names (205 B); `fs-menutree` exports raw node presence, which is
+	 * what lets a plugin gate a command on the menu node carrying its ACL group (14 B). It buys
+	 * section search and the `:` command line WITHOUT either shipping in the theme — the first
+	 * consumer, `luci-app-footstrap-palette`, weighs 12,970 B and none of it is here. */
+	resourcesJs: 89_400,
 	/* …and this is what a cold page DOWNLOADS, which is the number that matters on a link the router
 	 * is also routing packets over: the set walked from the footer's two entry points
 	 * (tools/lib/page-modules.mjs, coldModules()). 73,918 B on 2026-08-27.
@@ -83,8 +104,23 @@ const LIMITS = {
 	 *
 	 * 55,474 B on 2026-08-29, up 474 B: `fs-prefs.js` is on the cold path and carries the
 	 * theme-color repaint the flash budget above spells out. Every page pays it because every page
-	 * is the one a phone may be showing. */
-	coldJs: 55_500,
+	 * is the one a phone may be showing.
+	 *
+	 * 55,749 B on 2026-08-30, up 219 B: `fs-router.js` is on the cold path and carries the view
+	 * transition around the swap that the flash budget above spells out; 30 B of the rise is the
+	 * table-overflow fix that preceded it.
+	 *
+	 * 55,968 B on 2026-08-30, up 219 B: the cold half of the companion-package seam the flash
+	 * budget above spells out — the chrome's require of the named plugins (205 B) and
+	 * `fs-menutree`'s new export (14 B). The 427 B in `fs-search` is NOT here, which is the whole
+	 * reason a source registers through a global instead of requiring the palette: a page where
+	 * nobody opens the palette must not download it.
+	 *
+	 * 56,018 B on 2026-08-30, up 18 B: `swapIn()` takes the view transition's `finished` promise as
+	 * well as `ready`. `finished` rejects with whatever the update callback threw, so leaving it
+	 * alone turns one fault into two console lines — measured on a page whose callback throws: two
+	 * `pageerror`s with only `ready` handled, one with both. */
+	coldJs: 56_060,
 };
 
 function bytes(path) {
