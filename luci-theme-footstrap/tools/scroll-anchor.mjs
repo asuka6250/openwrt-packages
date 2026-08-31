@@ -25,6 +25,7 @@
  * doing, and a gate that only fails when a station happens to join is not a gate.
  *
  *   node tools/scroll-anchor.mjs [--only owrt2512] [--engines chromium,firefox] [--full]
+ *   … [--width 390] [--layout top] [--bail]   one cell, stopping at the first finding
  *
  * The default sweep crosses the axes that were measured to change its answer; `--full` adds the
  * ones that were measured not to (see SCROLLERS and DENSITIES) and is what CI runs on a push.
@@ -43,6 +44,11 @@ const ENGINES = arg('engines', 'chromium').split(',').map((s) => s.trim()).filte
  * answers — see SCROLLERS and DENSITIES. CI crosses them on a push and a tag, where an hour is
  * affordable and a narrowing that turns out to be wrong is caught before a release. */
 const FULL = process.argv.includes('--full');
+/* Stop at the first finding. A full sweep is 144 cells and tens of minutes, so an answer that only
+ * arrives at the end is one nobody can iterate against — a fix attempt cost a whole sweep to learn
+ * it had failed in the third cell. CI never passes this: how WIDE a fault is is half of what the
+ * sweep says. */
+const BAIL = process.argv.includes('--bail');
 
 /* Three shapes, because the shape decides what the theme can anchor ON, and each of these breaks
  * differently:
@@ -82,9 +88,16 @@ const PAGES = arg('page', '/admin/status/overview,/admin/network/dhcp,/admin/sta
  * So the sweep crosses the two scrollers and keeps the narrow viewport, where the pages are three
  * times longer and there is most to scroll past. The other two combinations repeated a measurement
  * the first two had already made. */
-const SCROLLERS = FULL
-	? [ 1440, 390 ].flatMap((width) => [ 'side', 'top' ].map((layout) => ({ width, layout })))
-	: [ { width: 1440, layout: 'side' }, { width: 390, layout: 'side' } ];
+const SCROLLERS = (() => {
+	const all = FULL
+		? [ 1440, 390 ].flatMap((width) => [ 'side', 'top' ].map((layout) => ({ width, layout })))
+		: [ { width: 1440, layout: 'side' }, { width: 390, layout: 'side' } ];
+	/* `--width 390 --layout top` narrows the sweep to the cell a finding names, which is what turns
+	 * a fix attempt from a sweep into a minute. Neither is set in CI, where the axes above are the
+	 * contract. */
+	const w = arg('width', ''), l = arg('layout', '');
+	return all.filter((c) => (!w || String(c.width) === w) && (!l || c.layout === l));
+})();
 
 /* One density. The axis moves the geometry — type and spacing scale, so a section is a different
  * height and the fold falls elsewhere — but it does not move the ANSWER: across all 72 Overview
@@ -221,7 +234,7 @@ const HOLD = async (growth) => {
 	return { before, after, moved: after.top === null ? null : after.top - before.top,
 		scrollDelta: after.pos - before.pos, scroller: sc ? 'maincontent' : 'window' };
 
-	} finally { if (polling) poll.start(); }
+	} finally { /* the poll stays stopped — see the note on QUIET, which starts it again */ }
 };
 
 /* Runs in the page: a poll tick the way LuCI actually performs one — `dom.content()` empties the
@@ -392,11 +405,19 @@ const SWAP = async (growth) => {
 		floorClamped: floorOnly.skip ? null : floorOnly.clamped,
 		scroller: sc ? 'maincontent' : 'window' };
 
-	} finally { if (polling) poll.start(); }
+	} finally { /* the poll stays stopped — see the note on QUIET, which starts it again */ }
 };
 
 /* Runs in the page: a scripted flick up and down while ticks land, reporting any offset change the
  * wheel did not ask for. */
+/* THE POLL IS STARTED HERE AND NOWHERE ELSE, and the two cases before this leave it stopped rather
+ * than handing it back. `Poll.start()` calls `step()` SYNCHRONOUSLY (luci-base, luci.js), so a case
+ * that restores the poll on its way out fires a real tick into the case that runs next: measured in
+ * CI, HOLD returning the poll put a live tick under SWAP's floor measurement and the sweep reported
+ * `the content column's floor is not holding the document up`, 120px, on webkit/owrt2410 @390 top
+ * compact — a cell that is green at v0.14.2, green before that change and green again when it was
+ * reverted, on a theme those three builds share. This case WANTS ticks landing mid-flick, so it is
+ * the one that starts them. */
 const QUIET = async (growth) => {
 	const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 	const view = document.getElementById('view');
@@ -412,6 +433,17 @@ const QUIET = async (growth) => {
 	 * still — 400 ms of that and the theme is right to put the pending growth back, which is the
 	 * theme's contract and not a jump. So the travel is kept inside the page: a margin at each end,
 	 * and a step small enough that six of them fit between the two. */
+	/* The ticks this case measures against — see the note above. Started BEFORE the park and given
+	 * a tick's worth of time, because `Poll.start()` performs one synchronously: started later, that
+	 * first tick lands inside the flick this case is timing, and the sweep reports the jump it came
+	 * to look for. Measured in CI: `the offset moved on its own mid-flick (worst 145.5px)` on
+	 * firefox/owrt2410 @390 top compact, from starting the poll two statements further down. */
+	const poll = (window.L && window.L.Poll) || null;
+	if (poll && typeof poll.active === 'function' && !poll.active()) {
+		poll.start();
+		await wait(1500);
+	}
+
 	const edge = Math.max(80, Math.min(200, Math.round(room * 0.15)));
 	const lo = edge, hi = room - edge;
 	/* six steps out and six back, from the MIDDLE of that band: half the band is what one direction
@@ -467,7 +499,13 @@ const QUIET = async (growth) => {
 };
 
 const list = requireStands(stands(arg('only', ''), { all: process.argv.includes('--all') }), 'scroll-anchor');
+/* Printed as it is found, not held until the end: the first finding is the whole answer for someone
+ * iterating on a fix, and the list below is what says how many cells and which axes. */
 const findings = [];
+const found = (line) => {
+	findings.push(line);
+	process.stdout.write(`  FINDING ${line}\n`);
+};
 /* Cells whose page never loaded. They are NOT findings: this gate measures where the reader ends up
  * after a layout change, and a page that did not open measured nothing at all. Reported separately,
  * and fatal only in bulk — see UNOPENED_TOLERANCE below. */
@@ -517,6 +555,8 @@ for (const engine of ENGINES) {
 		for (const { width: w, layout } of SCROLLERS) {
 			for (const density of DENSITIES)
 			for (const noEngineAnchor of [ false, true ]) {
+				/* --bail: the cells after the first finding measure the same fix attempt again */
+				if (BAIL && findings.length) return;
 				const ctx = await browser.newContext({ viewport: { width: w, height: 844 } });
 				await sealToRouter(ctx, stand.base);
 				/* the Safari path, forced: `fsEngineAnchor=off` makes fs-fit believe the platform has
@@ -576,13 +616,13 @@ for (const engine of ENGINES) {
 				if (held.moved === null)
 					findings.push(`${where}: the reader's element was replaced mid-measurement, so nothing was proven`);
 				else if (Math.abs(held.moved) > TOLERANCE)
-					findings.push(`${where}: ${GROWTH}px grew above the reader and the page moved ${held.moved}px under them`);
+					found(`${where}: ${GROWTH}px grew above the reader and the page moved ${held.moved}px under them`);
 				if (swap.skip)
 					process.stdout.write(`  ${where}: the swap measured nothing (${swap.skip})\n`);
 				else if (swap.moved === null)
-					findings.push(`${where}: the reader's element did not survive the swap, so nothing was proven`);
+					found(`${where}: the reader's element did not survive the swap, so nothing was proven`);
 				else if (Math.abs(swap.moved) > TOLERANCE)
-					findings.push(`${where}: a section was refilled the way a poll refills one and the page moved `
+					found(`${where}: a section was refilled the way a poll refills one and the page moved `
 						+ `${swap.moved}px under the reader (the engine clamped ${swap.clamped}px of offset away)`);
 				/* The floor is judged on the CLAMP, not on the movement, and only where the theme owns the job:
 				 * with the correction switched off nobody compensates the pad the probe grows, so the
@@ -591,10 +631,10 @@ for (const engine of ENGINES) {
 				 * compensation rather than a clamp — 629px of it, and the reader still level — so it is
 				 * printed rather than judged. */
 				if (noEngineAnchor && swap.floorClamped !== null && swap.floorClamped !== undefined && swap.floorClamped > TOLERANCE)
-					findings.push(`${where}: with the correction switched off the engine clamped `
+					found(`${where}: with the correction switched off the engine clamped `
 						+ `${swap.floorClamped}px away — the content column's floor is not holding the document up`);
 				if (quiet.unexplained)
-					findings.push(`${where}: the offset moved on its own ${quiet.unexplained} time(s) mid-flick (worst ${quiet.biggest}px) `
+					found(`${where}: the offset moved on its own ${quiet.unexplained} time(s) mid-flick (worst ${quiet.biggest}px) `
 						+ '— a correction landing inside a scroll is itself a jump');
 				process.stdout.write(`  ${where}  reader moved ${held.moved}px (scroll ${held.scrollDelta >= 0 ? '+' : ''}${held.scrollDelta}, `
 					+ `${held.scroller})  swap moved ${swap.skip ? '-' : swap.moved + 'px'}`

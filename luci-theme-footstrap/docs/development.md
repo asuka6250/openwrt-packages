@@ -362,6 +362,42 @@ If a change needs a real kernel — not this theme's usual case — a router can
 Every one of these cost a measurement that read as a regression in the theme. They are written down
 because each was hit more than once.
 
+**`Poll.start()` fires a tick synchronously, so a probe that hands the poll back poisons the probe
+after it.** luci-base's `start()` sets the interval and then calls `step()` on the spot, which means
+restoring the poll on the way out of one measurement drops a real tick into the beginning of the
+next. `scroll-anchor`'s HOLD case did exactly that for two days: SWAP then measured the content
+column's floor while a live tick was rewriting the sections under it, and CI reported `the content
+column's floor is not holding the document up`, 120px, on webkit/owrt2410 @390 top compact. The
+theme was not involved — the same cell is green at v0.14.2 and on every build without that change,
+and the finding follows the PROBE across four runs. The stopped poll now stays stopped until QUIET,
+the one case that wants ticks landing mid-flick, starts it. Tell this apart from a theme fault by
+the shape: a floor finding that only CI sees, on a cell a local repeat cannot reproduce.
+
+**A hand-written replay of a probe is not the probe, and on the anchor sweep it was green six times
+over a fault that was real.** Chasing `scroll-anchor`'s webkit finding, six standalone scripts
+replayed what the gate does — the same park, the same HOLD, the same swap, the gate's own way of
+picking its mark, the poll left running — and every one of them measured 0px while the gate went on
+reporting -12px on that cell. What differed was never found, and looking for it cost more than the
+fault did. Measure INSIDE the gate: copy `tools/scroll-anchor.mjs` into `../tmp/`, add an rAF
+sampler that records `scrollY`, `fit.restAt()` and the theme's own reference, and print it from the
+branch that raises the finding. That is what showed `_restAt` and `_rest.top` describing different
+pages, which no replay reproduced.
+
+**`owlab` can be absent from `PATH` while every stand is up.** The containers are started by
+whatever ran `owlab up` last; the CLI lives with that runner, not with the checkout. Gates that
+enumerate routers do it through `owlab status -json` (`tools/lib/stands.mjs`), so with the binary
+missing they find no routers and SKIP — `install-check` says so out loud, the sweeps just measure
+nothing. `docker ps --format '{{.Names}}\t{{.Ports}}'` tells them apart in one line: containers
+running means the ports are there and only the CLI is gone. A shim that answers `status -json` with
+those ports is enough to run any of them locally, and it belongs in `../tmp/`, never in the tree.
+
+**Anchor findings that move between runs are the sweep measuring three routers at once.** Since the
+stands were parallelised the same push has reported 8 findings, then 1, then a WebKit internal
+error, with cells that skip in one run and measure in the next — the routers grow their own tables
+under the probe. A finding is only a finding when the same cell repeats it: `--only <one stand>`
+plus three passes, which is now a minute with `--width`/`--layout`. The ones that survived that test
+were real; the ones that did not never reproduced alone.
+
 **`docs/playground.html` draws Port status as STOCK, and that is the build's doing, not the theme's.**
 The whole port reskin in `styles/pages/20-overview.css` is scoped to
 `.ifacebox:has(img[src*="/port_"])`, and `tools/devkit-build.mjs` inlines every asset as a `data:`
