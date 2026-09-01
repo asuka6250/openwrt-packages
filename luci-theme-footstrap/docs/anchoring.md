@@ -30,7 +30,7 @@ taken while it is empty clamps the reader's offset into a document that was neve
 and nothing puts that back. So each container a poll empties carries a `min-height` at the height it
 had at the last settled moment, written BEFORE the tick rather than during it.
 
-Three things about it are load-bearing and each was a measured failure first:
+Seven things about it are load-bearing and each was a measured failure first:
 
 - **On the containers, not on the column.** `min-height` on an ancestor of the engine's own anchor
   suppresses the engine's anchoring (css-scroll-anchoring-1 §2.2.2), so a floor on the column bought
@@ -47,7 +47,38 @@ Three things about it are load-bearing and each was a measured failure first:
   Network → Interfaces the hidden `device` pane held 893px and the active pane's content sat that
   far down the page (issue #41). The clear-and-remeasure shape this replaced read the collapsed
   height and wrote nothing; refusing a zero-height box restores that, and gives the same answer for
-  a container a tick has just emptied — whose floor is already standing.
+  a container a tick has just emptied — whose floor is already standing. It still fires on a box
+  that is zero-height while VISIBLE: 4 of them over an 80-page sweep of owrt2512, on Overview and on
+  a third-party settings page.
+- **Measured to the end of the CONTENT, not to the last element.** A box whose content ends in text
+  ends below its last element: `.cbi-section-descr` on /admin/network/dhcp measured 115px against
+  the 156px it stands at, and a floor 41px short is a document free to shrink under the reader
+  during the tick the floor exists for. The tail after the last element is measured with a Range;
+  `selectNodeContents()` over the WHOLE box is not what ships — it takes in whatever is out of the
+  flow and writes a floor 98px TALLER than the box on the Overview, which is the same blank page
+  seen from the other side. Held to the old shape's answer by `tools/floor-contract.mjs`: 33 floors
+  on owrt2512, worst 2px against what `offsetHeight` says.
+- **Taken off a box that empties for good.** The floor survives the pass that empties a container —
+  that is the whole mechanism — but a container still empty on the NEXT pass is not refilling, and
+  its floor is then blank page nothing takes back: 1299px on Network → Interfaces, with the document
+  standing at 1720px around no content at all. Two parts, and each was measured to be necessary on
+  its own. A box qualifies for a floor through its CHILDREN, so emptying it takes it out of
+  `SHRINKS` and the sweep can no longer even see the floor it wrote — hence `data-fs-floor`, and a
+  sweep that looks for its own mark. And the second pass has to be SCHEDULED: every other pass is
+  driven by the MutationObserver on `#view`, and a page that has stopped changing produces no
+  further mutation, so "clear it next pass" never gets a next pass. One poll interval
+  (`L.env.pollinterval`, 5 s by default) is the wait, because that is how long a container that is
+  genuinely refilling may take.
+- **Given back when the box goes out of sight.** Refusing to write a floor is not enough once one is
+  standing: `min-height` beats the `height: 0` an inactive tab pane is collapsed with, so a pane the
+  reader leaves keeps the height it had while open and the tab they switched to starts below it —
+  1265px of dead page on Network → Interfaces at 25.12, 1114px at 24.10, the document at 2308px
+  against 1043 (issue #41). Such a box also measures a height of its own, which is why the check
+  above cannot see it. The floor is cleared where the resolved `visibility` is `hidden` — which
+  inherits, so it covers every box inside a collapsed pane — and re-measured on the tick after the
+  pane comes back. This is what the clear-and-remeasure shape did for free by clearing every floor
+  each tick; measured on the stand, one build per version: 1043px on v0.14.3, 3201 on v0.14.4, 2308
+  on v0.14.5.
 
 ## What the reader was looking at: `anchorRef()` and the memo
 

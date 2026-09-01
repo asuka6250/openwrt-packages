@@ -99,8 +99,25 @@ const LIMITS = {
 	 * 89,989 B on 2026-08-31, up 298 B: the Appearance tab names the translation package when the
 	 * router has not got it — the other half of issue #41, since the catalogues are their own
 	 * packages now and nothing else on a router can say which one is missing. `fs-appearance` is
-	 * required on ONE page, so this is flash rather than a cold download. */
-	resourcesJs: 89_989,
+	 * required on ONE page, so this is flash rather than a cold download.
+	 *
+	 * 90,149 B on 2026-09-01, up 160 B: a box the reader cannot see gives its floor back, so a tab
+	 * pane stops carrying the height it had while it was open — 1265px of dead page on Network ->
+	 * Interfaces, and the reader's tab starting below it (issue #41 again). The style the climb
+	 * already resolves is kept rather than re-read, and the pass carries one more array.
+	 *
+	 * 90,690 B on 2026-09-01, up 541 B: the floor is measured to the end of the CONTENT and is given
+	 * back when a container empties for good — 41px of floor missing under the reader on
+	 * /admin/network/dhcp, 1299px of it holding blank page on Network -> Interfaces. Three parts, and
+	 * `tools/floor-contract.mjs` measures each: a Range over the tail after the last element, the
+	 * `data-fs-floor` mark that lets the sweep find a floor whose box has left the selector, and the
+	 * one scheduled second pass, without which nothing revisits a page that has stopped mutating.
+	 *
+	 * 90,978 B on 2026-09-01, up 288 B: a table inside a box the APP scrolls is left as a table
+	 * (docs/third-party-apps.md rule 9) — luci-app-filemanager's listing came out as cards on a
+	 * 1280px screen with 1224px of column beside it. A walk from the table to the content root,
+	 * asked once per decision. */
+	resourcesJs: 90_978,
 	/* …and this is what a cold page DOWNLOADS, which is the number that matters on a link the router
 	 * is also routing packets over: the set walked from the footer's two entry points
 	 * (tools/lib/page-modules.mjs, coldModules()). 73,918 B on 2026-08-27.
@@ -152,8 +169,14 @@ const LIMITS = {
 	 * 56,270 B on 2026-08-31, up the same 141 B as the flash budget: `fs-fit.js` is on the cold path
 	 * and carries the whole anchoring fix — every page is one a poll tick can move under the reader.
 	 *
-	 * 56,298 B on 2026-08-31, up the same 28 B: the floor lives in `fs-fit.js`, on the cold path. */
-	coldJs: 56_298,
+	 * 56,298 B on 2026-08-31, up the same 28 B: the floor lives in `fs-fit.js`, on the cold path.
+	 *
+	 * 56,458 B on 2026-09-01, up the same 160 B: releasing that floor is in `fs-fit.js` too.
+	 *
+	 * 56,999 B on 2026-09-01, up the same 541 B: still `fs-fit.js`, still on every page.
+	 *
+	 * 57,287 B on 2026-09-01, up the same 288 B: `fs-fit.js` and `fs-select.js`, both cold. */
+	coldJs: 57_287,
 };
 
 function bytes(path) {
