@@ -1,3 +1,28 @@
+## [Unreleased]
+
+### Added
+
+- **One word per state in the Defaults row, and "default" is not one of them.** The three buttons are `Save to router`, `Reset to router` and `Reset to built-in`, under a `Saving` section and a `Saved look` caption. "default" used to name the router's stored look in "Save as default" and the theme's built-in one in "Reset to default", while the router's look also answered to "saved" in "Reset to saved" — three names for two states, and the forum asked outright what the difference between the two resets was (topic 251930, post 92). The row now reads as one save and two resets over two named states. A zero-height spacer keeps the destructive reset off the save button's elbow, since the two differ by a single word; both resets still ask for a second click.
+
+
+- **The Appearance page says where saving is, at both places the question is asked.** Two lines above the controls — Footstrap theme settings apply at once and are stored permanently in this browser, and the Save & Apply footer under them belongs to the System form — plus one clause per button under the Defaults row: what "Save as default" stores on the router, and which state each of the two resets lands in. Both came from the same forum thread (topic 251930, posts 83 and 90), and the second half is the half a banner cannot do: with all three buttons named "save"/"reset", the row never said that "Reset to saved" follows the router while "Reset to default" restores the theme's built-in look. 613 B of shipped JS, almost all of it the sentences themselves; a cold page downloads none of it, `fs-appearance.js` being fetched only by the System page.
+
+## [0.14.9] — 2026-09-02
+
+### Added
+
+- **A gate that reads the placeholder ink back, because axe-core does not.** `tools/placeholder-ink.mjs` (`npm run placeholder`, in `check:slow`). Every `placeholder` attribute and every `li[placeholder]` row on `docs/gallery.html`, over all eight palette/mode combinations: the hint must have travelled at least 40% of the way from the field's own ink to its fill in light and 30% in dark (oklab lightness), and still measure 3:1 on that fill. Every combination runs a second time under `prefers-contrast: more`, where the query hands the AA ink back and the two thresholds swap. 3:1 rather than AA's 4.5 is the argument itself — the reported fault is one end, an unreadable hint the other, and a hint that clears AA has not moved far enough to stop reading as a value. `a11y` is excluded from the `li[placeholder]` row for the same decision: axe measures that row as text and skips the attribute carrying the same ink, so its rule reaches half of it. axe-core's colour-contrast rule skips `::placeholder` entirely, so nothing else could see the fault, and the ink was legal by every threshold the theme already measured. It found a second one on its first run: the dropdown's own placeholder colour had never applied.
+
+### Changed
+
+- **The placeholder is a fourth ink now, not the body one.** `--fs-placeholder`, mixed from `--fs-text` toward the field's fill in oklch — 55% in light, 64% in dark. `--fs-dim` and `--fs-faint` are weights of a VALUE, and at 11.12:1 and 9.42:1 against the value's own 14.84:1 on footstrap light they are three blacks; the new ink lands at 3.99-4.48:1, 43-44% of the way from the value to the field, and at 3.43-6.05:1 and 33-35% in dark, where the ink starts at 6.45:1 and the same percentage would buy a hint nobody can read. This is the one token the theme ships deliberately under AA — a hint mistaken for a value makes a reader configure the wrong thing, while a hint at 3.43:1 makes them look twice, and the AA-clearing mixes moved only 37% and 20% of the range: the same fault, quieter. 3:1 (SC 1.4.11) is the line not crossed. `prefers-contrast: more` buys the AA ink back in both modes, that reader having said which of the two they want. Static twin in `04-nocolormix.css`.
+
+- **`gh api` is a read the session takes without asking, and the four posting paths stay denied.** It sat in `permissions.deny` next to `gh pr comment`, `gh pr review`, `gh issue comment` and the two MCP review calls, but the fence those five hold is "a review finding is answered in the DIFF, never in a comment" — `gh api` is how a CI run's log, a check's conclusion and a review's threads are read at all, and denying it turned every `gh run view` follow-up into a prompt. Moved to `permissions.allow`; the pattern is `Bash(gh api:*)`, so a POST through it is not fenced and the rule against commenting is held by CLAUDE.md and `/upstream-pr` rather than by the matcher.
+
+### Fixed
+
+- **A placeholder no longer reads as a value the reader typed.** LuCI writes an option's DEFAULT into the `placeholder` attribute (`form.Value.placeholder`: 128 for the log buffer, 514 for the log port) and renders an unset dropdown as a `li[placeholder]` row; both were drawn in the body inks, so the Local and Remote Ports fields looked like they held those numbers — two readers reported it against 0.14.8 (forum topic 251930, posts 82-83). Both now take `--fs-placeholder`. The dropdown row needed more than a token: `.cbi-dropdown > ul > li[placeholder]` (0,2,2) lost to the menu row's own `color: var(--fs-text)` (0,3,2), so that rule had never applied on a form dropdown and the row rendered in the value's ink in both modes. It repeats the row rule's two selectors and wins on specificity.
+
 ## [0.14.8] — 2026-09-02
 
 ### Added
@@ -4342,6 +4367,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.14.9]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.8...v0.14.9
 [0.14.8]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.7...v0.14.8
 [0.14.7]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.6...v0.14.7
 [0.14.6]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.5...v0.14.6

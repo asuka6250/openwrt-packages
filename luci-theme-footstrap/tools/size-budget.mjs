@@ -137,8 +137,32 @@ const LIMITS = {
 	 * reference taken before the tick and put back after it, instead of the natural-height reader,
 	 * the deferred empty sweep and the two late corrections 0.14.4-0.14.6 grew on top of it. What
 	 * stays out of the revert is the floor's own bookkeeping: the climb off a table box, the
-	 * `data-fs-floor` mark the sweep finds its own work by, and the tab-switch observer. */
-	resourcesJs: 89_825,
+	 * `data-fs-floor` mark the sweep finds its own work by, and the tab-switch observer.
+	 *
+	 * 90,090 B on 2026-09-02, up 265 B, and almost all of it is the two sentences themselves: the
+	 * Appearance page now says where saving is. Its tab is mounted inside the stock System form, so
+	 * LuCI's own Save & Apply footer sits under a page it does not save, and readers took it for the
+	 * button that stores what they had just changed (forum topic 251930). The alternative was
+	 * cheaper in bytes and worse: the ones who misread it are the ones who never reach the Defaults
+	 * section where the real button is. `fs-appearance.js` is NOT on the cold path — only the System
+	 * page fetches it — so the download budget below does not move.
+	 *
+	 * 90,438 B on 2026-09-02, up another 348 B: the same page now also says what each of the three
+	 * Defaults buttons does, one clause each, under the buttons themselves. Two of them are resets
+	 * and all three read as "save"/"reset", so the row never said which state each lands in — asked
+	 * outright on the forum (topic 251930, post 90: "what is the difference on 'reset to saved' and
+	 * 'reset to default'?"). Help belongs at the control that raises the question, which is why this
+	 * is three sentences at the buttons rather than a longer banner at the top. Still off the cold
+	 * path, still 54.8 KB downloaded.
+	 *
+	 * 90,497 B on 2026-09-02, up 59 B: the three buttons are renamed. "default" named the router's
+	 * look in "Save as default" and the theme's in "Reset to default", while the router's look also
+	 * answered to "saved" — three names for two states, and the forum asked what the difference
+	 * was (topic 251930, post 92). One word per state now: `router` and `built-in`. The rise is the
+	 * longer labels plus the spacer that keeps the destructive reset off the save button's elbow;
+	 * the CSS side paid for itself by dropping a margin rule that duplicated
+	 * `.cbi-value-description`'s own. */
+	resourcesJs: 90_497,
 	/* …and this is what a cold page DOWNLOADS, which is the number that matters on a link the router
 	 * is also routing packets over: the set walked from the footer's two entry points
 	 * (tools/lib/page-modules.mjs, coldModules()). 73,918 B on 2026-08-27.
