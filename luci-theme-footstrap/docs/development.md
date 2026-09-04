@@ -414,6 +414,42 @@ live gates on two schemes and one of them has a self-signed certificate. Compari
 `uci set luci.main.mediaurlbase='/luci-static/bootstrap'`, which needs no reinstall: the fallback
 theme is already on the router (`uci-defaults`).
 
+**A question gated on `/proc/mtd` or on the overlay mount line has no answer on a stand, and the
+stand fails it silently — as a missing control, which reads as the theme having hidden one.**
+luci-mod-system's flash page adds "Reset to defaults" only when `/proc/mtd` names `rootfs_data` or
+`/proc/mounts` carries `overlayfs:/overlay / ` (`view/system/flash.js`), and both reads go through
+`fs.trimmed()`, which is `L.resolveDefault(read(path), '')`: a missing file or a denied read
+degrades to an empty string and the page renders complete, one control short, with no error. In a
+container `/proc/mtd` does not exist and the root line reads `overlay / overlay …` from Docker's own
+overlay2 driver, so the button is absent under footstrap AND under `/luci-static/bootstrap` — which
+is the measurement that tells the two apart, and the one to run first. Feed the data rather than
+trust the stand: intercept the ubus reply and re-read the DOM.
+
+```js
+// playwright, on the context: the endpoint is /ubus/, the body a batched JSON-RPC array
+await ctx.route('**/ubus/**', async route => {
+	const body = JSON.parse(route.request().postData() || '[]');
+	const ids = new Set(body.filter(i => i.params?.[1] === 'file' && i.params?.[2] === 'read'
+		&& i.params?.[3]?.path === '/proc/mounts').map(i => i.id));
+	if (!ids.size) return route.continue();
+	const response = await route.fetch(), json = await response.json();
+	for (const i of json) if (ids.has(i.id) && typeof i.result?.[1]?.data === 'string')
+		i.result[1].data += '\noverlayfs:/overlay / overlay rw,noatime,lowerdir=/,'
+			+ 'upperdir=/overlay/upper,workdir=/overlay/work 0 0\n';
+	await route.fulfill({ response, json });
+});
+```
+
+**More than about ten unthrottled ubus calls in flight at once exhaust the stand's uhttpd, and
+every request on the router then reports HTTP status 0 — which reads exactly like the outage the
+probe was built to catch.** `uhttpd` on a stand runs with a small worker/connection pool (`-n 50`,
+and far fewer in practice); a probe that fires a call every 8 ms without waiting for the previous
+one to settle self-DoSes it, and 98% of its own samples fail regardless of what it was measuring.
+`/etc/init.d/uhttpd restart` clears it. Tell the two apart by the base rate: a real rpcd window is
+rare (~10% of reloads) and narrow (≤55 ms), a self-inflicted one is nearly every sample and does not
+stop when the event under test does. Poll serially — re-fire the moment the previous call settles,
+which is a natural 42–85 ms on this stand — rather than on a timer.
+
 **A layout fault can be invisible on one release line because that luci-base happens to mutate the
 page, not because the theme is right.** The poll floor left on an outgoing tab pane (issue #75,
 `docs/anchoring.md`) reproduces on 25.12 — 2432px of blank above System → Startup's textarea, for
@@ -545,6 +581,28 @@ run it by path: `owlab exec <stand> -- sh /www/_probe.sh`.
 containers. Either take the stands down first, or assert the five `verify` things by hand on a
 running stand. If you do it by hand, log IN: an unauthenticated `curl` answers 403 and proves
 nothing.
+
+**`owlab up` can fail to rebuild the full five-router set, and the failure looks like the theme's
+containers are gone.** The 24.10 leg dies in the image build on opkg index drift:
+
+```
+opkg_install_pkg: Checksum or size mismatch for package bash
+target owrt2410: failed to solve: … exit code: 255
+```
+
+Docker's build cancels the ImmortalWrt and snapshot legs the moment that one fails, so one stale
+index entry takes down a run that was asked to rebuild all five. **Do not take the running stands
+down while `up` is broken this way** — a `--rebuild` or a plain `up` that fails partway may not
+hand them back, and there is no volume to recover from. The way round it, used for the 0.14.10
+pre-tag matrix: `owlab test --release <version> --install <artifact> --assert …` synthesises its
+own router and reads no `owlab.yaml`, so it needs no image rebuild at all. Run it from a scratch
+directory rather than the checkout — the containers are named after the cwd, so this also keeps it
+from colliding with (or replacing) the project's own stands:
+
+```sh
+mkdir -p ../tmp/owlab-test-pretag && cd ../tmp/owlab-test-pretag
+owlab test --release 25.12.4 --install '/path/to/dist/noarch/luci-theme-footstrap-*.apk' --assert …
+```
 
 **Reset the syslog BEFORE a live run, not after it reports.**
 `/admin/services/banip/processing_log` prints the system log as page content, so the page grows with
