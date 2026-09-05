@@ -68,7 +68,21 @@ const LIMITS = {
 	 * theme and a new palette costs nothing for it. The limit follows the number DOWN rather than
 	 * banking the room: a ratchet that keeps slack it did not earn is not a ratchet. 127,600 leaves
 	 * the same ~500 B of head-room this budget has always run on. */
-	cascadeCss: 127_600,
+	/* 126,595 B on 2026-09-05, down 432 B: four components whose selectors could not join the
+	 * text-input group's ring without changing what they match (a pseudo-element, the legacy
+	 * `.cbi-select` shell, two `:focus-within` containers) stopped restating the same two
+	 * declarations and share one body each for the plain and the invalid state. Bytes were the
+	 * smaller half of it — nothing before this stopped someone changing the ring on `select` and
+	 * leaving the checkbox behind. Limit 127,100, the usual ~500 B. */
+	/* 126,194 B on 2026-09-05, down 401 B for three cuts that move no computed value: the five
+	 * palettes that declared --fs-accent-soft at the SAME 10% the default already carries stopped
+	 * repeating it (the dark blocks at 14%/15% genuinely differ and stayed); 44 six-digit hexes
+	 * that were three-digit; and -webkit-appearance, whose unprefixed form ships at Chrome 84 /
+	 * Firefox 80 / Safari 15.4, all at or below this theme's floor. The mask prefixes were checked
+	 * in the same pass and KEPT: unprefixed masking ships only from Chrome 120 against a floor of
+	 * 108 — docs/css.md now carries that table so the next reader does not drop them from memory.
+	 * Limit 126,700. */
+	cascadeCss: 126_700,
 	/* The FLASH cost of the shipped modules, terser with top-level mangling: every module ships,
 	 * whether or not a given page loads it. 86,737 B on 2026-08-27.
 	 *
@@ -209,7 +223,12 @@ const LIMITS = {
 	 * below moves by exactly this much); the remaining 321 B is page-only — `fs-axes.js`'s
 	 * snapshot/reset/default wiring and `fs-appearance.js`'s picker group. The limit goes to
 	 * 91,200, 105 B of head-room. */
-	resourcesJs: 91_200,
+	/* 90,880 B on 2026-09-05, down 320 B: string literals that repeated inside one module became
+	 * a module-level const. This is worth doing HERE and nowhere else in the industry's advice:
+	 * uhttpd serves these files with no compression, so identity bytes are wire bytes, and terser
+	 * has no pass that folds duplicate literals. Loader pragmas (`require fs-fit as fit`) are the
+	 * biggest repeats in the tree and are untouchable - they are code. Limit 91,380. */
+	resourcesJs: 91_380,
 	/* …and this is what a cold page DOWNLOADS, which is the number that matters on a link the router
 	 * is also routing packets over: the set walked from the footer's two entry points
 	 * (tools/lib/page-modules.mjs, coldModules()). 73,918 B on 2026-08-27.

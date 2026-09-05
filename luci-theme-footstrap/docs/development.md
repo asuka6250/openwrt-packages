@@ -450,6 +450,45 @@ rare (~10% of reloads) and narrow (≤55 ms), a self-inflicted one is nearly eve
 stop when the event under test does. Poll serially — re-fire the moment the previous call settles,
 which is a natural 42–85 ms on this stand — rather than on a timer.
 
+**A "does this style reach the page?" probe lies in three ways, and all three say the same thing:
+the rule is fine and the measurement is not.** Verifying today's CSS on a live stand produced three
+false negatives in a row. The theme's controls transition (`transition: box-shadow var(--fs-dur)`,
+150 ms), so a computed style read immediately after `.focus()` samples the START of the animation —
+`oklab(0 0 0 / 0) 0px 0px 0px 0px`, a transparent ring — and reads as "no ring applied"; wait past
+the duration and it is `color(srgb 0.035 0.41 0.85 / 0.1) 0 0 0 3px`, exactly `--fs-focus-ring`. A
+page's only native `<select>` is `display: none`, because LuCI replaces every CBI select with a
+`.cbi-dropdown` widget, so focusing it measures nothing — mount a raw one, which is also what a
+third-party app outside the CBI form does. And a modern Chromium aliases `-webkit-mask-image` onto
+the standard property in the CSSOM, so `cssText` never shows the prefix: that check is textual,
+against the built sheet, and cannot be done in a browser at all.
+
+**Both stands run `data-layout="top"`, so a crawl that does not switch layouts measures none of the
+sidebar.** The whole `[data-layout="sidebar"]` family — the open-submenu rules, the rail, the
+narrow fold — renders on no page of a default sweep, and a coverage run reports every one of those
+selectors as unmatched. It took a deliberate `localStorage['fs-layout'] = 'sidebar'` pass, and a
+reload, to exercise them. Tell the two apart before believing any "unused" verdict: if the report
+has no `[data-rail="true"]` hit either, the crawl never wore the layout rather than the rules being
+dead.
+
+**Playwright's session-wide JS coverage keeps only the documents that are still alive.**
+`startJSCoverage({ resetOnNavigation: false })` across a crawl of eight pages returns the scripts of
+the LAST one — eleven entries where sixteen modules had been loaded, with `fs-appearance`,
+`fs-overview` and `fs-search` missing outright. It made `fs-router.navigate` (16,332 B, the largest
+single block in the module) look dead when the crawl had simply never clicked anything: driving one
+SPA click took that module from 55.4% to 89.2% executed. Start and stop the coverage around EACH
+page and merge the byte maps yourself. The tell is a module count lower than the number of modules
+the page actually loads.
+
+**Some string literals are read out of the source by a gate, so hoisting one into a `const` breaks
+the gate rather than the code.** `tools/axes.mjs` extracts the attribute names from the SOURCE of
+`stampDark()` in `fs-prefs.js`, and `tools/page-modules.mjs` reads the `data-page` value out of
+`fs-overview.js` the same way. Both were hoisted during a byte-saving pass; both gates then reported
+a fault that did not exist — "the Appearance axes have drifted" and "nothing in it tests a data-page
+value". The known members of this family are the `require …` loader pragmas, `@mirror`/`@endmirror`,
+`/* fs:probe */`, the Makefile's buildroot marker, and now these two. `npm run check` catches them,
+but it names the symptom, not the edit that caused it — so when a gate suddenly claims a drift
+nobody introduced, look for a literal that moved.
+
 **A layout fault can be invisible on one release line because that luci-base happens to mutate the
 page, not because the theme is right.** The poll floor left on an outgoing tab pane (issue #75,
 `docs/anchoring.md`) reproduces on 25.12 — 2432px of blank above System → Startup's textarea, for
