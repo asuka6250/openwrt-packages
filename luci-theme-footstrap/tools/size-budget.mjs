@@ -359,7 +359,21 @@ const LIMITS = {
 	 * commit is observable, so the stamp reads the same at capture and at write
 	 * (`admin-status-overview` in every run), which is why putting the stamp on the reference itself
 	 * was measured and dropped. The limit goes to 95,680, 76 B of head-room. */
-	resourcesJs: 95_680,
+	/* 95,694 B on 2026-09-12, up 14 B: the growth witness in `observeContent()` climbs to the floored
+	 * box (`closest(FLOORED)`) instead of matching only a record whose target IS one. `dom.content()`
+	 * refills a node a level or two inside the box `holdFloor()` pinned, and for those the witness
+	 * read `grew` as 0; where `lateDrift()`'s element-based `drift` was blind as well, it concluded
+	 * there was nothing to correct and wrote nothing — `writes: []`, `corrected never`, three CI runs
+	 * of three on `webkit owrtsnap @1440 side compact overview` against a local run of the same cell
+	 * that passed every time because the fold happened to land below the growing block. The limit
+	 * goes to 95,760, 66 B of head-room. */
+	/* 96,014 B on 2026-09-12, up 254 B: `lateDrift()` names the exit it took (`_lateWhy`, exported as
+	 * `lateWhy()` for the sweep, the same unmarked shape as `restAt()` and `engineTrusted()`). It has
+	 * eight ways to return without writing and from outside they are one symptom — `writes: []` — and
+	 * six CI runs were spent guessing between them, each guess a push. These bytes buy the difference
+	 * between "the theme decided not to write" and "the theme never got to decide", printed in the
+	 * finding itself. The limit goes to 96,100, 86 B of head-room. */
+	resourcesJs: 96_100,
 	/* …and this is what a cold page DOWNLOADS, which is the number that matters on a link the router
 	 * is also routing packets over: the set walked from the footer's two entry points
 	 * (tools/lib/page-modules.mjs, coldModules()). 73,918 B on 2026-08-27.
@@ -612,7 +626,12 @@ const LIMITS = {
 	 * dropping them 431px down a page that never moved, which `tools/spa-parity.mjs` now reproduces
 	 * deterministically instead of about one run in fifteen. The limit goes to 60,800, 83 B of
 	 * head-room. */
-	coldJs: 60_800,
+	/* 60,807 B on 2026-09-12, up 7 B: the same witness climb as `resourcesJs`'s own note on this
+	 * commit — `fs-fit.js` is cold, so every reader pays it once. The limit goes to 60,880, 73 B of
+	 * head-room. */
+	/* 61,127 B on 2026-09-12, up 247 B: the same exit naming as `resourcesJs`'s own note on this
+	 * commit — `fs-fit.js` is cold. The limit goes to 61,210, 83 B of head-room. */
+	coldJs: 61_210,
 };
 
 function bytes(path) {
