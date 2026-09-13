@@ -460,6 +460,7 @@ const SWAP = async ([ growth, tol, lateMs, winMs ]) => {
 	const fitMod = await window.L.require('fs-fit').then((m) => m, () => null);
 	const themeStill = fitMod ? !fitMod.scrolling() : null;
 	const lateWhy = () => (fitMod && typeof fitMod.lateWhy === 'function' ? fitMod.lateWhy() : 'n/a');
+	const anchorWhy = () => (fitMod && typeof fitMod.anchorWhy === 'function' ? fitMod.anchorWhy() : 'n/a');
 	const bodyH0 = body.offsetHeight;
 	const docH = () => (sc ? sc.scrollHeight : document.documentElement.scrollHeight);
 
@@ -550,7 +551,14 @@ const SWAP = async ([ growth, tol, lateMs, winMs ]) => {
 		const writes = (window.__fsW || []).slice(w0);
 		/* WHICH LINE DECIDED — see `_lateWhy` in fs-fit.js. Read after the window, so it holds the
 		 * decision this refill produced rather than the previous cell's. */
-		const why = lateWhy();
+		const why = lateWhy(), awhy = anchorWhy();
+		/* each entry as `decision+ms`, relative to this refill's own t0 — see `_lateTrail` in fs-fit.js */
+		const rel = (tr) => (tr || []).map((e) => {
+			const i = e.lastIndexOf('@');
+			return e.slice(0, i) + '+' + Math.round(Number(e.slice(i + 1)) - t0);
+		}).join(' ');
+		const trail = fitMod && typeof fitMod.lateTrail === 'function' ? rel(fitMod.lateTrail()) : 'n/a';
+		const atrail = fitMod && typeof fitMod.anchorTrail === 'function' ? rel(fitMod.anchorTrail()) : 'n/a';
 		/* The offset the swap actually asked the scroller to move by — separate from `clamped`
 		 * (what the engine took OUT of a document momentarily empty) and from `moved` (what the
 		 * reader's mark shows). A cell that reports `clamped 0px` because the engine declined to
@@ -564,7 +572,7 @@ const SWAP = async ([ growth, tol, lateMs, winMs ]) => {
 		pad.remove();
 		await wait(700);		/* let the floor come back down before the next pass measures */
 		return { empty, after, moved: after.top === null ? null : after.top - before.top,
-			clamped: before.pos - empty.pos, offsetDelta, grewDoc, correctedAt, writes, why };
+			clamped: before.pos - empty.pos, offsetDelta, grewDoc, correctedAt, writes, why, awhy, trail, atrail };
 	};
 
 	const corrected = await swap();
@@ -586,7 +594,7 @@ const SWAP = async ([ growth, tol, lateMs, winMs ]) => {
 		correctedAt: corrected.correctedAt,
 		late: corrected.correctedAt !== null && corrected.correctedAt > lateMs,
 		writes: corrected.writes,
-		bodyDesc, bodyH: bodyH0, witness, themeStill, why: corrected.why,
+		bodyDesc, bodyH: bodyH0, witness, themeStill, why: corrected.why, awhy: corrected.awhy, trail: corrected.trail, atrail: corrected.atrail,
 		floorMoved: floorOnly.skip ? null : floorOnly.moved,
 		floorClamped: floorOnly.skip ? null : floorOnly.clamped,
 		floorOffsetDelta: floorOnly.skip ? null : floorOnly.offsetDelta,
@@ -1190,13 +1198,13 @@ async function runCell(browser, engine, reportId, base, sessionState, { PAGE, wi
 		found(`${where}: a section was refilled the way a poll refills one and the page never `
 			+ `came back — still ${swap.moved}px off after ${SWAP_WINDOW}ms `
 			+ `(the engine clamped ${swap.clamped}px of offset away)`
-			+ `, growth witness: ${swap.witness}, theme still at refill: ${swap.themeStill}, theme said: ${swap.why}`
+			+ `, growth witness: ${swap.witness}, theme still at refill: ${swap.themeStill}, theme said: ${swap.why}, anchor said: ${swap.awhy}, late trail: [${swap.trail}], anchor trail: [${swap.atrail}]`
 			+ ` — writes: ${JSON.stringify(swap.writes || [])}`);
 	else if (swap.correctedAt !== null && swap.correctedAt > LATE_MS)
 		found(`${where}: a section was refilled the way a poll refills one and the correction `
 			+ `landed ${swap.correctedAt}ms after the refill (over the ${LATE_MS}ms late `
 			+ `threshold — visible to the reader as a jump)`
-			+ `, growth witness: ${swap.witness}, theme still at refill: ${swap.themeStill}, theme said: ${swap.why}`
+			+ `, growth witness: ${swap.witness}, theme still at refill: ${swap.themeStill}, theme said: ${swap.why}, anchor said: ${swap.awhy}, late trail: [${swap.trail}], anchor trail: [${swap.atrail}]`
 			+ ((swap.writes && swap.writes.length) ? ` — writes: ${JSON.stringify(swap.writes)}` : ''));
 	/* The floor is judged on the CLAMP, not on the movement, and only where the theme owns the job:
 	 * with the correction switched off nobody compensates the pad the probe grows, so the
