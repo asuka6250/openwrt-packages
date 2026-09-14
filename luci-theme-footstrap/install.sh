@@ -104,9 +104,12 @@ opkg_feed_count() {
 # (owfeed/owlab#18's own measurement, on the same shape of failure). What separates the two is the
 # "N unavailable" count against how many feeds were CONFIGURED: N < configured means at least one
 # feed answered and the rest of the index is usable; N == configured means none did. opkg prints no
-# such summary line, so the same distinction is drawn by counting "Failed to download" lines against
-# the configured feed count instead — opkg hits the identical shape (exit 1 with one bad feed of
-# eight on 24.10.8, exit 7 with the network cut), so neither manager's own exit code decides this.
+# such summary line, so the same distinction is drawn by counting its `*** Failed to download the
+# package list from <url>` lines — exactly one per feed it could not read — against the configured
+# feed count. Not the wider "Failed to download": opkg prints TWO lines per dead feed (that one plus
+# `opkg_download: Failed to download <url>, wget returned N`; measured on 24.10.8, 1 dead feed of 8
+# gives 2 lines and exit 1, 4 of 11 give 8 lines and exit 4), so the wider count reads 4 dead of 8
+# as "none answered". Neither manager's own exit code decides this.
 #
 # Tolerating "some feed unreachable" must not tolerate OUR OWN feed being the one — without it
 # there is no fresh package to install, so continuing means either installing nothing (a router
@@ -129,7 +132,7 @@ feed_refresh() {	# apk | opkg
 		_total=$(apk_repo_count)
 		_failpat='ERROR:|WARNING:'
 	else
-		_bad=$(grep -c 'Failed to download' "$_pmlog" || true)
+		_bad=$(grep -c '^\*\*\* Failed to download the package list' "$_pmlog" || true)
 		_total=$(opkg_feed_count)
 		_failpat='Failed to download'
 	fi

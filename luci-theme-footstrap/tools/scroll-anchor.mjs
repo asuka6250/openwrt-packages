@@ -1033,9 +1033,8 @@ const TICK = async (ticks) => {
 	const poll = (window.L && window.L.Poll) || null;
 	/* An empty queue polls nothing to watch. `L.Poll.queue` is not a new liberty taken with a
 	 * private property — fs-router.js already reads it directly (`L.Poll.queue.length === 0`), so
-	 * this asks the same question the theme itself asks. Processes registers none (docs/anchoring.md:
-	 * "it does not poll"), and starting the interval anyway would just wait out HARD_TIMEOUT below for
-	 * a tick that can never land. */
+	 * this asks the same question the theme itself asks. Processes registers none, and starting the
+	 * interval anyway would just wait out HARD_TIMEOUT below for a tick that can never land. */
 	if (!poll || !Array.isArray(poll.queue) || poll.queue.length === 0)
 		return { skip: 'this page registers no poll — nothing to tick' };
 	if (typeof poll.active === 'function' && !poll.active()) poll.start();

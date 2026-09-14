@@ -227,8 +227,9 @@ routers:
   # substitute.
   #
   # Same releases and the same third-party fixtures as their originals, so a finding on `-b`
-  # carries exactly as much weight as one on the original. Ports continue the block rather than
-  # interleaving: 803x/223x, clear of 2222 for the reason owrtsnap's comment gives.
+  # carries exactly as much weight as one on the original. Ports: http 8045/8034/8032, ssh
+  # 2245/2234/2232 — each an original's port plus 20 (2512b) or 10 (2410b, snapb), clear of 2222 for
+  # the reason owrtsnap's comment gives.
   - id: owrt2512b
     release: "25.12.4"
     ports: { http: 8045, ssh: 2245 }
@@ -252,8 +253,9 @@ routers:
   # to lose, and no two contexts hitting one uhttpd.
   #
   # Same releases and the same third-party fixtures as their originals, so a finding on `-c` or
-  # `-d` carries exactly as much weight as one on the original. Ports continue the block: 804x/224x
-  # and 805x/225x for `-c`, 8055/8065 and 225x/226x for `-d`, all clear of 2222.
+  # `-d` carries exactly as much weight as one on the original. Ports: `-c` is `-b` plus 10
+  # (8055/8044/8042, ssh 2255/2244/2242), `-d` is `-c` plus 10 (8065/8054/8052, ssh 2265/2254/2252),
+  # all clear of 2222.
   - id: owrt2512c
     release: "25.12.4"
     ports: { http: 8055, ssh: 2255 }
