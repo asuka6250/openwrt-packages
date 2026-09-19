@@ -1605,30 +1605,28 @@ const ensureToolbarStyles = () => {
   flex: 1 1 auto;
   flex-wrap: wrap;
   font-size: .88em;
-  gap: 4px 1.4em;
+  align-items: center;
+  gap: 4px 1.6em;
   min-width: 0;
 }
 .aurora-studio-versions b {
   color: var(--text-muted, var(--muted-foreground, color-mix(in srgb, currentColor 70%, transparent)));
   font-weight: 500;
 }
+.aurora-studio-versions .label {
+  font-variant-numeric: tabular-nums;
+  margin-left: .45em;
+}
+.aurora-studio-versions .arrow {
+  margin: 0 .35em;
+}
 .aurora-studio-versions a {
   color: var(--brand, var(--primary, currentColor));
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
 }
 .aurora-studio-versions a:hover {
   text-decoration: underline;
-}
-.aurora-studio-versions .up::before {
-  background: var(--brand, var(--primary, currentColor));
-  border-radius: 50%;
-  content: "";
-  display: inline-block;
-  height: 6px;
-  margin-right: .5em;
-  vertical-align: middle;
-  width: 6px;
 }
 .aurora-studio-acts {
   display: flex;
@@ -1649,6 +1647,9 @@ const ensureToolbarStyles = () => {
   right: 0;
   top: calc(100% + 6px);
   width: min(280px, calc(100vw - 32px));
+}
+.cbi-dropdown.aurora-studio-more:not([open]) > ul.dropdown {
+  display: none;
 }
 .cbi-dropdown.aurora-studio-more > ul.dropdown > li.danger {
   color: var(--danger, var(--destructive, #c0392b));
@@ -2635,15 +2636,16 @@ return view.extend({
 
     // Named node on purpose: once the feed manifest has been compared, each
     // package's update is attached to that package's own entry in this line.
+    // 颜色全交给主题的 .label:当前是 success,有新版时换成 warning。
     const versionEntry = (attrs, label, installed) =>
-      E(
-        "span",
-        installed ? Object.assign(attrs, { title: installed }) : attrs,
-        [
-          E("b", {}, label),
-          " " + (installed ? feedCheck.shortVersion(installed) : _("Unknown")),
-        ],
-      );
+      E("span", attrs, [
+        E("b", {}, label),
+        E(
+          "span",
+          { class: installed ? "label success" : "label" },
+          installed || _("Unknown"),
+        ),
+      ]);
 
     const versionArea = E("div", { class: "aurora-studio-versions" }, [
       versionEntry({ id: "theme-version" }, _("Theme"), installedVersions?.theme?.installed_version),
@@ -2716,17 +2718,14 @@ return view.extend({
         if (!feedCheck.isNewer(installed, available)) return;
         const entry = versionArea.querySelector("#" + id);
         if (!entry || entry.classList.contains("up")) return;
-        // 同一个 x.y.z 的重建只有 r 戳不同,那时把完整版本串写出来。
-        const short = feedCheck.shortVersion(available);
-        const label = _("%s available").format(
-          short === feedCheck.shortVersion(installed) ? available : short,
-        );
+        const label = _("%s available").format(available);
         entry.classList.add("up");
-        entry.appendChild(document.createTextNode(" → "));
+        entry.querySelector(".label").className = "label warning";
+        entry.appendChild(E("span", { class: "arrow", "aria-hidden": "true" }, "→"));
         entry.appendChild(
           packagePagePath
-            ? E("a", { href: L.url(packagePagePath), title: available }, [label])
-            : E("span", { title: available }, [label]),
+            ? E("a", { href: L.url(packagePagePath) }, [label])
+            : E("span", {}, [label]),
         );
       });
     };
