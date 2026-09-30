@@ -44,12 +44,13 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           [ -z "$R2_BUCKET" ] && { echo "No R2 bucket"; exit 1; }
-          mkdir -p aggregate/clashoo aggregate/daed aggregate/jell merged
+          mkdir -p aggregate/clashoo aggregate/daed aggregate/jell aggregate/tower merged
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/clashoo/" aggregate/clashoo/ --fast-list || true
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/daed/" aggregate/daed/ --fast-list || true
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/jell/" aggregate/jell/ --fast-list || true
+          rclone copy "r2:${R2_BUCKET}/openwrt-feed/tower/" aggregate/tower/ --fast-list || true
 
-          for project in clashoo daed jell; do
+          for project in clashoo daed jell tower; do
             [ -d "aggregate/${project}" ] || continue
             find "aggregate/${project}" -mindepth 2 -maxdepth 2 -type d | while read -r dir; do
               sdk=$(basename "$(dirname "$dir")")
