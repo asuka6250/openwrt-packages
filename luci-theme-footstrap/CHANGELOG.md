@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.14.14] — 2026-10-02
 
 ### Changed
 
@@ -48,6 +48,8 @@
 - **The last traces of the retired self-update package.** `tools/mirror.mjs` no longer searches `install.sh`, which has held no `@mirror` pin since that package's shell helpers left it; the stale mentions in `dev-sync.sh`, `owfeed.yml`, `docs/spa-router.md`, `tools/fs-orphans.mjs` and `.claude/rules/js.md` go with it. `fs-router`'s `onNavigate` seam stays: the search palette and the recent-pages list register through it. `docs/ci.md`, `docs/conventions.md`, `docs/package.md`, `docs/releasing.md`, the Makefile's `Build/Prepare` comment and `owfeed.yml` are rewritten the same way: the rules the package once motivated — one asset per package per format, the catalogue in `po/`, no rpcd grant for it — stay, restated on GitHub's sort-by-name hazard (issue #6) rather than the retired script.
 
 ### Fixed
+
+- **The published playground came back: a push to `main` no longer redeploys Pages without it.** It 404'd from 2026-09-15 because `pages.yml` read only `releases/latest`, and v0.14.13 (cut before the playground moved to CI) carries no `playground.tar.gz`, so each deploy silently dropped it. The step now falls back to the newest non-draft release that has the asset, prints which tag it used, and raises a `::warning::` annotation when none does.
 
 - **A `div.cbi-dropdown` popup no longer overflows the viewport on a phone, and a zone badge inside one wraps instead of pushing the popup wider; desktop width is unchanged.** `npm run pseudo-loc` found the overflow at 320/390px: 4 findings on Linux (16-40px over), 2 on macOS (55px over) — a long, pseudo-localised label the popup could not shrink or wrap around. Fixed in CSS the way a real long translation needs it, not by loosening the gate's thresholds or skip list.
 
@@ -4632,6 +4634,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.14.14]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.13...v0.14.14
 [0.14.13]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.12...v0.14.13
 [0.14.12]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.11...v0.14.12
 [0.14.11]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.10...v0.14.11
