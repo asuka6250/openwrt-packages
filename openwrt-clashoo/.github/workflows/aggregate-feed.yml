@@ -2,6 +2,13 @@ name: Aggregate Unified Feed
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: 'Expected daede candidate commit (optional for manual runs)'
+        type: string
+      build_run_id:
+        description: 'Expected daede build run (optional for manual runs)'
+        type: string
   schedule:
     - cron: '37 4 * * *'
 
@@ -42,16 +49,48 @@ jobs:
       - name: Download project feeds
         env:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          EXPECTED_DAEDE_SHA: ${{ inputs.candidate_sha }}
+          EXPECTED_DAEDE_RUN: ${{ inputs.build_run_id }}
         run: |
+          set -euo pipefail
           [ -z "$R2_BUCKET" ] && { echo "No R2 bucket"; exit 1; }
+          if [ -n "$EXPECTED_DAEDE_SHA" ] || [ -n "$EXPECTED_DAEDE_RUN" ]; then
+            [[ "$EXPECTED_DAEDE_SHA" =~ ^[0-9a-f]{40}$ && "$EXPECTED_DAEDE_RUN" =~ ^[0-9]+$ ]] || {
+              echo "Invalid daede candidate identity"; exit 1;
+            }
+          fi
           mkdir -p aggregate/clashoo aggregate/daed aggregate/jell aggregate/tower aggregate/honk merged
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/clashoo/" aggregate/clashoo/ --fast-list || true
-          rclone copy "r2:${R2_BUCKET}/openwrt-feed/daed/" aggregate/daed/ --fast-list || true
+          rclone copy "r2:${R2_BUCKET}/openwrt-feed/daed/" aggregate/daed/ --fast-list
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/jell/" aggregate/jell/ --fast-list || true
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/tower/" aggregate/tower/ --fast-list || true
           rclone copy "r2:${R2_BUCKET}/openwrt-feed/honk/" aggregate/honk/ --fast-list || true
 
-          for project in clashoo daed jell tower honk; do
+          # New daede releases provide a byte-for-byte feed manifest. Older
+          # releases remain readable during the transition.
+          manifest=aggregate/daed/release-manifest.json
+          if [ -f "$manifest" ]; then
+            jq -e '.candidate_sha | test("^[0-9a-f]{40}$")' "$manifest" >/dev/null
+            if [ -n "$EXPECTED_DAEDE_SHA" ]; then
+              jq -e --arg sha "$EXPECTED_DAEDE_SHA" --argjson run "$EXPECTED_DAEDE_RUN" \
+                '.candidate_sha == $sha and .build_run_id == $run' "$manifest" >/dev/null
+            fi
+            jq -e '[.files[] | select(.path | startswith("feed/"))] | length > 0' "$manifest" >/dev/null
+            jq -r '.files[] | select(.path | startswith("feed/")) | [.path, .sha256] | @tsv' "$manifest" |
+              while IFS=$'\t' read -r path expected; do
+                file="aggregate/daed/${path#feed/}"
+                [ -f "$file" ] || { echo "Missing daede feed file: $path"; exit 1; }
+                actual=$(sha256sum "$file" | cut -d' ' -f1)
+                [ "$actual" = "$expected" ] || { echo "Daede feed hash mismatch: $path"; exit 1; }
+              done
+          elif [ -n "$EXPECTED_DAEDE_SHA" ]; then
+            echo "Expected daede candidate manifest is missing"
+            exit 1
+          fi
+
+          # Copy daed last so its verified candidate wins an exact filename
+          # collision with jell (notably luci-app-daede).
+          for project in clashoo jell tower honk daed; do
             [ -d "aggregate/${project}" ] || continue
             find "aggregate/${project}" -mindepth 2 -maxdepth 2 -type d | while read -r dir; do
               sdk=$(basename "$(dirname "$dir")")
@@ -89,8 +128,18 @@ jobs:
             ' \
           | while IFS= read -r stale; do echo "superseded: $stale"; rm -f "$stale"; done
 
+          if [ -f "$manifest" ] && [ -n "$EXPECTED_DAEDE_SHA" ]; then
+            jq -r '.files[] | select((.path | startswith("feed/")) and (.path | test("\\.(apk|ipk)$"))) | [.path, .sha256] | @tsv' "$manifest" |
+              while IFS=$'\t' read -r path expected; do
+                file="merged/${path#feed/}"
+                [ -f "$file" ] || { echo "Candidate package missing from merged feed: $path"; exit 1; }
+                actual=$(sha256sum "$file" | cut -d' ' -f1)
+                [ "$actual" = "$expected" ] || { echo "Merged candidate package differs: $path"; exit 1; }
+              done
+          fi
+
           find merged -type f | sort
-          find merged -type f | grep -q . || { echo "No packages to aggregate"; exit 1; }
+          find merged -type f -print -quit | grep -q . || { echo "No packages to aggregate"; exit 1; }
 
       - name: Generate signed indexes
         env:
