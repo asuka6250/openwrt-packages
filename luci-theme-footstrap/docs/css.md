@@ -363,7 +363,7 @@ exists, every RPC answers "Access denied", and `render()` never runs.
 `.fs-login` is a direct flex item of `<body>` (`base/20-typography.css` makes body a flex column
 so the footer can `margin-top: auto`), and on the cross axis an `auto` side margin overrides
 stretch and sizes the item to fit-content. `max-width: 400px` capped nothing under that rule — the
-card collapsed to its min-content (~131px) and the description wrapped one word per line;
+card collapsed to its min-content (~131px) and the text wrapped one word per line;
 `width: min(400px, calc(100% - 32px))` is what actually caps it.
 
 The router hostname above the form (`.fs-login-host`) does not reuse the eyebrow tokens despite
@@ -372,10 +372,10 @@ sharing their position: those carry `text-transform: uppercase`, and a hostname 
 apart on a router farm. `overflow-wrap: anywhere` is there because the card is a definite 400px
 and a hostname is one unbreakable token up to 63 characters long.
 
-`.cbi-map > h1`, not `h2`: this page has no title bar to carry the document's one `<h1>`, so
-`sysauth.ut` emits the heading at that level, and the ramp's own h1 size (26px,
-`theme/45-misc.css`) wraps `Authorization Required` onto two lines inside a 400px card — reset
-here to the h2 size, which was always the right size, only the wrong level.
+The `<h1>Authorization Required</h1>` is `.fs-sr` (clipped, still in the a11y tree) and the
+description line is gone: the hostname is the card's title at `--fs-type-xl` (20px, the size the h1
+had), and both removed texts repeated what the Username/Password labels already say. The ramp's own
+h1 size (26px, `theme/45-misc.css`) is not reached, so the login page carries no h1 sizing rule.
 
 `.cbi-page-actions` is a column, not the stock block: some auth plugins add a second action
 (Reset), and the full-width buttons carry `margin: 0`, so a block layout glues them together with
@@ -1143,6 +1143,32 @@ rule in place: the Command column sat at 126px against a widest token of 353px, 
 column's `overflow-wrap` three different ways produced the same 126px and the same "the table fits"
 every time.
 
+### Tables: one frame for every `.fs-dt`
+
+The frame, corner, placeholder and cell-padding rules in `theme/30-tables.css` select
+`:is(table, div).fs-dt`, not `table.fs-dt`. A div-based table outside `.cbi-section` and without `[id]`
+(luci-app-roamd, GitHub #67) matched none of them, kept the generic `.table { overflow: hidden }`,
+became the sticky header's scroll container, and its `.th` sat one bar-height (46px) over the first body
+row at scroll 0 in layout top (webkit, chromium); its cells kept 8px where a real table has 10px.
+`overflow: clip` on the generic rule is not the fix: it clips popups. `table-contract.mjs` check 2e holds it.
+
+The key is `:is(table, div).fs-dt` and not `.table.fs-dt` because of specificity: `:is()` scores its
+most specific argument, so `:is(table, div).fs-dt .td` is (0,2,1), exactly `table.fs-dt .td`, while
+`.table.fs-dt .td` is (0,3,0). An app's column padding is fenced into `@layer theme` (`fs-sheets.js`),
+so it meets this rule in the same layer; luci-app-filemanager `#file-table`'s `.table td:nth-child(1)`
+(0,2,1) used to win by source order and lost to (0,3,0) on owrt2512: Name and Permissions padding-left
+5 -> 12px, Type padding-right 5 -> 12px, Size header 15 -> 12px, Size cells 10 -> 12px, and the 70px
+Permissions column clipped more ("rwxr-..." -> "rwxr..."). Changing only that selector back restored
+the numbers. `table-contract.mjs` check 2f holds it: the cell padding with a real table and a mock app
+rule in the gallery, and each of the eight keys (padding `.td`/`.th`, the frame, four corners, the
+placeholder) by selector in the built sheet, so a `.table.fs-dt` revert of any one fails the gate. The
+rules that were `.table.fs-dt` in v0.14.14 keep it: the break floor, the `!important` word-break, the
+sticky header, `overflow-anchor`, the fit gate (`:root[data-fs-fit] … .table.fs-dt:not(.fs-fitted)`)
+and the `.fs-stacked` card rules. `fs-select.js` tags `.table, table` with `fs-dt`; the form is
+`table` or `div` in practice, a `.table` on another tag would match neither. The frame group keeps `.cbi-section .table.fs-dt` and
+`.cbi-section table.fs-dt` at their v0.14.14 specificity. The `table.fs-dt` selectors left in
+`pages/50-leases.css` are leases-only real tables.
+
 ### Responsive: the disk gauge value moves below the bar
 
 The bar's `::after` value ("63% used …") normally floats above the bar, but the System page's "Disk
@@ -1154,7 +1180,7 @@ immediately followed by a `.cbi-progressbar`.
 ### A11y: prefers-contrast token shifts, and the numbers behind them
 
 `prefers-contrast: more` asks for MORE contrast but, unlike `forced-colors`, leaves the palette to
-the theme. Same mechanism as `prefers-reduced-transparency`: re-state the tokens and every rule that
+the theme. Same mechanism as any token shift: re-state the tokens and every rule that
 reads them follows.
 
 - **the hairlines**: `--fs-border` is the most-read line in the theme and sits at ~20% of the

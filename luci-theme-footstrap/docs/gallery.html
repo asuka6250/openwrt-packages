@@ -61,6 +61,35 @@
 </div>
 
 <div class="g-sec">
+	<h2>Div table outside a section</h2>
+	<!-- luci-app-roamd (GitHub #67): a div .table.fs-dt with no [id] and no .cbi-section kept the generic
+	     .table overflow:hidden and became its own sticky scroll container. table-contract.mjs holds it. -->
+	<div class="table fs-dt" data-fs-bare="1">
+		<div class="tr table-titles"><div class="th">Node</div><div class="th">Link</div></div>
+		<div class="tr"><div class="td" data-title="Node">mesh-1</div><div class="td" data-title="Link">-48 dBm</div></div>
+		<div class="tr"><div class="td" data-title="Node">mesh-2</div><div class="td" data-title="Link">-61 dBm</div></div>
+	</div>
+</div>
+
+<div class="g-sec">
+	<h2>Real table with an app's own column padding</h2>
+	<!-- luci-app-filemanager #file-table: `.table td:nth-child(1) { padding-left: 5px }` (0,2,1) is
+	     re-hosted into `@layer theme`, so it meets the fs-dt cell padding in the SAME layer and only
+	     specificity and order decide. The mock below is the same (0,2,1) and sits after the sheet;
+	     the theme's `.td` rule must not score above it. table-contract.mjs holds it. -->
+	<style>
+		@layer theme {
+			.g-app-pad td:nth-child(1) { padding-left: 5px; }
+		}
+	</style>
+	<table class="table fs-dt g-app-pad" id="g_app_pad" data-fs-app-pad="1">
+		<tr class="tr table-titles"><th class="th">Name</th><th class="th">Size</th></tr>
+		<tr class="tr"><td class="td" data-title="Name">firmware.bin</td><td class="td" data-title="Size">8.2 MB</td></tr>
+		<tr class="tr"><td class="td" data-title="Name">backup.tar.gz</td><td class="td" data-title="Size">41 KB</td></tr>
+	</table>
+</div>
+
+<div class="g-sec">
 	<h2>Typography &amp; text elements</h2>
 	<div class="cbi-section">
 		<h1>Heading 1</h1><h2>Heading 2</h2><h3>Heading 3</h3>
@@ -1435,7 +1464,7 @@ option two</textarea></div>
 		     specificity that decides — the mock selector carries the 7 classes the report measured,
 		     none of them an id, so footstrap's rule (one id, two classes) wins with no
 		     `!important`. Placed under `#modal_overlay` because that counter-rule, unlike the
-		     corner-rounding one above, has no bare `table.fs-dt` fallback: every real table already
+		     corner-rounding one above, has no fallback selector: every real table already
 		     sits under `#view` or `#modal_overlay` (docs/css.md, "the card contract"), so the id is
 		     load-bearing, not decorative, and a fixture outside both roots would not exercise it. -->
 		<style>
