@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Changed
+
+- **`live-audit` says how many stale baseline entries a prune would actually drop, and can say it without writing.** A full sweep printed one per-stand count ("50/3/8 no longer reproduce" on the last CI `deep` run) while `--update --prune` dropped 0 of them, because a prune keeps any signature some stand still sees. It now prints both numbers, the second from the same rule the prune uses; `--seen-in` without `--update` is a dry run that folds CI's `deep` evidence into that count, and `docs/releasing.md` prunes only when it is above zero. The release skill's feed step now matches the feed: no checksum table to compare, and an `owfeed.lock` behind a new OpenWrt point release is a lock PR, not a theme fault.
+
+## [0.14.16] — 2026-10-18
+
 ### Added
 
 - **A gate fails when the gallery lacks a widget in a container the styles lay out differently.** `gallery-coverage` reads every (widget, container) pair the selectors in `styles/` distinguish and checks `docs/gallery.html` shows each one, so the gates that measure the gallery cannot miss a layout no fixture exercises: the split Disconnect button in a stacked action cell reached users that way. Its first run found 14 such pairs; the gallery now carries fixtures for them in upstream markup (a dropdown and a text input in a config-table cell, the tooltips in a zone badge and a field, the password field with its reveal button, a meter in a carded table, a tab menu in a section), and 6 pairs LuCI never emits are listed with the reason. In `check:fast`, 0.2 s.
@@ -7,12 +13,15 @@
 ### Changed
 
 - **The release gates run in CI on the release sha instead of again on the maintainer's machine.** The local pre-tag matrix took 67 min over nine stands, six of them twins of the same three images, and every live gate in it was a subset of what CI had already run on that commit (`scroll-anchor` locally on one engine without `--full`, in CI on three with it). A new `deep` job (tag and manual dispatch) runs `live-audit` and `spa-parity` over every page, one shard per router, and uploads the signatures it reproduced for the baseline prune; a new `audit-ru` slice runs `live-audit --lang ru` on every push, where nothing ran it before although its baseline existed; `scroll-jank` now runs on firefox and webkit in the `anchors` shards, where a CI comment had claimed a local run covered them and none did; `computed-diff` reports on every pull request; `release-assets` checks the published release resolves to one asset per format per package. `tools/ci-local.sh` runs the same jobs, and `docs/releasing.md` reads them job by job before the tag, with `deep` dispatched on `main` first.
+- **`/admin/dashboard` in Russian is a recorded app finding, not a theme failure.** `luci-mod-dashboard` 26.288 (75a306d) draws KPI cards whose value has no `overflow-wrap` while the line under it has one; "Подключён" at 22px/700 is 149px in a 123px column at 768 and 1024px. The new `audit-ru` CI slice found it on its first run; it is in the `owrt2512@ru` baseline until the app wraps the value.
+- **A stand trap and the firefox anchoring flake are written down with their numbers.** A local stand keeps the app versions it was built with while CI boots today's feed, so a CI-only `live-audit` finding can be an app that moved (`luci-mod-dashboard` 26.251 locally, 26.288 in CI). The one red firefox `anchors` cell on `/admin/network/dhcp` read 0 of 30 locally.
 
 ### Fixed
 
 - **Re-running the installer upgrades the theme alone, not every package on the router.** On apk (25.12+) it ran `apk add --upgrade luci-theme-footstrap`, and apk-tools makes that flag inheritable: every dependency down from `luci-base` — ucode, rpcd, uhttpd, libc — was upgraded along with the theme whenever the feed had something newer. It now runs `apk add "luci-theme-footstrap<26"` (fresh install, and the `world` constraint that keeps the official-feed build out) followed by `apk upgrade luci-theme-footstrap`, which upgrades the named package only; a dependency moves only when the new theme requires it. The translation catalogues take the same two steps. The opkg leg (24.10) already upgraded the theme alone.
 - **The "Disconnect" button with a dropdown in the phone layout of the wireless clients list is one line again.** Status shows a split Disconnect / "Add to Blacklist" button when the SSID has a MAC filter; in the stacked card its arrow wrapped under the label (65.6px tall instead of 40px) because the action-cell rule set `flex-wrap: wrap` on the dropdown itself. It now spans the card like the plain buttons (212px at 360px), and a long selected label ellipsizes instead of pushing the cell 127px past the card. The gallery carries the case so `computed-diff` sees it.
 - **`live-audit --all` judges a twin stand against its core stand's baseline, and a prune can no longer drop what CI still sees.** The baseline is keyed by core id, but a twin (`owrt2512b`/`d`) was looked up under its own id, so a full sweep read **412** NEW findings, every one on a twin, against 0 on the core stands; it now reads 0 over 675 renders on 9 routers, with each twin still named in the output. `--seen-out` writes what a run reproduced and `--prune --seen-in` drops an entry only when neither the local sweep nor any given CI file saw it; a page that never rendered blocks a prune instead of losing its entries, and a flag set that cannot prune (`--prune` without `--update` or `--pages-all`) is a usage error before the browser starts.
+- **A path or another single word in the first column of a table shown as cards on a phone stays whole instead of breaking mid-word.** The first cell is half the row, so "/dev/mtdblock6" (110px) broke as "/dev/mtdbloc|k6" in the 94px it had at 360px, and "myddns_ipv4" likewise; the theme now marks a first cell whose text has no break opportunity — no space, no hyphen or dash — and lets only that cell take the row it needs. Multi-word names and hyphenated hostnames ("esp-sensor-hall") keep the half cell and wrap where they always did, so no other card grows.
 
 ## [0.14.15] — 2026-10-15
 
@@ -4755,6 +4764,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.14.16]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.15...v0.14.16
 [0.14.15]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.14...v0.14.15
 [0.14.14]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.13...v0.14.14
 [0.14.13]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.12...v0.14.13
