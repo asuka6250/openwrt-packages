@@ -85,6 +85,7 @@ SPARSE_REPOS=(
     "Openwrt-Passwall/openwrt-passwall-packages||chinadns-ng dns2socks geoview hysteria ipt2socks microsocks naiveproxy shadow-tls shadowsocks-rust shadowsocksr-libev simple-obfs sing-box tcping v2ray-geodata v2ray-plugin xray-core xray-plugin"
     "kenzok8/openwrt-daede||dae daed luci-app-daede"
     "nikkinikki-org/OpenWrt-nikki||nikki mihomo-alpha mihomo-meta luci-app-nikki"
+    ″qwe-qaq/luci-app||luci-app-pon-status″
 )
 
 get_remote_hash_safe() {
