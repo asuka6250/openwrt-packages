@@ -1,8 +1,19 @@
 ## [Unreleased]
 
+### Added
+
+- **`tools/ci-watch.sh` waits for a commit's CI and prints one verdict line; `tools/ci-log.sh` prints the failed step and its decisive lines.** Finding a run, watching it and reading a red job took three to five calls each time (one wait missed its run on a wrong `createdAt` filter, `--log-failed` came back empty, raw logs carried ANSI codes); `tools/bg.sh` now also refuses detached `gh` writes, merges and reruns.
+- **`check:fast` fails when an agent-facing file names a path, npm script or tool that does not exist (`tools/agent-refs.mjs`).** The steering files had drifted to a host `ucode`, a Windows `gh.exe` and removed scripts with nothing to notice; the same change gives the upstream reviewer a facts script that runs on the luci worktree (`-C`) and stops shipped files from naming scratch paths or run ids.
+
 ### Changed
 
 - **`live-audit` says how many stale baseline entries a prune would actually drop, and can say it without writing.** A full sweep printed one per-stand count ("50/3/8 no longer reproduce" on the last CI `deep` run) while `--update --prune` dropped 0 of them, because a prune keeps any signature some stand still sees. It now prints both numbers, the second from the same rule the prune uses; `--seen-in` without `--update` is a dry run that folds CI's `deep` evidence into that count, and `docs/releasing.md` prunes only when it is above zero. The release skill's feed step now matches the feed: no checksum table to compare, and an `owfeed.lock` behind a new OpenWrt point release is a lock PR, not a theme fault.
+- **The agent now commits and pushes to `main` on its own; a tag, a GitHub release and history on `main` wait for the maintainer's word.** Across 20 sessions about 45 approvals were spent on routine, green commits and pushes, while `git tag` itself was never fenced (0.14.12 was re-pointed and 0.14.15 tagged ahead of its CI without a prompt). `git-guard.sh` now asks on tag, release, fork push, force push and history rewrite of `main` and stays silent on ordinary commits and pushes; the new `/ship` and `/retro` skills, the slimmer `CLAUDE.md` and `docs/crew.md` with `docs/ai-architecture.html` describe the crew, its autonomy and its guardrails.
+
+### Fixed
+
+- **`changelog.mjs add` recreates `## [Unreleased]` after a release, and `add && git commit` passes the commit gate in one call.** After 0.14.16 the first entry threw `no [Unreleased] heading` and took four hand-written edits, though `docs/releasing.md` promises the heading comes back with the next commit; the gate also denied the one-call form because it read the staged set before `add` ran.
+- **New tool scripts are committed executable, and `check-shell` fails a script under `tools/` or `.githooks/` that is not.** A clone with `core.fileMode=false` added `ci-watch.sh`, `ci-log.sh` and `upstream-review-facts.sh` as 100644, so CI got "Permission denied" and main went red at b6a68b4; `ci-watch.sh --sha` also accepts an abbreviated sha now, which `gh run list --commit` alone never matched.
 
 ## [0.14.16] — 2026-10-18
 
