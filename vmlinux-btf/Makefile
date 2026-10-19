@@ -35,8 +35,6 @@ define Package/vmlinux-btf/prerm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || rm -f /usr/lib/debug/boot/vmlinux-$$(uname -r)
 endef
-
-# Toolchain and helpers
 BTF_CC ?= $(if $(TARGET_CC_NOCACHE),$(TARGET_CC_NOCACHE),$(TARGET_CROSS)gcc)
 BTF_PAHOLE ?= $(firstword \
 	$(wildcard $(STAGING_DIR_HOST)/bin/pahole /usr/bin/pahole /usr/local/bin/pahole) \
@@ -80,15 +78,10 @@ define Build/Compile
 		exit 1; \
 	fi
 
-	# Compile BTF stub sources
 	$(BTF_CC) $(BTF_CFLAGS) -c $(PKG_BUILD_DIR)/shadow_btf_core.c -o $(PKG_BUILD_DIR)/shadow_btf_core.o
 	-$(BTF_CC) $(BTF_CFLAGS) -c $(PKG_BUILD_DIR)/shadow_btf_modules.c -o $(PKG_BUILD_DIR)/shadow_btf_modules.o 2>/dev/null
 	-$(BTF_CC) $(BTF_CFLAGS) -c $(PKG_BUILD_DIR)/shadow_btf_private.c -o $(PKG_BUILD_DIR)/shadow_btf_private.o 2>/dev/null
-
-	# Link compiled objects into a single relocatable object
 	$(TARGET_CROSS)ld -r -o $(PKG_BUILD_DIR)/shadow_btf.o $(PKG_BUILD_DIR)/shadow_btf_*.o
-
-	# Extract detached BTF (compatible with both modern and older pahole)
 	if $(BTF_PAHOLE) --help 2>&1 | grep -q -- '--btf_encode_detached'; then \
 		$(BTF_PAHOLE) --btf_encode_detached=$(PKG_BUILD_DIR)/vmlinux-btf $(PKG_BUILD_DIR)/shadow_btf.o; \
 	else \
