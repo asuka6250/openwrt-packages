@@ -86,7 +86,7 @@ at most 5 lines (done / running with task ids + ETA / waiting on the maintainer)
 Through the maintainer: a security vulnerability, a stall, the per-word items in "Commits".
 
 A guard is probed through its decision path alone (`tools/bg.sh --check`, hook JSON to `--kinds`);
-real git for a test runs in a scratch repo under `../tmp/` (`docs/crew.md` "Probing a guard").
+real git runs in a scratch repo outside this checkout (`docs/crew.md` "Probing a guard").
 
 **Fix policy:** root cause, shared place, established practice; ask before deferring a known defect.
 
@@ -111,9 +111,9 @@ Every commit and push runs its hooks (git-guard refuses `--no-verify`, `-n` on c
 
 **IMPORTANT: the maintainer names each of these, each time,** and each runs in its own Bash call (a
 tag's create and its push are two): a tag created, moved, deleted or pushed (`git tag`, `--tags`,
-`--follow-tags`, `refs/tags/*`); `gh release create|edit|delete|upload`; `gh workflow run` in the
-theme repo; force-push, rebase or amend of commits already on `origin/main`; `git reset --hard` of
-pushed work. A tag word names the tag: "tag 0.14.17", "делай тег", "release 0.14.17".
+`--follow-tags`, `refs/tags/*`); `gh release create|edit|delete|upload`; a Pages deploy (`publish-pages`, `pages.yml`); force-push,
+rebase or amend of commits already on `origin/main`; `git reset --hard` of pushed work. A tag word
+names the tag: "tag 0.14.17", "делай тег", "release 0.14.17".
 
 Also per word, each time: any push to the openwrt/luci fork and every upstream PR action; every
 publication (PR or issue comment, review, upstream reply, owlab/owfeed issue; the agent drafts);

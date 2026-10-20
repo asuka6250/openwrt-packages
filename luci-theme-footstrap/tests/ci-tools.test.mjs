@@ -16,13 +16,16 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 
 // gh stand-in: it ignores --jq and prints the text the script's own program would have produced,
 // taken from env: CI_RUNS (run list), CI_JOBS (failed job rows), CI_NAMES (failed job names), CI_LOG (job log).
+// CI_NEEDWF lists runs only when called with `--workflow <it>`, as gh filters; CI_ARGV gets the last argv, one word a line.
 writeFileSync(join(dir, 'gh'), `#!/bin/sh
+[ -z "$CI_ARGV" ] || printf '%s\\n' "$@" > "$CI_ARGV"
 [ -z "$CI_APIFAIL" ] || case "$1" in api) echo "HTTP 502" >&2; exit 1 ;; esac
 case "$*" in
 	"repo view"*) echo o/r ;;
 	*join*) printf '%s\\n' "$CI_NAMES" ;;
 	*steps*) printf '%s\\n' "$CI_JOBS" ;;
-	*workflowName*) printf '%b' "$CI_RUNS" ;;
+	*workflowName*) [ -z "$CI_NEEDWF" ] || case "$*" in *"--workflow $CI_NEEDWF "*) ;; *) exit 0 ;; esac
+		printf '%b' "$CI_RUNS" ;;
 	"api --allow-escape-sequences"*) cat "$CI_LOG" ;;
 	api*) echo "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway" >&2; exit 1 ;;
 esac
@@ -41,9 +44,9 @@ function sh(script, args, env = {}) {
 	return spawnSync('sh', [ script, ...args ], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, CI_LOG: join(dir, 'job.log'), ...env } });
 }
 
-test('ci-log --filter strips ANSI and the timestamp, keeps only decisive lines', () => {
+test('ci-log --filter strips ANSI and the timestamp, keeps decisive lines and the context before ##[error]', () => {
 	const r = spawnSync('sh', [ LOG, '--filter', '40' ], { input: require_log(), encoding: 'utf8' });
-	assert.equal(r.stdout, 'live-audit: 3 findings on /cgi-bin/luci/admin\nNEW  td.cbi-value-field overflows\n##[error]Process completed with exit code 1.\n');
+	assert.equal(r.stdout, 'npm test\nok 1 - fine\nlive-audit: 3 findings on /cgi-bin/luci/admin\nNEW  td.cbi-value-field overflows\n##[error]Process completed with exit code 1.\n');
 });
 
 function require_log() { return readFileSync(join(dir, 'job.log'), 'utf8'); }
@@ -55,7 +58,7 @@ test('ci-log --filter keeps the LAST n decisive lines', () => {
 
 test('ci-log names the failed job and step, then the log lines', () => {
 	const r = sh(LOG, [ '42' ], { CI_JOBS: '7\tlint\tnpm test' });
-	assert.match(r.stdout, /^job: lint \(7\)\nstep: npm test\nlive-audit:/);
+	assert.match(r.stdout, /^job: lint \(7\)\nstep: npm test\n[\s\S]*live-audit:/);
 	assert.ok(r.stdout.split('\n').length <= 41);
 });
 
@@ -87,6 +90,25 @@ test('ci-watch: no run for the sha exits 2', () => {
 	const r = sh(WATCH, [ '--sha', 'abcdef1234', '--interval', '0', '--max', '0' ], { CI_RUNS: '' });
 	assert.equal(r.status, 2);
 	assert.match(r.stdout, /^ci: no run for abcdef1/);
+});
+
+// gh matches --workflow against a file name or a display name; the run's workflowName ("release") is the display one.
+test('ci-watch: --workflow is handed to gh, so a file name finds the run', () => {
+	const argv = join(dir, 'argv');
+	const r = sh(WATCH, [ '--sha', 'abcdef1234', '--workflow', 'release.yml', '--interval', '0', '--max', '0' ], { CI_RUNS: '9\\tcompleted\\tsuccess\\trelease\\n', CI_NEEDWF: 'release.yml', CI_ARGV: argv });
+	assert.equal(r.status, 0);
+	assert.equal(r.stdout.trim().split('\n').pop(), 'ci: green abcdef1 runs 9');
+	assert.deepEqual(readFileSync(argv, 'utf8').split('\n').slice(0, 5), [ 'run', 'list', '--workflow', 'release.yml', '--commit' ]);
+});
+
+test('ci-watch: a display name with spaces reaches gh as one argument; --run ignores --workflow', () => {
+	const argv = join(dir, 'argv2');
+	const env = { CI_RUNS: '9\\tcompleted\\tsuccess\\tBuild and test\\n', CI_ARGV: argv };
+	assert.equal(sh(WATCH, [ '--sha', 'abcdef1234', '--workflow', 'Build and test', '--interval', '0' ], env).status, 0);
+	assert.deepEqual(readFileSync(argv, 'utf8').split('\n').slice(2, 4), [ '--workflow', 'Build and test' ]);
+	const r = sh(WATCH, [ '--run', '9', '--workflow', 'nothing.yml', '--interval', '0' ], env);
+	assert.equal(r.status, 0);
+	assert.doesNotMatch(readFileSync(argv, 'utf8'), /--workflow/);
 });
 
 test('ci-watch: a run still going at --max exits 3', () => {

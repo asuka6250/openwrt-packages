@@ -168,6 +168,10 @@ const none = [
 	'cd sub && git status',
 	// uncertainty is not a find: an unresolvable cd leaves the script unknown and the hook silent
 	'cd "$X" && sh p.sh',
+	// a quote in a heredoc body inside "$( )" is text: it does not close the token and expose the lines after it
+	'git commit -m "$(cat <<\'EOM\'\nfix: handle the " in names\ngit tag v1 is not run here\nEOM\n)"',
+	// a word of the previous segment is not the verb of the next
+	'echo a create; gh release',
 ];
 
 for (const c of ask) test(`ask: ${c}`, () => assert.equal(decide(c), 'ask'));
@@ -187,11 +191,15 @@ const askPolicy = [
 	'gh api -X POST repos/VizzleTF/luci-theme-footstrap/git/refs -f ref=refs/tags/v1',
 	'gh api --method=DELETE repos/VizzleTF/luci-theme-footstrap/git/refs/tags/v1',
 	'gh api repos/VizzleTF/luci-theme-footstrap/releases -f tag_name=v1',
-	'gh workflow run release.yml', 'gh workflow run build.yml -R VizzleTF/luci-theme-footstrap',
 	// cobra takes -R/--repo after the group verb too, so the subcommand is read past it
 	'gh release -R VizzleTF/luci-theme-footstrap create v1', 'gh release --repo VizzleTF/luci-theme-footstrap create v1', 'gh release --repo=VizzleTF/luci-theme-footstrap delete v1 -y',
-	'gh release -RVizzleTF/luci-theme-footstrap upload v1 a.tgz', 'gh workflow -R VizzleTF/luci-theme-footstrap run build.yml', "bash -c 'gh release -R VizzleTF/luci-theme-footstrap create v1'",
-	'gh -R VizzleTF/luci-theme-footstrap release create v1', 'gh --repo VizzleTF/luci-theme-footstrap workflow run u.yml', 'gh -R owfeed/x api -X POST repos/VizzleTF/luci-theme-footstrap/git/refs -f a=1',
+	'gh release -RVizzleTF/luci-theme-footstrap upload v1 a.tgz', "bash -c 'gh release -R VizzleTF/luci-theme-footstrap create v1'",
+	'gh -R VizzleTF/luci-theme-footstrap release create v1', 'gh -R owfeed/x api -X POST repos/VizzleTF/luci-theme-footstrap/git/refs -f a=1',
+	'gh workflow run build.yml -f publish-pages=true', 'gh workflow run build.yml --field publish-pages=true', 'gh workflow run build.yml -F publish-pages=true',
+	'gh workflow run build.yml --raw-field publish-pages=true', 'gh workflow run build.yml -f publish-pages=1', 'gh workflow run build.yml -fpublish-pages=true',
+	'gh workflow run build.yml --raw-field=publish-pages=true', 'gh workflow run pages.yml', 'gh workflow run pages', 'gh workflow run pages.yml --ref main',
+	'gh workflow run pages.yml -R VizzleTF/luci-theme-footstrap', 'gh workflow run build.yml --repo VizzleTF/luci-theme-footstrap -f publish-pages=true',
+	'gh -R VizzleTF/luci-theme-footstrap workflow run pages.yml', 'gh workflow -R VizzleTF/luci-theme-footstrap run pages.yml',
 	'git push --force origin main', 'git push -f origin master', 'git push origin +main', 'git push --force-with-lease origin main',
 	'git push origin --delete main', 	'sh -c "git tag v1"', 'git commit -m x && git tag v1',
 ];
@@ -204,6 +212,8 @@ const nonePolicy = [
 	'git -c push.followTags=false push', 'git -c push.followTags=off push', 'git -c push.followTags= push', 'git -c push.default=simple push',
 	'gh release list', 'gh release view v1', 'gh api repos/VizzleTF/luci-theme-footstrap/releases',
 	'gh api -X POST repos/owfeed/owfeed-packages/git/refs -f x=1', 'gh api repos/VizzleTF/luci-theme-footstrap/issues -f title=x',
+	'gh workflow run build.yml --ref main', 'gh -R VizzleTF/luci-theme-footstrap workflow run build.yml',
+	'gh workflow run build.yml -f publish-pages=false', 'gh workflow run pages.yml --repo owfeed/owfeed-packages', 'gh workflow run build.yml -R owfeed/x -f publish-pages=true',
 	'gh workflow run update.yml -R owfeed/owfeed-packages', 'gh workflow run update.yml --repo owfeed/owfeed-packages', 'gh run list',
 	'gh workflow -R owfeed/owfeed-packages run update.yml', 'gh workflow --repo=owfeed/owfeed-packages run update.yml', 'gh release -R VizzleTF/luci-theme-footstrap list',
 	// a heredoc to git or cat is data, not a command line
@@ -256,6 +266,15 @@ test('more than 50 distinct scripts is silent in hook mode and script-scan-cap i
 	assert.equal(decide('sh top.sh', { cwd: c, timeout: 20000 }), '');
 	const r = spawnSync('/bin/sh', [ HOOK, '--kinds' ], { input: JSON.stringify({ cwd: c, tool_input: { command: 'sh top.sh' } }), encoding: 'utf8', timeout: 20000 });
 	assert.match(r.stdout, /script-scan-cap/);
+});
+// precommit-gate reads --kinds: a commit that hides behind a `<<` in a "…" token must still be seen as one
+test('--kinds still lists the commit behind a << inside a quoted token', () => {
+	const input = JSON.stringify({ cwd: dir, tool_input: { command: 'echo "$(true) <<X\n" ; git commit -m x ; echo "\nX\n"' } });
+	assert.match(spawnSync('/bin/sh', [ HOOK, '--kinds' ], { input, encoding: 'utf8' }).stdout, /\bcommit\b/);
+});
+test('--kinds still lists the commit behind a backtick span that holds a <<', () => {
+	const input = JSON.stringify({ cwd: dir, tool_input: { command: 'echo "`cat <<X\nfoo\n`"; git commit -m x #\nX\n`"' } });
+	assert.match(spawnSync('/bin/sh', [ HOOK, '--kinds' ], { input, encoding: 'utf8' }).stdout, /\bcommit\b/);
 });
 test('multi-word message with -n is not no-verify', () => assert.equal(decide("git commit -m 'a -n b'"), ''));
 test('commit message containing -n is not no-verify', () => assert.equal(decide('git commit -m "fix -n"'), ''));
@@ -317,12 +336,30 @@ const hide = {
 		'git update-ref refs/heads/main HEAD', 'git update-ref -d refs/heads/main', 'git update-ref -m msg refs/heads/master HEAD~1',
 		"git -c alias.p=push p --force origin main", 'git -c alias.a=b -c alias.b=push a --tags',
 		// the wrapper that is allow-listed hides nothing from the line it carries
-		'tools/bg.sh sh -c "git reset --hard HEAD~3"', 'tools/bg.sh gh workflow run release.yml', 'tools/bg.sh git update-ref refs/tags/x HEAD', 'tools/bg.sh git branch -f main HEAD~5',
+		'tools/bg.sh sh -c "git reset --hard HEAD~3"', 'tools/bg.sh git update-ref refs/tags/x HEAD', 'tools/bg.sh git branch -f main HEAD~5',
 		// a commit message that is followed by a real tag
 		'git commit -m "$(cat <<\'EOM\'\nx\nEOM\n)" && git tag v1',
 		// a substitution that a shell, eval or xargs runs: the heredoc body inside it is the code, not data
 		'bash -c "$(cat <<\'EOF\'\ngit tag v1\nEOF\n)"', 'sh -c "$(cat <<\'EOF\'\ngit push --tags\nEOF\n)"', 'eval "$(cat <<\'EOF\'\ngit tag v1\nEOF\n)"',
 		'eval $(cat <<\'EOF\'\ngit tag v1\nEOF\n)', 'sh -c "`cat <<\'EOF\'\ngit tag v1\nEOF\n`"', 'xargs sh -c "$(cat <<\'EOF\'\ngit tag v1\nEOF\n)"',
+		// a stray quote in that body leaves it inside the token, so the code before it is still read
+		'sh -c "$(cat <<\'EOM\'\ngit tag v1\nsay " hi\nEOM\n)"', 'sh -c "$(cat <<-EOM\n\tgit tag v1\n\tEOM\n)"',
+		// a `<<` inside a "…" token is text unless the shell is certainly in the first $( ): the quote after it still closes the token, and what follows it runs
+		'echo "$(true) <<EOF\n"; git tag v1\nEOF', 'echo "$(true) <<EOF\n"; git push --tags\nEOF', 'echo "$(true) <<EOF\n"; gh release create v1\nEOF', 'echo "$(true) <<EOF\n"; git update-ref refs/tags/v9 HEAD\nEOF',
+		'echo "`true` <<EOF\n"; git tag v1\nEOF', 'echo "$(true) <<-X\n" ; git tag v1 ; echo "\nX\n"', 'echo "$(true) <<X\n" ; git push --force origin main ; echo "\nX\n"', 'echo "$(true) <<X\n" ; gh release create v1 ; echo "\nX\n"',
+		// the same with the `<<` in a single quote, a comment, an arithmetic, a substitution already closed or a second one, or behind a redirection
+		'echo "$(echo \'<<EOF\'\n)"; git tag v1\nEOF', 'echo "$(true # $(\n) <<X\n"; git tag v1\nX', 'echo "$((1 <<X\n))"; git tag v1\nX', 'echo "$(cat <<X) <<Y\n"; git tag v1\nX\nY',
+		'echo "$(echo \'$(cat <<X\'\n)"; git tag v1\nX', 'echo "$$(cat <<X\n"; git tag v1\nX', 'echo "$(true)$(cat <<X\n"; git tag v1\nX', 'echo "$(cat >f <<X\n"; git tag v1\nX',
+		// a delimiter with an unbalanced quote is not read: the shell would take a different word, so the line is left to the plain scan
+		'echo "$(cat <<X\'\n" ; git tag v1 ; echo "\nX\n\' )"',
+		// a backtick span ends at the next backtick whatever a heredoc says, so the line after it runs
+		'echo "`cat <<X\nfoo\n`"; git tag v1 #\nX\n`"', 'echo "`cat <<X\nfoo\n`"; git push --tags #\nX\n`"', 'echo "`cat <<X\nfoo\n`"; gh release create v1 #\nX\n`"',
+		// an unquoted delimiter lets the shell run a substitution in the body, a quote in the plain text around it is text
+		'cat <<X\n$(git tag v1)\nX', 'cat <<X\n`git tag v1`\nX', 'cat <<X\nsay " hi $(git tag v1)\nX', 'echo "$(cat <<X\n$(git tag v1)\nX\n)"', 'git commit -m "$(cat <<X\nmsg $(git push --tags)\nX\n)"',
+		// `$$` is the PID: a `$(` after one or more pairs, or after an escaped $, is still a substitution
+		'cat <<X\n$$$(git tag v1)\nX', 'cat <<X\n\\$$(git tag v1)\nX', 'git commit -F - <<EOF\ncost: \\$$(git push --tags)\nEOF', 'git commit -m "$(cat <<EOF\npid $$$(git tag v1)\nEOF\n)"',
+		// a " inside a substitution opens a nested string; the outer token ends at its own closing quote
+		'echo "$(echo "<<X\n"; git tag v1 #\nX\n)"', 'echo "$(echo "x")"; git tag v1', 'echo "$(echo "$(git tag v1)")"',
 		// a heredoc piped into a shell is that shell's program, whoever prints it
 		'cat <<EOF | sh\ngit tag v9\nEOF', "cat <<'EOF' | bash\ngit tag v9\nEOF", 'cat <<EOF | sh -s\ngit push --tags\nEOF', 'cat <<-EOF | zsh\n\tgit tag v9\n\tEOF', 'cat <<EOF | tee x | sh\ngit tag v9\nEOF',
 		// gh fills {owner}/{repo} itself: a brace inside a word is part of the path, a brace group is still a group
@@ -332,6 +369,9 @@ const hide = {
 	deny: [
 		`python3 -c 'import os; os.system("git commit --no-verify -m x")'`, `node -e "require('child_process').execSync('git push --no-verify')"`,
 		"git -c alias.c='commit -n' c -m x", "git -c alias.c='commit --no-verify' c -m x",
+		// the same hole as above, for the act that is never allowed
+		'echo "$(true) <<EOF\n"; git commit --no-verify -m x\nEOF', 'echo "$(true) <<X\n" ; git commit --no-verify -m x ; echo "\nX\n"',
+		'echo "`cat <<X\nfoo\n`"; git commit --no-verify -m x #\nX\n`"',
 		// an included file arrives at the command scope, which beats the repository's own hook path
 		'git -c include.path=../tmp/gc push', 'git -cinclude.path=/x commit -m x', 'git -c includeIf.gitdir:/a/.path=/x push',
 		'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=include.path GIT_CONFIG_VALUE_0=/x git push', "GIT_CONFIG_PARAMETERS=\"'include.path'='/x'\" git push",
@@ -354,6 +394,13 @@ const hide = {
 		'git commit -m "$(cat <<\'EOM\'\ndocs(releasing): explain the tag step\n\nThe tag step runs git tag -s only on the maintainer\'s word, and git push --tags later.\nEOM\n)"',
 		'bash -c "git commit -m \\"$(cat <<\'EOM\'\ndocs: explain git tag policy\nEOM\n)\\""', 'sh -c "$(cat <<\'EOF\'\necho hi\nEOF\n)"', 'bash -c "cat <<\'EOF\'\ngit tag v1\nEOF"',
 		'git commit -m "docs: explain git tag policy"', "git commit -F - <<'EOM'\ndocs: x\n\ngit push --tags later\nEOM",
+		// a quote in the body of the leading heredoc of a commit message is text, with <<- and with words before the $(
+		'git commit -m "$(cat <<-EOM\n\tit\'s a \" b\n\tgit tag v1\n\tEOM\n)"', 'git commit -m "msg $(cat <<EOM\nx \" y\nEOM\n)"',
+		// a quoted delimiter leaves the body as data; an escaped $ is no substitution; a string inside a substitution is text
+		"cat <<'X'\n$(git tag v1)\nX", 'cat <<"X"\n$(git tag v1)\nX', 'cat <<\\X\n$(git tag v1)\nX', 'cat <<X\n\\$(git tag v1)\nX', 'cat <<X\nit\'s " fine $(date)\nX',
+		// a PID followed by parentheses is text, not a substitution
+		'cat <<X\n$$(git tag v1)\nX', 'cat <<X\n\\$$$(git tag v1)\nX',
+		'echo "$(echo "; git tag v1")"',
 		// a double dash before a path is a path
 		'git commit -m x -- --no-verify', 'git log -- docs', 'git checkout -- f',
 	],

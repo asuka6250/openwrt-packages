@@ -5,9 +5,8 @@
 #
 # Commit and push are the agent's own and stay silent. Ask: a tag (create, move, delete, push, also
 # --tags, --follow-tags or push.followTags set by `-c`, GIT_CONFIG_* or `git config`, refs/tags/*, a
-# v<digit> refspec, update-ref), `gh release` writes, `gh api`
-# writes to git/refs, git/tags or releases of the theme repo, `gh workflow run` in the theme repo (the
-# owfeed dispatch is standing-authorized), a force push or delete of main/master, rebase and
+# v<digit> refspec, update-ref), `gh workflow run` that deploys Pages (pages.yml, or -f publish-pages=true), `gh release` writes, `gh api`
+# writes to git/refs, git/tags or releases of the theme repo, a force push or delete of main/master, rebase and
 # `commit --amend` while HEAD is already in origin/main, `reset --hard`, main or master moved or
 # deleted locally (`checkout -B`, `switch -C`, `branch -f|-D|-m`, `update-ref`), and a push whose remote
 # is not VizzleTF/luci-theme-footstrap: read with `git remote get-url --push` in the directory `cd`,
@@ -19,8 +18,14 @@
 # read as a line. An alias is resolved first: `-c alias.*`, one set earlier in the line, or one in the
 # repository config. The body of a heredoc fed to anything else (cat, git -F -, python) is data, except
 # inside a `$( )` or backtick that a shell, eval or xargs runs (`sh -c "$(cat <<E ...)"`) and when a
-# shell sits behind a `|` on its line (`cat <<E | sh`): that body is the code. A `{` or `}` ends a
-# command only as a word of its own (`{ cmd; }`); inside a word it is gh's `{owner}/{repo}`.
+# shell sits behind a `|` on its line (`cat <<E | sh`): that body is the code. Under an unquoted
+# delimiter the shell also runs the `$( )` and backticks of the body, so those are scanned. Inside a
+# "…" token a heredoc counts only in the first `$(` of that span (a backtick closes at the next
+# backtick, whatever a heredoc says), `"$(cat <<E` with the delimiter ending its line; any other
+# `<<` there is text. A `"` inside a `$( )` opens a string of its own and the substitution ends at
+# its matching `)`; a `<<` that cannot be copied whole gives that count up, the next `"` ends the
+# token. A `{` or `}` ends a command only as a word of its own (`{ cmd; }`); inside a word it is
+# gh's `{owner}/{repo}`.
 # Denied: --no-verify (any unique prefix), -n on commit, `-c core.hooksPath`, `-c include.path` (an
 # include reaches the command scope, which beats the repository's own hook path), `git config` writes
 # of either, and GIT_CONFIG_KEY_n / GIT_CONFIG_PARAMETERS naming them. `--kinds` prints every kind
@@ -87,8 +92,8 @@ MINE_RE='^((https?|git|ssh)://([^/@]+@)?github\.com(:[0-9]+)?/|[^/@:]+@github\.c
 ismine() { printf '%s\n' "$1" | grep -qiE "$MINE_RE"; }
 STX=$(printf '\001')
 
-scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to BASE; ? = unknown), $4 = 1 when a substitution in it is code
-	OUT=$(printf '%s\n' "$1" | START=$3 HC=${4:-0} MINE_RE=$MINE_RE awk '
+scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to BASE; ? = unknown), $4 = 1 when a substitution in it is code, $5 = 1 for the body of an unquoted heredoc (its substitutions are the code)
+	OUT=$(printf '%s\n' "$1" | START=$3 HC=${4:-0} HB=${5:-0} MINE_RE=$MINE_RE awk '
 	BEGIN {
 		split("status diff log show add fetch branch checkout switch restore stash ls-files ls-remote rev-parse rev-list describe remote worktree blame grep clone init cat-file show-ref for-each-ref merge-base diff-tree shortlog reflog bisect cherry clean mv rm gc fsck notes submodule revert apply format-patch show-branch name-rev bundle archive help version commit push rebase reset cherry-pick am merge pull config tag update-ref", bi0, " ")
 		for (i in bi0) bi[bi0[i]] = 1
@@ -113,6 +118,8 @@ scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to B
 	function nest(s) { print "NEST\t" cwd "\t" enc(s) }
 	# a text from a double-quoted token with a substitution that a shell, eval or xargs runs: a heredoc inside that substitution is code
 	function nestc(s) { print "NESTC\t" cwd "\t" enc(s) }
+	# the body of a heredoc whose delimiter is unquoted: the shell expands it like a double-quoted text; the blank keeps substr(S, p - 1, 1) off the first character, where awk gives the character itself
+	function nestb(s) { print "NESTB\t" cwd "\t" enc(" " s) }
 	# a token that survives being put back into shell text
 	function shq(s,   r, i) {
 		gsub(/\t/, " ", s); r = ""
@@ -173,25 +180,32 @@ scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to B
 		}
 		return j
 	}
-	# gh release writes, gh api writes to refs/tags/releases of the theme repo, gh workflow run there
-	function gh(i0,   j, k, a, v, m, hf, path, repo, lp, r0, sc) {
+	# gh release writes, gh api writes to refs/tags/releases of the theme repo
+	function gh(i0,   j, k, a, v, m, hf, path, lp, sc, wf) {
 		ghr = ""
 		j = ghflags(i0 + 1)
 		v = t[j]; sc = j + 1
 		# cobra takes -R/--repo after the group verb too (`gh release -R o/r create`)
-		if (v == "release" || v == "workflow") sc = ghflags(sc)
-		r0 = ghr
-		if (v == "release") { if (t[sc] ~ /^(create|edit|delete|delete-asset|upload)$/) print "KIND\trelease" }
-		else if (v == "workflow" && t[sc] == "run") {
-			repo = r0
-			for (k = sc + 1; k <= n; k++) {
-				a = t[k]
-				if (a == "-R" || a == "--repo") repo = t[k + 1]
-				else if (a ~ /^--repo=/) repo = substr(a, 8)
-				else if (a ~ /^-R./) repo = substr(a, 3)
+		if (v == "release") sc = ghflags(sc)
+		if (v == "workflow") {
+			sc = ghflags(sc)
+			if (t[sc] == "run") {
+				wf = ""; pg = 0
+				for (k = sc + 1; k <= n; k++) {
+					a = t[k]
+					if (a ~ /^(-r|--ref|--json)$/) k++
+					else if (a ~ /^(-[fF]|--field|--raw-field)$/) { if (tolower(t[k + 1]) ~ /^publish-pages=(true|1)$/) pg = 1; k++ }
+					else if (a ~ /^(-[fF].|--field=|--raw-field=)/) { if (tolower(a) ~ /publish-pages=(true|1)$/) pg = 1 }
+					else if (a ~ /^(-R|--repo)$/) { ghr = t[k + 1]; k++ }
+					else if (a ~ /^--repo=/) ghr = substr(a, 8)
+					else if (a ~ /^-R./) ghr = substr(a, 3)
+					else if (a !~ /^-/ && wf == "") wf = tolower(a)
+				}
+				if ((pg || wf ~ /^pages(\.ya?ml)?$/) && (ghr == "" || tolower(ghr) ~ /vizzletf\/luci-theme-footstrap/)) print "KIND\tpages"
 			}
-			if (repo == "" || tolower(repo) == "vizzletf/luci-theme-footstrap") print "KIND\trelease"
-		} else if (v == "api") {
+		}
+		if (v == "release") { if (t[sc] ~ /^(create|edit|delete|delete-asset|upload)$/) print "KIND\trelease" }
+		else if (v == "api") {
 			m = ""; hf = 0; path = ""
 			for (k = j + 1; k <= n; k++) {
 				a = t[k]
@@ -210,7 +224,34 @@ scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to B
 	}
 	function endtok() { if (have) { n++; t[n] = tok } tok = ""; have = 0 }
 	# prev is the separator before the current segment: a shell after a `|` reads what the pipe carries, a heredoc body included
-	function endseg() { endtok(); if (n) { if (prev == "|" && recv()) pipesh = 1; proc() } n = 0; split("", sub_) }
+	# t is cleared too: a word left in it past n would be read as a verb of the next segment (`echo a create; gh release`)
+	function endseg() { endtok(); if (n) { if (prev == "|" && recv()) pipesh = 1; proc() } n = 0; split("", t); split("", sub_) }
+	# the `<<[-]WORD` that starts at p: returns WORD without its quotes, sets hs for `<<-` and hq when a quote or backslash was in the word, leaves p on the last character read
+	function hdoc(   w, c2) {
+		hs = 0; hq = 0; w = ""; p += 2
+		if (substr(S, p, 1) == "-") { hs = 1; p++ }
+		while (substr(S, p, 1) == " " || substr(S, p, 1) == "\t") p++
+		while (p <= L) {
+			c2 = substr(S, p, 1)
+			if (c2 ~ /[ \t\n;&|()<>]/) break
+			if (c2 == "\047" || c2 == "\"" || c2 == "\\") { hq = 1; p++; continue }
+			w = w c2; p++
+		}
+		p--
+		return w
+	}
+	# the body after the newline at p, up to the line that equals d (leading tabs dropped when s): body holds the lines before it, hfound says it was seen; leaves p on the newline ending that line
+	function hbody(d, s,   e, ln, chk) {
+		body = ""; hfound = 0; p++
+		while (p <= L) {
+			e = index(substr(S, p), "\n"); ln = (e ? substr(S, p, e - 1) : substr(S, p))
+			p += (e ? e : length(ln) + 1)
+			chk = ln; if (s) sub(/^\t+/, "", chk)
+			if (chk == d) { hfound = 1; break }
+			body = body ln "\n"
+		}
+		p--
+	}
 	function proc(   s, i, j, k, x, w, a, sb, deny, hp, rb, hard, ch, nm, ro, kk, wr, wrp, pf, ia, alk, rk, uk, b, np, pos, na, tl, tg, fo, fm, fc, am, ref, tgt, gd, gdir, dd, cv, lal, rep, df, mv, fr, fb, fl, rc) {
 		s = 1
 		while (s <= n && t[s] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) s++
@@ -380,46 +421,70 @@ scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to B
 	END {
 		cwd = ENVIRON["START"]
 		L = length(S)
+		# the body of an unquoted heredoc is read as the inside of a "…" token that follows `echo`: only its substitutions are code
+		if (ENVIRON["HB"] == 1) { hdm = 1; q = "\""; ds = 0; have = 1; n = 1; t[1] = "echo" }
 		for (p = 1; p <= L; p++) {
 			c = substr(S, p, 1)
 			if (q == "\047") { if (c == "\047") q = ""; else tok = tok c; continue }
 			if (q == "\"") {
-				if (c == "\\") { tok = tok substr(S, p + 1, 1); p++; continue }
-				if (c == "\"") { q = ""; continue }
-				if (c == "`" || (c == "$" && substr(S, p + 1, 1) == "(")) sub_[n + 1] = 1
-				tok = tok c; continue
+				# inside a $( ) of this token the shell reads code: a " opens a string of its own and the matching ) closes the substitution, so neither ends the token
+				# ds: 0 no substitution in this span yet, 1 inside the first one with plain words only since it opened, 2 anything else
+				if (qd > 0 && c == "<" && substr(S, p + 1, 1) == "<" && substr(S, p + 2, 1) != "<") {
+					# only at ds 1 with the delimiter ending its line is the shell certainly inside the $( ): there the heredoc is copied whole, delimiter line included, so a quote in its body is text; elsewhere << stays text
+					if (ds == 1) {
+						p0 = p; dw = hdoc(); dh = hs; e0 = p
+						# the word as written must be one plain word or one fully quoted: an unbalanced quote makes the shell read a different delimiter
+						wr = substr(S, p0 + 2, p - p0 - 1)
+						while (substr(S, e0 + 1, 1) ~ /[ \t]/) e0++
+						if (wr ~ ("^-?[ \t]*([A-Za-z0-9_.-]+|\047[A-Za-z0-9_.-]+\047|\"[A-Za-z0-9_.-]+\")$") && substr(S, e0 + 1, 1) == "\n") { p = e0 + 1; hbody(dw, dh); if (hfound) { tok = tok substr(S, p0, p - p0 + 1); ds = 2; continue } }
+						p = p0
+					}
+					# a << left uncopied puts a body between the quotes that this count cannot tell from code: give the depth up, the next " ends the token
+					if (qs[qd] == "" && substr(S, p - 1, 1) != "<") { qd = 0; ds = 2 }
+				}
+				if (qd > 0) {
+					if (ds == 1 && c !~ /[A-Za-z0-9_.\/ \t-]/) ds = 2
+					tok = tok c
+					if (qs[qd] == "\047") { if (c == "\047") qs[qd] = "" }
+					else if (c == "\\") { tok = tok substr(S, p + 1, 1); p++ }
+					else if (c == "$" && substr(S, p + 1, 1) == "$") { tok = tok "$"; p++ }
+					else if (c == "$" && substr(S, p + 1, 1) == "(") { tok = tok "("; p++; qd++; qs[qd] = ""; pp[qd] = 0 }
+					else if (qs[qd] == "\"") { if (c == "\"") qs[qd] = "" }
+					else if (c == "\"" || c == "\047") qs[qd] = c
+					else if (c == "(") pp[qd]++
+					else if (c == ")") { if (pp[qd] > 0) pp[qd]--; else qd-- }
+					else if (c == "#" && substr(S, p - 1, 1) ~ /[ \t\n;&|(]/) while (p < L && substr(S, p + 1, 1) != "\n") { p++; tok = tok substr(S, p, 1) }
+					continue
+				}
+				# depth 0: in the body of an unquoted heredoc (hdm) a quote is text, and so is every word outside a substitution, so only the substitutions are kept
+				if (c == "\\") { if (!hdm || bt) tok = tok substr(S, p + 1, 1); p++; continue }
+				if (c == "\"") { if (hdm) { if (bt) tok = tok c; continue } q = ""; continue }
+				if (c == "`") { ds = 2; sub_[n + 1] = 1; if (hdm) bt = !bt }
+				# `$$` is the PID: eaten as a pair, so the `$` that opens a `$(` is never the second half of one
+				else if (c == "$" && substr(S, p + 1, 1) == "$") { if (!hdm || bt) tok = tok "$$"; p++; continue }
+				else if (c == "$" && substr(S, p + 1, 1) == "(") {
+					ds = (ds == 0) ? 1 : 2; sub_[n + 1] = 1
+					qd = 1; qs[1] = ""; pp[1] = 0
+					tok = tok "$("; p++; continue
+				}
+				if (!hdm || bt || c == "`") tok = tok c
+				continue
 			}
 			if (c == "\\") {
 				if (substr(S, p + 1, 1) != "\n") { tok = tok substr(S, p + 1, 1); have = 1 }
 				p++; continue
 			}
-			if (c == "\047" || c == "\"") { q = c; have = 1; continue }
+			if (c == "\047" || c == "\"") { q = c; ds = 0; qd = 0; have = 1; continue }
 			if (c == "<" && substr(S, p + 1, 1) == "<" && substr(S, p + 2, 1) != "<" && substr(S, p - 1, 1) != "<") {
 				# heredoc: the body runs only when a shell reads it; otherwise it is data and is skipped
-				endtok(); hsh = (recv() || (sd != 0 && sc)); pipesh = 0; strip = 0; dl = ""; p += 2
-				if (substr(S, p, 1) == "-") { strip = 1; p++ }
-				while (substr(S, p, 1) == " " || substr(S, p, 1) == "\t") p++
-				while (p <= L) {
-					ch2 = substr(S, p, 1)
-					if (ch2 ~ /[ \t\n;&|()<>]/) break
-					if (ch2 == "\047" || ch2 == "\"" || ch2 == "\\") { p++; continue }
-					dl = dl ch2; p++
-				}
-				p--
+				endtok(); hsh = (recv() || (sd != 0 && sc)); pipesh = 0; dl = hdoc(); strip = hs; hdq = hq
 				if (dl != "") pend = 1
 				continue
 			}
 			if (pend && c == "\n") {
-				endseg(); prev = ""; pend = 0; body = ""; p++
-				while (p <= L) {
-					e = index(substr(S, p), "\n"); ln = (e ? substr(S, p, e - 1) : substr(S, p))
-					p += (e ? e : length(ln) + 1)
-					chk = ln; if (strip) sub(/^\t+/, "", chk)
-					if (chk == dl) break
-					body = body ln "\n"
-				}
-				p--
+				endseg(); prev = ""; pend = 0; hbody(dl, strip)
 				if (hsh || pipesh) nest(body)
+				else if (!hdq) nestb(body)
 				pipesh = 0
 				continue
 			}
@@ -469,7 +534,7 @@ scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to B
 					   else PU=$(git --git-dir="$(rp "$BASE" . "$G")" remote get-url --push "$P" 2>/dev/null) || continue; fi ;;
 				esac
 				[ -z "$PU" ] || ismine "$PU" || KINDS="$KINDS forkpush" ;;
-			NEST|NESTC|SCRIPT)
+			NEST|NESTC|NESTB|SCRIPT)
 				if [ "$2" -ge 3 ]; then KINDS="$KINDS script-too-deep"; continue; fi
 				D=${REST%%"$TAB"*}
 				P=${REST#*"$TAB"}
@@ -477,7 +542,11 @@ scan() { # $1 text, $2 depth, $3 dir the text runs in (as written, relative to B
 					NNEST=$((NNEST + 1))
 					if [ "$NNEST" -gt 200 ]; then KINDS="$KINDS script-scan-cap"; continue; fi
 					P=$(printf '%s' "$P" | tr "$STX" '\n')
-					if [ "$K" = NESTC ]; then scan "$P" $(($2 + 1)) "$D" 1; else scan "$P" $(($2 + 1)) "$D"; fi
+					case $K in
+						NESTC) scan "$P" $(($2 + 1)) "$D" 1 ;;
+						NESTB) scan "$P" $(($2 + 1)) "$D" 0 1 ;;
+						*) scan "$P" $(($2 + 1)) "$D" ;;
+					esac
 					continue
 				fi
 				F1=$(rp "$BASE" "$D" "$P")
@@ -512,7 +581,7 @@ fi
 U=''
 for k in $KINDS; do
 	case $k in
-		noverify|tag|tagpush|release|rewrite|reset-hard|forkpush|mainmove) U="$U $k" ;;
+		noverify|tag|tagpush|release|pages|rewrite|reset-hard|forkpush|mainmove) U="$U $k" ;;
 		histcheck) git -C "$BASE" merge-base --is-ancestor HEAD origin/main >/dev/null 2>&1 && U="$U rewrite" ;;
 		forcecur) case $(git -C "$BASE" symbolic-ref --short -q HEAD 2>/dev/null) in main|master) U="$U rewrite" ;; esac ;;
 	esac
