@@ -60,7 +60,9 @@ sees only the diff, never the developer's reasoning: a judge of the same model g
 softer. `tester`, `security`, `researcher` and `upstream-reviewer` carry `disallowedTools: Edit,
 Write, NotebookEdit`; Bash can still write, so read-only is a contract, not a sandbox: after the
 tester the lead reruns `developer.md` step 2 into `../tmp/task-<id>/check.idx` over the paths
-`git diff --name-only HEAD <tree>` prints, and the tree it prints equals the round's `tree`.
+`git diff --name-only HEAD <tree>` prints, and the tree it prints equals the round's `tree`. For a
+package or guard path `precommit-gate.sh` now does that at commit time (below, "The card"); the
+lead's `check.idx` stays for every other path.
 
 The lead relays each return block to the maintainer in Russian: fields, commands, paths and numbers
 as printed, the prose around them translated.
@@ -94,18 +96,42 @@ rewrite JSON less readily than Markdown, and a file outlives a compaction.
 | `grade` | `task`, or `release` — adds `owlab test` on both formats. Any diff touching the Makefile, `root/**`, `build-css.sh`, `tools/stage.sh` or a `strip-*` script is `release` |
 | `hardware` | `false` until the maintainer says otherwise for this card |
 | `round` | 1 for the first developer pass, +1 per fix round; the same number in the developer's and the tester's block |
-| `history` | one entry per tester round: `{ "round", "tree", "verdict", "blocking": [ids] }` |
+| `history` | per tester round, the lead appends `{ "round", "tree", "verdict", "security"?, "blocking": [ids] }`, `security` being `CLEAN` when that role found no vulnerability in the tree (its LOWs go to `notes`); the commit gate reads it |
 
 - Before its first edit or delegation the lead records what was already dirty, paths and hunks:
   `mkdir -p ../tmp/task-<id> && git status --porcelain --untracked-files=all > ../tmp/task-<id>/dirty-at-start && git diff HEAD > ../tmp/task-<id>/dirty-at-start.diff`.
   A lead-only task with no card writes the same files; `/ship` step 2 stops before staging a path
   listed there. The developer snapshots a card path listed there all the same (the tree is for
   review; the lead stages by path), and the tester leaves out every hunk `dirty-at-start.diff`
-  carries.
+  carries. `card-gate.sh` (PreToolUse, `Agent`) holds both files: it denies a `developer` spawn
+  whose prompt names no existing `../tmp/task-<id>/card.json` with `dirty-at-start` beside it, and
+  prints the two commands that record it in the reason. It denies rather than asks because the
+  omission is the lead's own, and every other agent type passes. Measured: 16 of 50 developer
+  spawns since 2026-10-07 ran with no card (audit P1-2). A Workflow script's `agent()` is no
+  `Agent` tool call and does not pass through it; a writer there names its card in the prompt all
+  the same.
 - `scope_ok` (the tester's): every code path `CLAUDE.md` "Crew" lists that `git status
   --porcelain --untracked-files=all` shows, less `dirty-at-start`, is in `card.files`; and
   `git diff --name-only HEAD <tree>` holds each `card.files` path `git status` shows and nothing
   outside `card.files`. Docs and config are the lead's to edit mid-task and do not count.
+- **A verdict before the commit, for two classes.** `precommit-gate.sh` asks, never denies, when a
+  commit carries a package path (`luci-theme-footstrap/**`, `install.sh`) or a guard path
+  (`.claude/hooks/**`, `.claude/settings.json`, `.githooks/**`, `.github/workflows/**`) and no
+  `../tmp/task-*/card.json` `history[]` holds a `PASS` entry that covers them: one entry covers the
+  commit's package and guard paths together, by mode and blob (an exec bit or a symlink is a
+  change), and says `security: "CLEAN"` when a guard path is among them. A path comes from the
+  worktree under `-a`, a `git add` in the same call or `git commit <paths>`, else from the index. A
+  deletion is covered by a tree that lacks the path and, in the nearest directory that survives the
+  commit, holds exactly the policed files the commit leaves there: a tree from before the file
+  existed lacks it too. The cards are read newest first, and the scan stops at the first entry that
+  covers the whole set. What the gate cannot read (an alias, a quoted path, a flag behind a heredoc
+  message) stays silent; the header of the hook lists them. Every other code path goes out on T0
+  and `.githooks/pre-push` and gets its `tester` card after the push, in the same session; a
+  `NEEDS_WORK` there is a fix commit.
+- **A fix keeps its check.** A fix card names one check that stays in the repository, is red on
+  the parent commit and holds the promise to the reader (an existing gate extended beats a new
+  one), or says why there is none; the tester proves it red (`tester.md`). 9 of 28 product fixes
+  since 2026-09-15 left no check behind (audit P1-14).
 - One card, one mechanism; the acceptance fits in 5 lines. A card that needs more is two cards.
 - A `SendMessage` to a resumed agent is a round and counts toward `max_rounds`.
 - Upstream and release work splits in two: (a) base and history, verified by the `tester`; (b) the
@@ -147,10 +173,10 @@ Voice, shell and waiting rules reach every role through `.claude/hooks/subagent-
 
 **The round tree.** The real index is the lead's, so a role never stages. The developer writes the
 round into a private index under `../tmp/task-<id>/` and returns its tree id (the command:
-`.claude/agents/developer.md` "Before returning", step 2); the lead records it in `history` and
-passes it to the next tester. Both sides of the tester's diff are trees: a diff against the
-worktree goes through the real index, where a file the developer created is untracked, so it drops
-this round's new file and shows last round's as deleted (scratch repo, 2026-10-19). The lead
+`.claude/agents/developer.md` "Before returning", step 2); the lead records it in `history` with the
+verdict and passes it to the next tester. Both sides of the tester's diff are trees: a diff against
+the worktree goes through the real index, where a file the developer created is untracked, so it
+drops this round's new file and shows last round's as deleted (scratch repo, 2026-10-19). The lead
 commits with staged paths, never `-a`, and reads `git status` before staging anything.
 
 The caps come from the evidence: iterative repair gains sit in the first two rounds, a review with
@@ -174,10 +200,15 @@ counter of 2–3.
   the feed's next tag.
 - **No-agents mode** (the maintainer asks for it on a task, e.g. «без агентов»): the lead runs the
   role's commands itself; gate output still goes to `../tmp` logs and the lead reads the tail.
-- **Sessions:** one wave, one session; state lives in `card.json` and `docs/`. Past ~150k tokens
-  the lead writes a handoff and asks the maintainer to `/clear` (a CLI command only the maintainer
-  types). A second session on the same
-  tree works in a worktree under .claude/worktrees.
+- **Sessions:** one wave, one session; state lives in `card.json` (its `history`) and `docs/`, so
+  an auto-compaction inside a wave loses nothing a card does not hold. At the end of a wave the
+  lead writes a handoff and asks the maintainer to `/clear` (a CLI command only the maintainer
+  types). A fixed token threshold was the rule until 2026-10-21 and never held: five sessions
+  peaked at 304k-614k tokens (audit P1-11). A second session on the same tree works in a worktree
+  under .claude/worktrees.
+- **The lead reads summaries, not raw logs:** a transcript, a CI job log or a gate log longer
+  than a screen goes to a read-only agent that writes `../tmp/<id>.md` and returns its path and
+  verdict; `/crew-retro` fans out that way.
 
 ## Autonomy levels
 
@@ -192,8 +223,9 @@ counter of 2–3.
 ## Guardrail layers
 
 Instructions are advisory; hooks and permission rules are deterministic tripwires that fail open
-(`.claude/hooks/git-guard.sh` header); CI is the ground truth for done. Nothing server-side stops a
-tag or a rewrite of `main` (a tag ruleset was rejected on 2026-10-19). Accepted risk (the
+(`.claude/hooks/git-guard.sh` header); CI is the ground truth for done. The server holds `main`
+against a force-push or deletion and a `v*` tag against a move or deletion, with no bypass
+(`docs/ci.md` "Rules the server holds", 2026-10-21). Accepted risk (the
 maintainer, 2026-10-21): the shell Claude Code starts from exports the maintainer's secrets, signing
 keys included, so every Bash subprocess, npm dependency, plugin hook and MCP server inherits them;
 a `Read` deny does not cover `env`, and no layer below stops code that reads its own environment.
@@ -202,21 +234,33 @@ WSL2 host and the egress allowlist held, but daily work needs `tools/bg.sh`, eve
 `check:fast` and `owlab` excluded, and an excluded repo script can be edited and then run outside
 the sandbox. Revisit when detached runs move off `tools/bg.sh`.
 
+A guard finding counts when it is a habitual or accidental form of a per-word action or of a role
+writing the checkout. A form built to dodge the hook (a line assembled at run time, a nested shell
+written for it) is left to the classifier and the `ask` rules, and goes into the hook header's
+list of what it does not stop instead of a patch: git-guard grew from 368 to 591 lines in two days
+chasing such forms, and fixed the false prompts that growth brought (audit P1-18).
+
 | Layer | Where | Holds |
 |---|---|---|
 | 1. Instructions | `CLAUDE.md`, `.claude/rules/*.md` (path-scoped), `.claude/agents/*.md`, skills, auto-memory | the policy, the tiers, the roles; the auto-mode classifier reads `CLAUDE.md` too |
-| 2. Hooks | `.claude/hooks/git-guard.sh` (PreToolUse, full command: tags, releases, history rewrite, fork pushes, publications); `precommit-gate.sh` (both CHANGELOG entries); `session-start.sh` (drift from `origin/main`, a red Build push run on `main`); `.claude/hooks/subagent-start.sh` (shared role rules); `.claude/hooks/permission-denied.sh` (appends to `../tmp/denials.log` for `/retro`) | the per-word list, whatever the permission mode |
+| 2. Hooks | `.claude/hooks/git-guard.sh` (PreToolUse, full command: tags, releases, history rewrite, fork pushes, publications; a role's checkout, index and config writes in this checkout, denied); `precommit-gate.sh` (both CHANGELOG entries, then a recorded tester verdict on a package or guard path, and a weakened oracle: a baseline line, a raised `css-metrics` limit, a new `ALLOW` entry, fewer `test(` calls in a file, all asked); `card-gate.sh` (PreToolUse `Agent`: a `developer` spawn needs its card and `dirty-at-start`, denied); `session-start.sh` (drift from `origin/main`, a red Build push run on `main`); `.claude/hooks/subagent-start.sh` (shared role rules); `.claude/hooks/permission-denied.sh` (appends to `../tmp/denials.log` for `/crew-retro`) | the per-word list, whatever the permission mode |
 | 3. Permissions and auto mode | `.claude/settings.json` `deny`/`ask`/`allow`; `autoMode` in `~/.claude/settings.json` (the classifier reads it only from user settings); `tools/bg.sh` refuses ssh, commit, push, tag and gh writes in detached runs; the MCP servers github, kubernetes, helm and Vercel are denied in this project (never called here, and their write tools bypassed every other layer) | prompts and denials before a command runs; prefix matching misses `git -C` forms, hence layer 2 |
 | 4. Git hooks | `.githooks/pre-push` (`npm run check` on the pushed commit in a clean worktree), `.githooks/commit-msg` (strips trailers) | every contributor, agent or not |
 | 5. CI | `build.yml`: check, lint, build, verify (25.12/apk + 24.10/opkg), live, anchors on every push; deep on a tag or dispatch | the ground truth for "done" |
 
 **Probing a guard.** A hook or `tools/bg.sh` is tested through its decision path only: the hook
-JSON on stdin (`.claude/hooks/git-guard.sh --kinds`, `precommit-gate.sh`) or `tools/bg.sh --check
+JSON on stdin (`.claude/hooks/git-guard.sh --kinds`, `precommit-gate.sh`, `card-gate.sh`) or `tools/bg.sh --check
 <command>`, which print a verdict and run nothing. The guarded command itself never executes, in a
 test, a probe or a stub. Real git runs in a scratch repo `git init`ed outside this checkout, with
 its cwd there: `../tmp/` for a probe, the test's `mkdtemp(tmpdir())` dir for a test. The reason:
 on 2026-10-19 a refusal test ran real commands through a mid-edit `bg.sh` and, in this checkout,
-created a tag, reset away every uncommitted edit and set an Actions secret.
+created a tag, reset away every uncommitted edit and set an Actions secret. For a role the rule is
+held: `git-guard.sh` denies it, in this checkout, a `checkout` of paths, `switch -f`, `restore`, `clean`,
+`reset`, `stash`, `checkout-index`, `read-tree`, `add`, `rm`, `mv`, `remote` and `config` write, resolved the
+way it reads a push (`cd`, `-C`, `--git-dir`, `GIT_DIR`); the round snapshot's `GIT_INDEX_FILE=` prefix
+(an `export` or `env` counts, a bare assignment does not) and a scratch repo pass. Three
+roles ran real git here on 2026-10-21, one of them `cd $R && git checkout -q -- .` with `R` lost
+between two Bash calls (it reverted three tracked files): a role spells every path literally in each call.
 
 ## Skills
 
@@ -225,14 +269,14 @@ created a tag, reset away every uncommitted edit and set an Actions secret.
 | `/ship` | model | T0 check, changelog entries, commit by path, push, `ci-watch` in the background | commit and push to `origin`; never a tag |
 | `/release` | model, on the maintainer's ask | pre-tag matrix, changelog rename, `release:` commit, tag, feed | asks for the tag unless the maintainer's message named it |
 | `/upstream-pr` | model | openwrt/luci branch, local checks, review answers | fork pushes and replies on the maintainer's word |
-| `/retro` | maintainer only (`disable-model-invocation`) | reads `measure-run.mjs`, `../tmp/denials.log`, repeated corrections; sorts each into keep / skill / rule / hook / delete | edits the lead-owned rows the maintainer accepts in its "Agree" step; code goes to a card |
+| `/crew-retro` | maintainer only (`disable-model-invocation`) | reads `measure-run.mjs`, `../tmp/denials.log`, repeated corrections; sorts each into keep / skill / rule / hook / delete | edits the lead-owned rows the maintainer accepts in its "Agree" step; code goes to a card |
 
 A procedure lives in a skill, a fact in `CLAUDE.md`, a path-scoped rule in `.claude/rules/`, a
 must-always in a hook. A retro miss becomes an eval scenario for its skill before the text changes.
 
 Evals live in `.claude/skills/<name>/evals/<case>/`: `prompt.md` and a `graders` directory, plus `case.yaml`
 and `scaffold.sh` when the case needs a scaffolded repo (the release and ship cases); they run
-through `claude plugin eval` as `.claude/skills/retro/SKILL.md` step 8 "Agree, then apply" gives it:
+through `claude plugin eval` as `.claude/skills/crew-retro/SKILL.md` step 8 "Agree, then apply" gives it:
 paid model runs, so on the maintainer's word. The sandbox they need is `bubblewrap` and `socat`, and
 `TMPDIR` must lie outside `/tmp`: the eval sandbox denies writes under `/tmp`, which covers its own
 workspace there, so a case's `git fetch` fails with `Read-only file system`.
@@ -259,6 +303,17 @@ A workflow script fans out independent read-only work (audits, research, per-fil
 - Each agent writes a large result to a file and returns its path. The harness may refuse a
   subagent's write of a file it reads as a report; that result comes back as text and the lead
   saves it (the 2026-10-20 audit's final report).
+- A gate agent (verifier, reviewer, security) that returns nothing is `not_run`, never clean: the
+  script hands it back as `{not_run, error}`, a round is dry only when every gate agent answered,
+  and the lead's report opens with the `not_run` list. polish-2 read four silent security rounds
+  as `all_green`.
+- A workflow that edits files runs "The loop": two fix rounds at most, the same blocking id twice
+  (a `STILL:` repeat included) stops it for the maintainer, and after the last fix round a tester
+  runs or the result is marked unverified. A verifier gets the card, the diff and the changed
+  files, never the writer's reasoning (`decisions_taken`). A card split off a workflow keeps its
+  `round` and `history`.
+- A security agent's scope fits its 25 turns: an audit is cut by surface, and a `PARTIAL` or empty
+  return is re-sent as the uncovered part, never as the same scope again.
 - Writers stay one at a time in the shared checkout; parallel writers each get their own worktree
   and card, and a general-purpose workflow agent edits no repository file. On 2026-10-19 one
   writer's test ran `git reset --hard HEAD~3` in the shared tree and wiped its neighbours' work.
@@ -276,6 +331,12 @@ images in the lead, every gate log opened by a role, rounds ≤ 2, no stall. Bas
 136,544 characters and 11 images in this project's largest session; the 2026-09-03 trial put 152k
 characters in the lead against 1.54M across 17 subagents. On the same diff, `tester` on Opus found
 three issues to Sonnet's one, which is why it runs on Opus.
+
+After the character lines it prints the lead's characters per delegation against the 15k budget,
+the lead's five largest tool outputs, and a token table per role and model, each message counted
+once by `message.id`. `cache_read` is the exact cost number (audit 69c0d4f8: workflow agents 175M,
+the lead 124M, tester 60M, developer 45M); a subagent's `output` is a lower bound, printed
+`>=N (final/msgs final)`, because its transcript keeps the final usage line for few messages.
 
 ## Sources
 

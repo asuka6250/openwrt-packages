@@ -1040,6 +1040,20 @@ nothing, and neither does a rate measured while another run holds the stands (se
 tools/rate.sh 10 node tools/scroll-jank.mjs --only owrt2512
 ```
 
+### Known flakes
+
+A red job on `main` whose log carries one of these signatures is a measured flake, not a finding
+of the commit. The agent reruns the failed jobs of that run once (`gh run rerun <id> --failed`,
+`/ship` step 4); a second red on the same run, or any signature not listed here, goes to the
+maintainer. A row past its "re-measure by" date matches nothing until a new rate is in it. A row
+is added only with a `tester` card's classification behind it, never to get a push through.
+
+| Job | Signature in the log | Rate | Class, card | Seen | Re-measure by |
+|---|---|---|---|---|---|
+| The reader stays put (firefox) | `firefox owrt2512 @390 top large  engine-anchoring on  /admin/network/dhcp: refill 3/3 on the same section left the reader 12px off (engineTrusted true, corrected never)` | 0/20 locally (`tools/rate.sh 20 ../tmp/task-0184-anchors-red-dhcp/run-once.sh`); 1 of 38 CI firefox push sweeps | flake, cause not named (CI strips the `fs:probe` trail); 0184 | ca12d23 | 2026-11-04 |
+| The reader stays put (firefox) | `firefox owrt2410 @1440 side normal  engine DECLINES  processes: the offset moved on its own 1 time(s) mid-flick` | 0/25 and 0/20 locally under CPU stress | flake beside a frame stall; QUIET re-measures since b2421b0; 0166, 0167 | c253c28 | 2026-11-04 |
+| The reader stays put (webkit) | `scroll-jank: … page.goto: Timeout 30000ms exceeded` or `WebKit encountered an internal error` at the first `page.goto` of `tools/scroll-jank.mjs` (any stand: owrtsnap, owrt2410) | 3 of 42 webkit attempts since 2026-10-20, a fourth on owrt2410 (run 39637956114) | infrastructure, fixed by 0189: scroll-jank's gotos go through `openPage()` (3 attempts, `tools/lib/stands.mjs`); after it, the last of three attempts prints `Timeout 20000ms exceeded`, and that red is a finding, not this row; 0184, 0189 | 4b6ac5e, 3be477c, 17b5fce, fa218ae | 2026-11-04 |
+
 ## The stand's own traps
 
 - **A pattern upload fails on a synced stand with no error from the theme; the stand has no

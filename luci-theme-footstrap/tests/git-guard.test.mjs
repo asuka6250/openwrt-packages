@@ -1,9 +1,9 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { ROOT } from '../tools/lib/root.mjs';
 
 const HOOK = join(ROOT, '.claude/hooks/git-guard.sh');
@@ -38,8 +38,9 @@ function binWithout(...skip) {
 	return bin;
 }
 
-function run(command, { cwd = dir, hook = HOOK, env, timeout } = {}) {
-	const r = spawnSync('/bin/sh', [ hook ], { input: JSON.stringify({ cwd, tool_input: { command } }), encoding: 'utf8', env, timeout });
+// `agent` is the hook input's agent_type: set for a subagent (a crew role or any other), absent for the lead
+function run(command, { cwd = dir, hook = HOOK, env, timeout, agent } = {}) {
+	const r = spawnSync('/bin/sh', [ hook ], { input: JSON.stringify({ cwd, ...(agent && { agent_type: agent }), tool_input: { command } }), encoding: 'utf8', env, timeout });
 	assert.equal(r.status, 0, r.stderr);
 	// every probe runs on a healthy PATH unless it simulates a missing tool, and a hook that runs on every Bash call must say nothing on stderr
 	if (!env) assert.equal(r.stderr, '', `stderr of ${command}`);
@@ -51,6 +52,7 @@ const g = (cwd, ...a) => {
 	assert.ok(!resolve(cwd).startsWith(ROOT), `scratch git must not run in the checkout: ${cwd}`);
 	const r = spawnSync('git', [ '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a ], { cwd, encoding: 'utf8' });
 	assert.equal(r.status, 0, r.stderr);
+	return r.stdout.trim();
 };
 const THEME = 'git@github.com:VizzleTF/luci-theme-footstrap.git';
 const FORK = 'https://github.com/openwrt/luci';
@@ -578,4 +580,735 @@ test('precommit-gate: a git add chained before the commit counts its pending fil
 		'git add -A && git commit -m x', 'git add --all && git commit -m x', 'git add . && git commit -m x', 'git add b.txt CHANGELOG.md CHANGELOG_ru.md && git commit -m x',
 		'git add CHANGELOG.md CHANGELOG_ru.md && git commit -m x', 'git add *.md && git commit -m x', 'git add CHANGELOG.md && git add CHANGELOG_ru.md && git commit -m x',
 	]) assert.equal(gate(c), '', c);
+});
+
+// ---- precommit-gate, the verdict half: a package or guard path needs a recorded tester verdict on its content ----
+// The cards are read from ../tmp of the repository that holds the hook, so each scratch repo gets a parent of its own.
+function verdictRepo(name) {
+	const r = gateRepo(`${name}/repo`, false);
+	const hook = join(r, '.claude/hooks/precommit-gate.sh');
+	const log = (rel) => { for (const f of [ 'CHANGELOG.md', 'CHANGELOG_ru.md' ]) appendFileSync(join(r, f), `- ${rel}\n`); };
+	return {
+		r,
+		run: (c, cwd = r) => run(c, { cwd, hook }),
+		// the commit's content: the file in the index, with both changelog entries so only the verdict half can speak
+		stage(rel, text) {
+			mkdirSync(dirname(join(r, rel)), { recursive: true });
+			writeFileSync(join(r, rel), text);
+			log(rel);
+			g(r, '--literal-pathspecs', 'add', rel, 'CHANGELOG.md', 'CHANGELOG_ru.md'); // a name may hold a backslash or a glob
+		},
+		remove(rel, to) { // a deletion, or a move when `to` is given
+			if (to) g(r, 'mv', rel, to); else g(r, 'rm', '-q', rel);
+			log(rel);
+			g(r, 'add', 'CHANGELOG.md', 'CHANGELOG_ru.md');
+		},
+		// the content only the worktree holds: the changelog is modified but not staged
+		touch(rel, text) {
+			mkdirSync(dirname(join(r, rel)), { recursive: true });
+			writeFileSync(join(r, rel), text);
+			log(rel);
+		},
+		// a round's tree of whatever is in the worktree for these paths, the way the developer's private index writes it
+		snap(...paths) {
+			g(r, 'add', ...paths);
+			const t = g(r, 'write-tree');
+			g(r, 'reset', '-q');
+			return t;
+		},
+		// a card as the lead leaves it after a tester (and security) round
+		card(n, ...history) {
+			mkdirSync(join(r, '..', 'tmp', `task-${n}`), { recursive: true });
+			writeFileSync(join(r, '..', 'tmp', `task-${n}`, 'card.json'), JSON.stringify({ id: `${n}`, history }));
+		},
+	};
+}
+const pass = (tree, more = {}) => ({ round: 1, tree, verdict: 'PASS', blocking: [], ...more });
+
+test('precommit-gate verdict: a package path needs a PASS tree holding the same blob', () => {
+	const v = verdictRepo('v1');
+	const PKG = 'luci-theme-footstrap/a.txt';
+	v.stage(PKG, 'one\n');
+	const none = v.run('git commit -m x');
+	assert.equal(none.permissionDecision, 'ask', 'no card at all');
+	assert.match(none.permissionDecisionReason, /luci-theme-footstrap\/a\.txt/);
+	assert.match(none.permissionDecisionReason, /package class/);
+	const tree = g(v.r, 'write-tree');
+	v.card('1', { ...pass(tree), verdict: 'NEEDS_WORK' });
+	assert.equal(v.run('git commit -m x').permissionDecision, 'ask', 'a verdict that is not PASS');
+	v.card('1', pass(tree));
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined, 'the PASS tree holds the same blob');
+	// one byte of difference is a different blob: the PASS covered the other content
+	v.stage(PKG, 'one!\n');
+	assert.match(v.run('git commit -m x').permissionDecisionReason, /luci-theme-footstrap\/a\.txt/);
+	// a card that is not JSON is skipped, and the cards behind it are still read
+	v.card('0-bad');
+	writeFileSync(join(v.r, '..', 'tmp', 'task-0-bad', 'card.json'), '{ "PASS" nope');
+	v.card('2', pass(g(v.r, 'write-tree')));
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined);
+	// a history that is not a list of objects reads as no verdict
+	v.card('2', 'PASS');
+	assert.equal(v.run('git commit -m x').permissionDecision, 'ask');
+});
+
+test('precommit-gate verdict: a guard path needs CLEAN on the same entry, any other path needs nothing', () => {
+	const v = verdictRepo('v2');
+	v.stage('.githooks/pre-push', '#!/bin/sh\n');
+	const tree = g(v.r, 'write-tree');
+	v.card('1', pass(tree));
+	const q = v.run('git commit -m x');
+	assert.equal(q.permissionDecision, 'ask', 'PASS without CLEAN');
+	assert.match(q.permissionDecisionReason, /\.githooks\/pre-push/);
+	assert.match(q.permissionDecisionReason, /CLEAN/);
+	// CLEAN on a different entry is not the same entry
+	v.card('2', pass(g(v.r, 'write-tree'), { security: 'FINDINGS' }));
+	assert.equal(v.run('git commit -m x').permissionDecision, 'ask');
+	v.card('1', pass(tree, { security: 'CLEAN' }));
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined);
+	for (const rel of [ '.claude/hooks/x.sh', '.claude/settings.json', '.github/workflows/x.yml' ]) {
+		v.stage(rel, 'x\n');
+		assert.equal(v.run('git commit -m x').permissionDecision, 'ask', rel);
+	}
+	// the other paths go out on T0 and the pre-push check, and the tester reads them afterwards
+	const w = verdictRepo('v3');
+	for (const rel of [ 'tools/x.mjs', 'docs/x.md', 'tests/x.mjs', '.claude/skills/x.md', '.claude/agents/x.md', 'CLAUDE.md' ]) w.stage(rel, 'x\n');
+	assert.equal(w.run('git commit -m x').permissionDecision, undefined);
+	// a mixed commit names only the path that is uncovered
+	w.stage('luci-theme-footstrap/b.txt', 'b\n');
+	w.card('1', pass(g(w.r, 'write-tree')));
+	w.stage('install.sh', '#!/bin/sh\n');
+	const mixed = w.run('git commit -m x').permissionDecisionReason;
+	assert.match(mixed, /install\.sh/);
+	assert.doesNotMatch(mixed, /b\.txt|tools\/x/);
+});
+
+test('precommit-gate verdict: a deletion is covered by a PASS tree that lacks the path', () => {
+	const v = verdictRepo('v4');
+	v.stage('luci-theme-footstrap/old.txt', 'old\n');
+	g(v.r, 'commit', '-q', '-m', 'add');
+	const held = g(v.r, 'write-tree');
+	v.remove('luci-theme-footstrap/old.txt');
+	v.card('1', pass(held));
+	assert.equal(v.run('git commit -m x').permissionDecision, 'ask', 'a tree that still holds the file');
+	v.card('1', pass(g(v.r, 'write-tree')));
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined);
+	// a move is a deletion of the old name too
+	const m = verdictRepo('v5');
+	m.stage('luci-theme-footstrap/old.txt', 'old\nmore\nlines\nso\nthat\ngit\nsees\na rename\n');
+	g(m.r, 'commit', '-q', '-m', 'add');
+	const heldHere = g(m.r, 'write-tree');
+	m.remove('luci-theme-footstrap/old.txt', 'docs-old.txt');
+	m.card('1', pass(g(m.r, 'write-tree')));
+	assert.equal(m.run('git commit -m x').permissionDecision, undefined);
+	m.card('1', pass(heldHere));
+	assert.equal(m.run('git commit -m x').permissionDecision, 'ask');
+});
+
+test('precommit-gate verdict: a tree from before a file existed does not cover its deletion', () => {
+	const d = verdictRepo('v8');
+	d.stage('luci-theme-footstrap/keep.js', 'a\n');
+	g(d.r, 'commit', '-q', '-m', 'A');
+	const old = g(d.r, 'write-tree');
+	// the next commit changes the directory the file lives in, and the file sits in a directory of its own
+	d.stage('luci-theme-footstrap/keep.js', 'b\n');
+	d.stage('luci-theme-footstrap/sub/new.js', 'n\n');
+	g(d.r, 'commit', '-q', '-m', 'B');
+	d.remove('luci-theme-footstrap/sub/new.js');
+	d.card('1', pass(old));
+	const q = d.run('git commit -m x');
+	assert.equal(q.permissionDecision, 'ask', 'the old tree lacks new.js and holds another keep.js');
+	assert.match(q.permissionDecisionReason, /sub\/new\.js/);
+	d.card('1', pass(g(d.r, 'write-tree')));
+	assert.equal(d.run('git commit -m x').permissionDecision, undefined, 'a tree of this very change');
+	// when nothing else moved, the old tree is exactly what the commit leaves, so it does cover it
+	const e = verdictRepo('v9');
+	e.stage('luci-theme-footstrap/keep.js', 'a\n');
+	g(e.r, 'commit', '-q', '-m', 'A');
+	const same = g(e.r, 'write-tree');
+	e.stage('luci-theme-footstrap/new.js', 'n\n');
+	g(e.r, 'commit', '-q', '-m', 'B');
+	e.remove('luci-theme-footstrap/new.js');
+	e.card('1', pass(same));
+	assert.equal(e.run('git commit -m x').permissionDecision, undefined);
+	// a root-level file is judged on the policed files of the whole tree
+	const f = verdictRepo('v10');
+	f.stage('install.sh', '#!/bin/sh\n');
+	f.stage('luci-theme-footstrap/a.txt', 'a\n');
+	g(f.r, 'commit', '-q', '-m', 'A');
+	const before = g(f.r, 'write-tree');
+	f.stage('luci-theme-footstrap/a.txt', 'a2\n');
+	g(f.r, 'commit', '-q', '-m', 'B');
+	f.remove('install.sh');
+	f.card('1', pass(before));
+	assert.equal(f.run('git commit -m x').permissionDecision, 'ask');
+	f.card('1', pass(g(f.r, 'write-tree')));
+	assert.equal(f.run('git commit -m x').permissionDecision, undefined);
+});
+
+test('precommit-gate verdict: the cards are read newest first and the order never changes the answer', () => {
+	const v = verdictRepo('v11');
+	v.stage('luci-theme-footstrap/a.txt', 'one\n');
+	const tree = g(v.r, 'write-tree');
+	const at = (n, sec) => utimesSync(join(v.r, '..', 'tmp', `task-${n}`, 'card.json'), sec, sec);
+	v.card('match', pass(tree));
+	for (let i = 0; i < 5; i++) v.card(`other${i}`, pass('0'.repeat(40)), pass('1'.repeat(40)));
+	for (const [ old, fresh ] of [ [ 'match', 'other0' ], [ 'other0', 'match' ] ]) {
+		at(old, 1000);
+		at(fresh, 2000);
+		assert.equal(v.run('git commit -m x').permissionDecision, undefined, `${fresh} newest`);
+	}
+	// a guard path wants CLEAN from some entry, and a newer entry without it does not hide the older one that has it
+	const w = verdictRepo('v12');
+	w.stage('.githooks/pre-push', 'x\n');
+	const t = g(w.r, 'write-tree');
+	w.card('old', pass(t, { security: 'CLEAN' }));
+	w.card('new', pass(t));
+	utimesSync(join(w.r, '..', 'tmp', 'task-old', 'card.json'), 1000, 1000);
+	utimesSync(join(w.r, '..', 'tmp', 'task-new', 'card.json'), 2000, 2000);
+	assert.equal(w.run('git commit -m x').permissionDecision, undefined);
+});
+
+test('precommit-gate verdict: a one-call add, changelog add or `-a` is checked against what the commit will carry', () => {
+	const v = verdictRepo('v6');
+	const PKG = 'luci-theme-footstrap/n.txt';
+	const log = "node tools/changelog.mjs add 0 --en '- **A.** d' --ru '- **А.** б'";
+	// `git add` stages the worktree: the PASS tree is the worktree content, and one byte off asks
+	v.touch(PKG, 'new\n');
+	v.card('1', pass(v.snap(PKG)));
+	const add = `git add ${PKG} CHANGELOG.md CHANGELOG_ru.md && git commit -m x`;
+	assert.equal(v.run(add).permissionDecision, undefined);
+	assert.equal(v.run(`git add -A && git commit -m x`).permissionDecision, undefined);
+	v.touch(PKG, 'new!\n');
+	assert.match(v.run(add).permissionDecisionReason, /luci-theme-footstrap\/n\.txt/);
+	// the changelog add stages only the changelog: the package file is the index's, whatever the worktree holds
+	writeFileSync(join(v.r, PKG), 'worktree only\n');
+	const worktree = v.snap(PKG);
+	writeFileSync(join(v.r, PKG), 'index\n');
+	g(v.r, 'add', PKG);
+	const index = g(v.r, 'write-tree');
+	writeFileSync(join(v.r, PKG), 'worktree only\n');
+	v.card('1', pass(worktree));
+	assert.equal(v.run(`${log} && git commit -m x`).permissionDecision, 'ask');
+	v.card('1', pass(index));
+	assert.equal(v.run(`${log} && git commit -m x`).permissionDecision, undefined);
+	// `-a` takes tracked files from the worktree, and leaves an untracked one out
+	g(v.r, 'reset', '-q');
+	g(v.r, 'add', PKG);
+	g(v.r, 'commit', '-q', '-m', 'add');
+	v.touch(PKG, 'second\n');
+	v.touch('luci-theme-footstrap/untracked.txt', 'u\n');
+	v.card('1', pass(v.snap(PKG)));
+	assert.equal(v.run('git commit -am x').permissionDecision, undefined);
+	v.touch(PKG, 'third\n');
+	assert.equal(v.run('git commit -am x').permissionDecision, 'ask');
+});
+
+test('precommit-gate verdict: a name git quotes is read as the path it is', () => {
+	for (const [ i, name ] of [ 'a"b.js', 'a\tb.js', 'a\\b.js', 'a\nb.js', 'a[1]*b.js' ].entries()) {
+		const v = verdictRepo(`q${i}`);
+		const rel = `luci-theme-footstrap/${name}`;
+		v.stage(rel, 'one\n');
+		assert.equal(v.run('git commit -m x').permissionDecision, 'ask', `${JSON.stringify(name)} uncovered`);
+		v.card('1', pass(g(v.r, 'write-tree')));
+		assert.equal(v.run('git commit -m x').permissionDecision, undefined, `${JSON.stringify(name)} covered`);
+		v.stage(rel, 'two\n');
+		assert.equal(v.run('git commit -m x').permissionDecision, 'ask', `${JSON.stringify(name)} one byte off`);
+		assert.equal(v.run('git commit -am x').permissionDecision, 'ask', `${JSON.stringify(name)} read from the worktree`);
+	}
+	const w = verdictRepo('q-guard');
+	w.stage('.githooks/a"b', 'x\n');
+	assert.equal(w.run('git commit -m x').permissionDecision, 'ask', 'a guard path with a quoted name');
+});
+
+test('precommit-gate verdict: the commit forms that take worktree content are read from the worktree', () => {
+	const v = verdictRepo('f1');
+	const PKG = 'luci-theme-footstrap/a.txt';
+	v.stage(PKG, 'one\n');
+	g(v.r, 'commit', '-q', '-m', 'add');
+	const held = g(v.r, 'rev-parse', 'HEAD^{tree}');
+	v.touch(PKG, 'two\n'); // an edit only the worktree holds
+	const edited = v.snap(PKG);
+	g(v.r, 'add', 'CHANGELOG.md', 'CHANGELOG_ru.md'); // the index carries the changelog and no package file
+	const reads = [
+		'git commit -m x -a', 'git commit -m "x y" -a', "git commit -m 'x y' --all", 'git commit -qa -m x', 'git commit -sa -m x', 'git commit -am x', 'git commit --all -m x',
+		`git commit -m x ${PKG}`, `git commit -m "x y" ${PKG}`, `git commit -o ${PKG} -m x`, `git commit -i ${PKG} -m x`, `git commit --only -m x -- ${PKG}`, `git commit --include ${PKG} -m x`,
+		'git commit -m x luci-theme-footstrap',
+	];
+	v.card('1', pass(held));
+	for (const c of reads) assert.equal(v.run(c).permissionDecision, 'ask', c);
+	v.card('1', pass(edited));
+	for (const c of reads) assert.equal(v.run(c).permissionDecision, undefined, c);
+	// a line that only mentions the flag, or whose flag is another command's, leaves the index as the content
+	v.card('1', pass(held));
+	for (const c of [
+		'git commit -m x', 'git commit -m "add -a flag"', "git commit -m 'x' # -a", 'git commit -ma', 'git commit -m x && ls -a', 'ls -a && git commit -m x', 'git commit -m x 2>&1',
+		'git commit -m x; ls luci-theme-footstrap', 'git commit -m x | cat', 'git commit -m x -- docs',
+		// a quoted path is named in the header as unread
+		`git commit -m x "${PKG}"`,
+		// the value of --pathspec-from-file is a file name, not a path the commit takes
+		`git commit -m x --pathspec-from-file ${PKG}`,
+	]) assert.equal(v.run(c).permissionDecision, undefined, c);
+});
+
+test('precommit-gate verdict: an exec bit and a symlink are part of the content', () => {
+	const v = verdictRepo('m1');
+	const G = '.githooks/pre-push';
+	v.stage(G, '#!/bin/sh\n');
+	g(v.r, 'commit', '-q', '-m', 'add');
+	v.card('1', pass(g(v.r, 'rev-parse', 'HEAD^{tree}'), { security: 'CLEAN' }));
+	v.touch(G, '#!/bin/sh\n'); // the same bytes, and the bit
+	chmodSync(join(v.r, G), 0o755);
+	const exec = v.snap(G);
+	const staged = () => g(v.r, 'add', 'CHANGELOG.md', 'CHANGELOG_ru.md');
+	g(v.r, 'add', G);
+	staged();
+	assert.equal(v.run('git commit -m x').permissionDecision, 'ask', 'staged with the bit');
+	g(v.r, 'reset', '-q');
+	staged();
+	for (const c of [ 'git commit -am x', `git add ${G} && git commit -m x`, `git commit -m x ${G}` ]) assert.equal(v.run(c).permissionDecision, 'ask', c);
+	v.card('1', pass(exec, { security: 'CLEAN' }));
+	for (const c of [ 'git commit -am x', `git add ${G} && git commit -m x`, `git commit -m x ${G}` ]) assert.equal(v.run(c).permissionDecision, undefined, c);
+	g(v.r, 'add', G);
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined, 'the tree holds the bit');
+
+	// a file replaced by a symlink holding the same bytes, and a link that was never a file
+	const w = verdictRepo('m2');
+	const L = 'luci-theme-footstrap/l.txt';
+	w.stage('luci-theme-footstrap/real.txt', 'real.txt'); // no newline: the bytes a link to it holds
+	w.stage(L, 'real.txt');
+	g(w.r, 'commit', '-q', '-m', 'add');
+	const held = g(w.r, 'rev-parse', 'HEAD^{tree}');
+	w.card('1', pass(held));
+	w.touch('luci-theme-footstrap/real.txt', 'real.txt');
+	rmSync(join(w.r, L));
+	symlinkSync('real.txt', join(w.r, L));
+	const link = w.snap(L);
+	g(w.r, 'add', L, 'CHANGELOG.md', 'CHANGELOG_ru.md');
+	assert.equal(w.run('git commit -m x').permissionDecision, 'ask', 'staged as a link');
+	g(w.r, 'reset', '-q');
+	g(w.r, 'add', 'CHANGELOG.md', 'CHANGELOG_ru.md');
+	assert.equal(w.run('git commit -am x').permissionDecision, 'ask', 'a link in the worktree');
+	w.card('1', pass(link));
+	assert.equal(w.run('git commit -am x').permissionDecision, undefined, 'the tree holds the link');
+	symlinkSync('nowhere', join(w.r, 'luci-theme-footstrap/new'));
+	assert.equal(w.run('git add luci-theme-footstrap/new CHANGELOG.md CHANGELOG_ru.md && git commit -m x').permissionDecision, 'ask', 'a new link, dangling');
+});
+
+test('precommit-gate verdict: one entry has to hold every class path of the commit together', () => {
+	const v = verdictRepo('c1');
+	const A = 'luci-theme-footstrap/a.txt';
+	const B = 'luci-theme-footstrap/b.txt';
+	v.stage(A, 'a0\n');
+	v.stage(B, 'b0\n');
+	g(v.r, 'commit', '-q', '-m', 'add');
+	v.touch(A, 'a1\n');
+	const aNew = v.snap(A);
+	v.touch(A, 'a0\n');
+	v.touch(B, 'b1\n');
+	const bNew = v.snap(B);
+	v.touch(A, 'a1\n');
+	const both = v.snap(A, B);
+	g(v.r, 'add', A, B, 'CHANGELOG.md', 'CHANGELOG_ru.md');
+	v.card('1', pass(aNew));
+	v.card('2', pass(bNew));
+	const q = v.run('git commit -m x');
+	assert.equal(q.permissionDecision, 'ask', 'each path has an entry of its own');
+	assert.match(q.permissionDecisionReason, /no single history entry/);
+	v.card('3', pass(both));
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined, 'the pair is one entry');
+	// the entry that holds both may be an older one, behind newer entries that hold one each
+	v.card('3', pass('0'.repeat(40)), pass(both), pass(aNew));
+	assert.equal(v.run('git commit -m x').permissionDecision, undefined);
+
+	// a package path and a guard path: the entry holding both is the one that says CLEAN
+	const w = verdictRepo('c2');
+	const P = 'luci-theme-footstrap/p.txt';
+	const G = '.githooks/pre-push';
+	w.stage(P, 'p0\n');
+	w.stage(G, 'g0\n');
+	g(w.r, 'commit', '-q', '-m', 'add');
+	w.touch(G, 'g1\n');
+	const guardNew = w.snap(G);
+	w.touch(P, 'p1\n');
+	const pair = w.snap(P, G);
+	g(w.r, 'add', P, G, 'CHANGELOG.md', 'CHANGELOG_ru.md');
+	w.card('1', pass(guardNew, { security: 'CLEAN' }));
+	w.card('2', pass(pair));
+	const r = w.run('git commit -m x');
+	assert.equal(r.permissionDecision, 'ask', 'CLEAN on one entry, both paths on another');
+	assert.match(r.permissionDecisionReason, /CLEAN/);
+	w.card('2', pass(pair, { security: 'CLEAN' }));
+	assert.equal(w.run('git commit -m x').permissionDecision, undefined);
+});
+
+test('precommit-gate verdict: the changelog deny comes first, and another repository is left alone', () => {
+	const v = verdictRepo('v7');
+	mkdirSync(join(v.r, 'luci-theme-footstrap'));
+	writeFileSync(join(v.r, 'luci-theme-footstrap/a.txt'), 'a\n');
+	g(v.r, 'add', 'luci-theme-footstrap/a.txt');
+	assert.equal(v.run('git commit -m x').permissionDecision, 'deny');
+	const other = repo(join(dir, 'v7', 'other'));
+	mkdirSync(join(other, 'luci-theme-footstrap'));
+	writeFileSync(join(other, 'luci-theme-footstrap/a.txt'), 'a\n');
+	g(other, 'add', 'luci-theme-footstrap/a.txt');
+	assert.equal(v.run('git commit -m x', other).permissionDecision, undefined);
+});
+
+// ---- precommit-gate, the oracle half: a commit that weakens a baseline, a limit, a test or an allow-list asks ----
+// None of these paths is in the verdict class, so only the oracle half can speak. `was` is committed first, `now` is staged.
+function oracle(name, rel, was, now) {
+	const v = verdictRepo(name);
+	if (was !== null) { v.stage(rel, was); g(v.r, 'commit', '-q', '-m', 'add'); }
+	v.stage(rel, now);
+	return v;
+}
+const reason = (v, c = 'git commit -m x') => v.run(c).permissionDecisionReason;
+const decision = (v, c = 'git commit -m x') => v.run(c).permissionDecision;
+
+test('precommit-gate oracle: a line added under tools/baselines asks, a `release: ` subject does not', () => {
+	const B = 'tools/baselines/b.json';
+	const was = '{\n\t"a": [\n\t\t"x",\n\t\t"y"\n\t]\n}\n';
+	// "y" gains a comma and "z" is the one new line
+	const v = oracle('o1', B, was, '{\n\t"a": [\n\t\t"x",\n\t\t"y",\n\t\t"z"\n\t]\n}\n');
+	assert.equal(decision(v), 'ask');
+	assert.match(reason(v), /this commit weakens an oracle: tools\/baselines\/b\.json gained 1 line\(s\), first: "z"/);
+	for (const c of [ "git commit -m 'release: 1.2.3'", 'git commit -m "release: 1.2.3"', "git commit -qm 'release: 1.2.3'", 'git commit --message="release: 1.2.3"', "git commit --message 'release: 1.2.3'" ]) assert.equal(decision(v, c), undefined, c);
+	// the first -m is the subject, and the word has to start it
+	for (const c of [ "git commit -m 'fix: release: 1.2.3'", "git commit -m x -m 'release: 1.2.3'", "git commit -m 'prerelease: 1.2.3'", 'git commit --amend --no-edit' ]) assert.equal(decision(v, c), 'ask', c);
+	// a removal, and a baseline brought in at the same content, are not growth; a baseline file that is new is all growth
+	assert.equal(decision(oracle('o1b', B, '{\n\t"a": [\n\t\t"x",\n\t\t"y"\n\t]\n}\n', '{\n\t"a": [\n\t\t"x"\n\t]\n}\n')), undefined);
+	assert.equal(decision(oracle('o1c', B, null, was)), 'ask');
+	assert.equal(decision(oracle('o1d', B, was, was.replace('"x"', '"x"'))), undefined);
+	// -a reads the worktree: the index holds nothing new, the file on disk does
+	const w = verdictRepo('o1e');
+	w.stage(B, was);
+	g(w.r, 'commit', '-q', '-m', 'add');
+	w.touch(B, `${was}"more"\n`);
+	assert.equal(decision(w, 'git commit -am x'), 'ask');
+	assert.equal(decision(w), undefined);
+});
+
+test('precommit-gate oracle: a baseline line is new under its key, so a copy or a move between keys asks', () => {
+	// the shape of tools/baselines/live-audit.json: stand keys, each a sorted list, most entries repeated across them
+	const L = 'tools/baselines/live-audit.json';
+	const shared = [ '/admin/dashboard|320|overflow|span', '/admin/services/acme/logread|0|noname|textarea#syslog' ];
+	const only = '/admin/network/diagnostics|0|noname|textarea';
+	const book = (o) => `${JSON.stringify(o, null, '\t')}\n`;
+	const base = { owrt2512: [ only, ...shared ], owrt2410: [ ...shared ], owrtsnap: [ ...shared ], 'owrt2410@ru': [ ...shared ] };
+	const was = book(base);
+	const q = (name, o) => oracle(name, L, was, book(o));
+	// a copy: the text sits in the file already, under owrt2512, and is new under owrt2410
+	const copy = q('o1f', { ...base, owrt2410: [ only, ...shared ] });
+	assert.equal(decision(copy), 'ask');
+	assert.ok(reason(copy).includes(`${L} gained 1 line(s), first: "${only}"`), reason(copy));
+	// a move: out of one key, into another
+	assert.equal(decision(q('o1g', { ...base, owrt2512: [ ...shared ], owrt2410: [ only, ...shared ] })), 'ask');
+	// a key that is new is its opener line and its entries; the closer already stands under the root
+	assert.match(reason(q('o1h', { ...base, owrtnew: [ ...shared ] })), /gained 3 line\(s\), first: "owrtnew": \[/);
+	// a reordering within a key, a removal and a file brought in unchanged are not growth
+	assert.equal(decision(q('o1i', { ...base, owrt2512: [ ...shared, only ] })), undefined);
+	assert.equal(decision(q('o1j', { ...base, owrt2512: [ only ], owrtsnap: [ shared[0] ] })), undefined);
+	assert.equal(decision(q('o1k', JSON.parse(was))), undefined);
+	// the key is the whole path of openers, so two lists under different parents are different keys
+	const nest = (a, b) => book({ x: { list: a }, y: { list: b } });
+	assert.equal(decision(oracle('o1l', L, nest([ 'p' ], [ 'p' ]), nest([ 'p', 'q' ], [ 'p' ]))), 'ask');
+	assert.equal(decision(oracle('o1m', L, nest([ 'p', 'q' ], [ 'p' ]), nest([ 'p', 'q' ], [ 'p', 'q' ]))), 'ask', 'copied between the two lists');
+	assert.equal(decision(oracle('o1n', L, nest([ 'p', 'q' ], [ 'p' ]), nest([ 'q', 'p' ], [ 'p' ]))), undefined);
+	// a `release: ` subject still carries a baseline refresh, a copy included
+	assert.equal(decision(copy, "git commit -m 'release: 1.2.3'"), undefined);
+});
+
+test('precommit-gate oracle: a raised number in css-metrics LIMITS asks, a lowering and size-budget do not', () => {
+	const C = 'tools/css-metrics.mjs';
+	const css = (n, more = '') => `// importants: 99 in a comment\nconst LIMITS = {\n\t/* a raise: importants: 77 */\n\timportants: ${n},\n\temptyRules: 0,${more}\n};\nconst importants = 5;\n`;
+	const up = oracle('o2', C, css(35), css(36));
+	assert.equal(decision(up), 'ask');
+	assert.match(reason(up), /tools\/css-metrics\.mjs LIMITS raised: importants 35 -> 36/);
+	assert.equal(decision(oracle('o2b', C, css(35), css(34))), undefined);
+	assert.equal(decision(oracle('o2c', C, css(35), css(35, '\n\tnewKey: 9,'))), undefined, 'a limit that is new is a new check');
+	assert.match(reason(oracle('o2d', C, css(35), css(35).replace('emptyRules: 0', 'emptyRules: 1'))), /emptyRules 0 -> 1/);
+	assert.equal(decision(oracle('o2e', C, css(35), css(35).replace('// importants: 99', '// importants: 100'))), undefined, 'a comment is not a limit');
+	// the size budget is under a standing grant
+	const budget = (n) => `const LIMITS = {\n\tcascadeCss: ${n},\n};\n`;
+	assert.equal(decision(oracle('o2f', 'tools/size-budget.mjs', budget('118_420'), budget('120_000'))), undefined);
+	assert.equal(decision(oracle('o2g', C, budget('118_420'), budget('118_421'))), 'ask', 'an underscored number is read whole');
+});
+
+test('precommit-gate oracle: a net drop of test( calls in a tests file asks, per file', () => {
+	const T = 'tests/a.test.mjs';
+	// `latest(` and `contest(` hold the letters, not a call
+	const tf = (...names) => `import { test } from 'node:test';\n${names.map((n) => `test('${n}', () => {});`).join('\n')}\nlatest(1); contest(2);\n`;
+	const drop = oracle('o3', T, tf('a', 'b', 'c'), tf('a', 'b'));
+	assert.equal(decision(drop), 'ask');
+	assert.match(reason(drop), /tests\/a\.test\.mjs lost test\( calls: 3 -> 2/);
+	assert.equal(decision(oracle('o3b', T, tf('a', 'b'), tf('a', 'b', 'c'))), undefined);
+	assert.equal(decision(oracle('o3c', T, tf('a', 'b'), tf('x', 'y'))), undefined, 'the same count');
+	assert.equal(decision(oracle('o3d', T, null, tf('a'))), undefined, 'a new file');
+	assert.equal(decision(oracle('o3e', 'tests/helper.mjs', tf('a', 'b'), tf('a'))), undefined, 'not a *.test.mjs');
+	// a test moved to another file still asks on the file it left
+	const m = oracle('o3f', T, tf('a', 'b', 'c'), tf('a', 'b'));
+	m.stage('tests/b.test.mjs', tf('c'));
+	assert.match(reason(m), /tests\/a\.test\.mjs lost/);
+	assert.doesNotMatch(reason(m), /tests\/b\.test\.mjs/);
+	// a deleted file is every test gone
+	const del = verdictRepo('o3g');
+	del.stage(T, tf('a', 'b', 'c'));
+	g(del.r, 'commit', '-q', '-m', 'add');
+	del.remove(T);
+	assert.match(reason(del), /tests\/a\.test\.mjs lost test\( calls: 3 -> 0/);
+	// -a reads the worktree
+	const w = verdictRepo('o3h');
+	w.stage(T, tf('a', 'b'));
+	g(w.r, 'commit', '-q', '-m', 'add');
+	w.touch(T, tf('a'));
+	assert.equal(decision(w, 'git commit -am x'), 'ask');
+	assert.equal(decision(w), undefined);
+});
+
+test('precommit-gate oracle: a literal added to an ALLOW list of a tools gate asks, a removal does not', () => {
+	const G = 'tools/gate.mjs';
+	// the apostrophe is escaped in a literal, a quote and a `//` in a comment are text, and a set after the list is not the list
+	const map = (...entries) => `const SKIP = [ 'not-in-a-list' ];\n/* ALLOW = [ 'in a comment' ] */\nconst ALLOW = new Map([\n\t// 'x': skipped\n${entries.map(([ k, why ]) => `\t[ '${k}', '${why}' ], // it's here`).join('\n')}\n]);\nconst after = new Set([ 'later' ]);\n`;
+	const one = [ 'a in .b', "the reason, it\\'s long" ];
+	const two = [ 'c in .d', 'http://x/y' ];
+	const add = oracle('o4', G, map(one), map(one, two));
+	assert.equal(decision(add), 'ask');
+	assert.match(reason(add), /tools\/gate\.mjs ALLOW gained 2 literal\(s\), first: 'c in \.d'/);
+	assert.equal(decision(oracle('o4b', G, map(one, two), map(one))), undefined);
+	assert.equal(decision(oracle('o4c', G, map(one), map(one).replace("'later'", "'later', 'and more'"))), undefined, 'outside the list');
+	assert.equal(decision(oracle('o4d', G, map(one), map(one).replace("\t// 'x': skipped", "\t// 'x': skipped, 'y' /* 'z' */"))), undefined, 'inside a comment');
+	// a bare array, several entries on one line: a removal from the line is not a new entry, and a one-line list ends on its `;`
+	const arr = (...e) => `const ALLOW = [\n\t${e.map((x) => `'${x}'`).join(', ')},\n];\n`;
+	assert.equal(decision(oracle('o4e', G, arr('a', 'b'), arr('b'))), undefined);
+	assert.match(reason(oracle('o4f', G, arr('a', 'b'), arr('a', 'b', 'c'))), /ALLOW gained 1 literal\(s\), first: 'c'/);
+	const flat = (...e) => `const ALLOW = [ ${e.map((x) => `'${x}'`).join(', ')} ];\nconst other = [ 'zz' ];\n`;
+	assert.equal(decision(oracle('o4g', G, flat('a'), flat('a', 'b'))), 'ask');
+	assert.equal(decision(oracle('o4h', G, flat('a'), flat('a').replace("'zz'", "'zz', 'yy'"))), undefined);
+	// a file with no ALLOW list is never read, and the list belongs to a tools/*.mjs
+	assert.equal(decision(oracle('o4i', G, 'const X = [ "a" ];\n', 'const X = [ "a", "b" ];\n')), undefined);
+	assert.equal(decision(oracle('o4j', 'docs/gate.mjs', arr('a'), arr('a', 'b'))), undefined);
+});
+
+test('precommit-gate oracle: a find joins the verdict half question, and a clean commit stays silent', () => {
+	const v = oracle('o5', 'tools/baselines/b.json', '[\n\t"a"\n]\n', '[\n\t"a",\n\t"b"\n]\n');
+	v.stage('luci-theme-footstrap/a.txt', 'one\n');
+	const q = reason(v);
+	assert.match(q, /weakens an oracle: tools\/baselines\/b\.json/);
+	assert.match(q, /no recorded PASS on the content of luci-theme-footstrap\/a\.txt/);
+	v.card('1', pass(g(v.r, 'write-tree')));
+	assert.match(reason(v), /^precommit-gate: this commit weakens an oracle: tools\/baselines\/b\.json gained 1 line\(s\), first: "b"\. Waiving a gate is the maintainer's word/);
+	const quiet = verdictRepo('o5b');
+	for (const [ rel, text ] of [ [ 'tools/baselines/b.json', '[ "a" ]\n' ], [ 'tests/a.test.mjs', "test('a', () => {});\n" ], [ 'tools/x.mjs', 'const ALLOW = [ "a" ];\n' ], [ 'tools/css-metrics.mjs', 'const LIMITS = {\n\timportants: 1,\n};\n' ] ]) quiet.stage(rel, text);
+	g(quiet.r, 'commit', '-q', '-m', 'add');
+	quiet.stage('docs/x.md', 'x\n');
+	assert.equal(decision(quiet), undefined);
+});
+
+// ---- precommit-gate: `--amend` is read against HEAD^, and a commit from a subdirectory is read from the root ----
+test('precommit-gate: an amend is the combination of its parent and the index', () => {
+	const v = verdictRepo('am1');
+	const A = 'luci-theme-footstrap/a.txt';
+	const B = 'luci-theme-footstrap/b.txt';
+	v.stage(A, 'a0\n');
+	v.stage(B, 'b0\n');
+	g(v.r, 'commit', '-q', '-m', 'base');
+	v.touch(A, 'a1\n');
+	const aNew = v.snap(A); // A new, B old
+	v.touch(A, 'a0\n');
+	v.touch(B, 'b1\n');
+	const bNew = v.snap(B); // B new, A old
+	v.touch(A, 'a1\n');
+	const both = v.snap(A, B);
+	g(v.r, 'add', A, 'CHANGELOG.md', 'CHANGELOG_ru.md');
+	g(v.r, 'commit', '-q', '-m', 'A');
+	v.stage(B, 'b1\n'); // HEAD holds A new; the index adds B new
+	v.card('1', pass(aNew));
+	v.card('2', pass(bNew));
+	assert.equal(decision(v), undefined, 'a plain commit adds B alone, and B has a PASS');
+	const q = v.run('git commit --amend -m x');
+	assert.equal(q.permissionDecision, 'ask', 'the amended commit is A and B together, which no entry holds');
+	assert.match(q.permissionDecisionReason, /no single history entry/);
+	assert.equal(decision(v, 'git commit --no-edit --amend'), 'ask');
+	v.card('3', pass(both));
+	for (const c of [ 'git commit --amend -m x', 'git commit --amend --no-edit', 'git commit -a --amend -m x' ]) assert.equal(decision(v, c), undefined, c);
+	// a root commit has no parent: its content is the whole index, and the hooks it carries are guard paths
+	const r = gateRepo('am2');
+	assert.match(decide('git commit --amend -m x', { cwd: r, hook: join(r, '.claude/hooks/precommit-gate.sh') }), /ask/);
+	const root = run('git commit --amend -m x', { cwd: r, hook: join(r, '.claude/hooks/precommit-gate.sh') });
+	assert.match(root.permissionDecisionReason, /\.claude\/hooks\/precommit-gate\.sh/);
+});
+
+test('precommit-gate: an amend that deletes a path judges the deletion against the amend base', () => {
+	const v = verdictRepo('am3');
+	const A = 'luci-theme-footstrap/a.txt';
+	const B = 'luci-theme-footstrap/b.txt';
+	for (const f of [ A, B, 'luci-theme-footstrap/c.txt' ]) v.stage(f, `${f}0\n`);
+	g(v.r, 'commit', '-q', '-m', 'base');
+	v.stage(B, 'b1\n');
+	g(v.r, 'commit', '-q', '-m', 'b1');
+	// HEAD minus A still holds b1, which the amend rolls back to its parent's blob: that tree was never the combination
+	g(v.r, 'rm', '-q', '--cached', A);
+	const headMinusA = g(v.r, 'write-tree');
+	g(v.r, 'reset', '-q');
+	v.remove(A);
+	v.stage(B, `${B}0\n`);
+	const made = g(v.r, 'write-tree');
+	v.card('1', pass(headMinusA));
+	assert.equal(decision(v, 'git commit --amend -m x'), 'ask', 'the tree the amend does not make');
+	v.card('1', pass(made));
+	assert.equal(decision(v, 'git commit --amend -m x'), undefined, 'the tree the amend makes');
+});
+
+test('precommit-gate: a commit from a subdirectory runs the changelog check from the root', () => {
+	const v = verdictRepo('sub1');
+	v.stage('docs/x.md', 'x\n');
+	assert.equal(decision(v, 'git commit -m x') ?? '', '');
+	assert.equal(v.run('git commit -m x', join(v.r, 'docs')).permissionDecision, undefined);
+	// the contract still bites from there: a staged file with no entry is the changelog deny, not a missing module
+	const r = gateRepo('sub2');
+	mkdirSync(join(r, 'docs'));
+	const q = run('git commit -m x', { cwd: join(r, 'docs'), hook: join(r, '.claude/hooks/precommit-gate.sh') });
+	assert.equal(q.permissionDecision, 'deny');
+	assert.match(q.permissionDecisionReason, /Changelog contract/);
+	assert.doesNotMatch(q.permissionDecisionReason, /MODULE_NOT_FOUND|changelog\.mjs failed/);
+});
+
+// ---- a crew role in the lead's checkout: what rewrites its worktree, index or config is denied, and only there ----
+const ROLES = [ 'developer', 'tester', 'security', 'researcher', 'upstream-reviewer' ];
+const roleDeny = [
+	// a discard of paths, whatever sits before the `--`, and a cd into nowhere that stays put
+	'git checkout -q -- .', 'git checkout -- f', 'git checkout .', 'git checkout HEAD -- a b', 'git checkout -f -- .', 'git checkout -- ./luci-theme-footstrap',
+	'cd "" && git checkout -- .', 'cd -- "" && git checkout -- .', "cd '' && git restore .", 'git -c core.pager=cat checkout -- .',
+	'git restore f', 'git restore .', 'git restore --staged f', 'git restore -S f', 'git restore --source HEAD~1 f', 'git restore --worktree --staged .',
+	'git clean -fd', 'git clean -fdx', 'git clean -f',
+	'git stash', 'git stash push -m x', 'git stash -u', 'git stash pop', 'git stash apply', 'git stash drop', 'git stash clear', 'git stash save x',
+	'git reset', 'git reset --hard HEAD~1', 'git reset --soft HEAD~1', 'git reset --mixed', 'git reset HEAD f', 'git reset -q',
+	'git add f', 'git add -A', 'git add .', 'git add -- f g', 'git rm f', 'git rm --cached f', 'git mv a b',
+	'git remote add zz u', 'git remote remove zz', 'git remote rm zz', 'git remote rename a b', 'git remote set-url origin u', 'git remote set-url --add origin u', 'git remote set-head origin main',
+	'git config user.name x', 'git config --global user.name x', 'git config --local a.b c', 'git config --unset user.name', 'git config --unset-all a.b', 'git config --add a.b c', 'git config --replace-all a.b c',
+	'git config set a.b c', 'git config unset a.b', 'git config --edit', 'git config --file f a b', 'git config --type bool a.b true', 'git config --remove-section a', 'git config --rename-section a b',
+	// behind a wrapper, a nested shell or a chain; the private index does not make a worktree verb safe
+	'sh -c "git checkout -- ."', "bash -c 'git restore .'", 'true && git clean -fd', 'env FOO=1 git reset', 'timeout 5 git stash', 'tools/bg.sh git checkout -- .', 'echo x | xargs git restore',
+	'GIT_INDEX_FILE=../tmp/task-x/round.idx git checkout -- .', 'GIT_INDEX_FILE=../tmp/task-x/round.idx git restore .', 'GIT_INDEX_FILE=../tmp/task-x/round.idx git rm f', 'GIT_INDEX_FILE=../tmp/task-x/round.idx git mv a b',
+	'GIT_INDEX_FILE= git add f',
+	// a bare assignment is a shell variable: git never sees it and writes the real index
+	'GIT_INDEX_FILE=../tmp/task-x/round.idx; git add -- f', 'GIT_INDEX_FILE=../tmp/task-x/round.idx; git read-tree HEAD', 'FOO=1; GIT_INDEX_FILE=x; git add f', 'foo GIT_INDEX_FILE=x git add f', 'GIT_INDEX_FILE=x && git add f',
+	// a discard that is no `-- .`: a pathspec that cannot be a ref, a tree-ish and a path, a forced or patch checkout, a lone word that is no ref
+	'git checkout ./', 'git checkout ./luci-theme-footstrap', 'git checkout :/', "git checkout ':(top)docs'", "git checkout '*'", 'git checkout .gitignore', 'git checkout HEAD f', 'git checkout HEAD~1 a b', 'git checkout f', 'git checkout nosuchbranch',
+	'git checkout -f', 'git checkout -f HEAD', 'git checkout --force HEAD', 'git checkout -fq HEAD', 'git checkout -p', 'git checkout --patch HEAD f', 'git checkout --pathspec-from-file=list',
+	'git switch --discard-changes HEAD', 'git switch -f HEAD', 'git switch --force HEAD', 'git switch -fq HEAD',
+	'git checkout-index -f -a', 'git checkout-index -a', 'git checkout-index f',
+	'git read-tree HEAD', 'git read-tree -u --reset HEAD', 'git read-tree --reset -u HEAD', 'git read-tree -m HEAD HEAD',
+	// an empty -C operand stays put like cd ""
+	'git -C "" checkout -- .', "git -C '' restore .", 'find . -name x -exec git checkout -- {} \\;', 'git -c alias.co=checkout co -- .', 'eval "git checkout -- ."', '(cd tests && git restore .)', 'sh -c \'cd "" && git checkout -- .\'',
+];
+const roleNone = [
+	// reads
+	'git status', 'git diff', 'git diff --cached', 'git log -3', 'git show HEAD', 'git ls-files', 'git rev-parse HEAD', 'git worktree list', 'git branch', 'git blame f',
+	'git remote', 'git remote -v', 'git remote get-url origin', 'git remote show origin',
+	'git stash list', 'git stash show -p', 'git stash create',
+	'git config user.name', 'git config --get user.name', 'git config --get-regexp remote', 'git config -l', 'git config --list', 'git config --global --get user.name', 'git config get user.name', 'git config list',
+	'git config --file f --get a.b', 'git config --type bool a.b', 'git config --show-origin --get a.b',
+	// a dry run writes nothing
+	'git clean -n', 'git clean -nfd', 'git clean -fdn', 'git clean --dry-run -fd', 'git add -n f', 'git add --dry-run .', 'git rm -n f', 'git mv -n a b', 'git read-tree --dry-run HEAD',
+	// the round snapshot: a private index, and the verbs that only read the real one
+	'GIT_INDEX_FILE=../tmp/task-x/round.idx git add -- f', 'GIT_INDEX_FILE=../tmp/task-x/round.idx git add -A', 'env GIT_INDEX_FILE=../tmp/task-x/round.idx git add -- f',
+	'export GIT_INDEX_FILE=../tmp/task-x/round.idx; git add -- f', 'GIT_INDEX_FILE=../tmp/task-x/round.idx git rm --cached f', 'export GIT_INDEX_FILE=../tmp/task-x/round.idx; git read-tree HEAD',
+	'timeout 5 env GIT_INDEX_FILE=../tmp/task-x/round.idx git add f', 'GIT_INDEX_FILE=../tmp/task-x/round.idx sudo git add f', 'GIT_INDEX_FILE=../tmp/task-x/round.idx git read-tree -m HEAD HEAD',
+	'GIT_INDEX_FILE=../tmp/task-x/round.idx git read-tree HEAD && GIT_INDEX_FILE=../tmp/task-x/round.idx git add -- a b && GIT_INDEX_FILE=../tmp/task-x/round.idx git write-tree',
+	// not named by the rule: a branch switch, a commit, an unplaceable directory, a `--` with nothing after it, and words that are text
+	'git checkout HEAD', 'git checkout -b x', 'git checkout -b x HEAD', 'git checkout -B x HEAD', 'git checkout --detach HEAD', 'git checkout -', 'git checkout HEAD --',
+	'git switch x', 'git switch -c x', 'git switch -', 'git read-tree -n HEAD', 'git commit -m x', 'git checkout --', 'cd "$X" && git checkout -- .', 'cd nosuch && git restore .',
+	'echo git checkout -- .', 'git commit -m "git restore ."', "cat <<'E'\ngit clean -fd\nE",
+];
+const asRole = (agent) => (c, cwd = ROOT) => decide(c, { cwd, agent });
+for (const c of roleDeny) test(`role denied in the checkout: ${c}`, () => assert.equal(asRole('developer')(c), 'deny'));
+for (const c of roleNone) test(`role silent in the checkout: ${c}`, () => assert.equal(asRole('developer')(c), ''));
+for (const a of ROLES) test(`${a} is a role`, () => assert.equal(asRole(a)('git checkout -q -- .'), 'deny'));
+// the lead has no agent_type; any other agent type is not a crew role
+for (const a of [ undefined, '', 'general-purpose', 'Explore', 'Plan', 'developers' ]) {
+	test(`agent_type ${JSON.stringify(a)} is left alone`, () => {
+		for (const c of [ 'git checkout -q -- .', 'git restore --staged f', 'git clean -fd', 'git stash', 'git reset', 'git add f', 'git rm f', 'git remote add zz u', 'git config user.name x', 'cd "" && git checkout -- .',
+			'git checkout HEAD f', 'git checkout f', 'git checkout -f', 'git checkout :/', 'git switch -f HEAD', 'git checkout-index -a', 'git read-tree HEAD', 'GIT_INDEX_FILE=x; git add f', 'git -C "" restore .' ]) assert.equal(asRole(a)(c), '', c);
+	});
+}
+test('a role that also tags is denied, not asked; the lead is asked', () => {
+	assert.equal(asRole('tester')('git tag v1 && git checkout -- .'), 'deny');
+	assert.equal(asRole(undefined)('git tag v1 && git checkout -- .'), 'ask');
+	assert.equal(asRole('tester')('git tag v1'), 'ask');
+});
+test('the reason names the checkout and the way out, and --kinds lists rolegit for a role only', () => {
+	const r = run('git checkout -q -- .', { cwd: ROOT, agent: 'tester' });
+	assert.equal(r.permissionDecision, 'deny');
+	assert.ok(r.permissionDecisionReason.includes(realpathSync(ROOT)), r.permissionDecisionReason);
+	assert.match(r.permissionDecisionReason, /scratch repo/);
+	assert.match(r.permissionDecisionReason, /GIT_INDEX_FILE/);
+	assert.match(r.permissionDecisionReason, /literally/);
+	const kinds = (agent) => spawnSync('/bin/sh', [ HOOK, '--kinds' ], { input: JSON.stringify({ cwd: ROOT, ...(agent && { agent_type: agent }), tool_input: { command: 'git checkout -- .' } }), encoding: 'utf8' }).stdout.trim();
+	assert.equal(kinds('tester'), 'rolegit');
+	assert.equal(kinds(), '');
+});
+
+// A scratch repo is nobody's: the directory the line resolves to (cd, -C, --git-dir, GIT_DIR, the hook's cwd) decides.
+test('a role aimed at a scratch repo is silent, and aimed at the checkout from a scratch repo is denied', () => {
+	const s = repo(join(dir, 'rolescratch'));
+	const t = asRole('tester');
+	for (const c of [ `git -C ${s} checkout -- .`, `cd ${s} && git restore .`, `cd ${s} && git clean -fd`, `git --git-dir=${s}/.git checkout -- .`, `GIT_DIR=${s}/.git git reset`, `cd ${s} && git add f`, `git -C ${s} remote add zz u`, `cd ${s} && git config a.b c`, `cd ${s} && git stash` ]) assert.equal(t(c), '', c);
+	// GIT_DIR and GIT_INDEX_FILE reach git only as a prefix, behind env or exported; a bare assignment is a shell variable and git acts where it stands
+	for (const c of [ `export GIT_DIR=${s}/.git; git checkout -- .`, `env GIT_DIR=${s}/.git git restore .`, `timeout 5 env GIT_DIR=${s}/.git git clean -fd` ]) assert.equal(t(c), '', c);
+	for (const c of [ `GIT_DIR=${s}/.git; git checkout -- .`, `FOO=1; GIT_DIR=${s}/.git; git reset`, `GIT_DIR=${s}/.git && git restore .` ]) assert.equal(t(c), 'deny', c);
+	assert.equal(t('git checkout -- .', s), '');
+	assert.equal(t('git checkout nosuchbranch', s), '');
+	assert.equal(t('git remote add zz u', s), '');
+	assert.equal(t('cd sub/.. && git restore .', s), '');
+	for (const c of [ `git -C ${ROOT} checkout -- .`, `cd ${ROOT} && git restore .`, `cd ${ROOT}/tests && git clean -fd`, `git -C ${ROOT}/docs reset`, `cd ${s} && cd ${ROOT} && git add f` ]) assert.equal(t(c, s), 'deny', c);
+});
+
+// The hook is the checkout it ships in: a copy of it inside a scratch repo makes that repo "this checkout", with a worktree of it beside.
+test('worktree and index verbs are denied in the checkout and free in its worktree; config and remotes are shared', () => {
+	const home = repo(join(dir, 'rolehome'));
+	mkdirSync(join(home, '.claude/hooks'), { recursive: true });
+	copyFileSync(HOOK, join(home, '.claude/hooks/git-guard.sh'));
+	g(home, 'commit', '-q', '--allow-empty', '-m', 'a');
+	const wt = join(dir, 'rolewt');
+	g(home, 'worktree', 'add', '-q', wt);
+	const hook = join(home, '.claude/hooks/git-guard.sh');
+	const d = (c, cwd, agent = 'tester') => decide(c, { cwd, hook, agent });
+	for (const c of [ 'git checkout -- .', 'git restore .', 'git clean -fd', 'git reset', 'git add f', 'git stash' ]) {
+		assert.equal(d(c, home), 'deny', c);
+		assert.equal(d(c, wt), '', `${c} in its worktree`);
+		assert.equal(d(`git -C ${home} ${c.slice(4)}`, wt), 'deny', `${c} aimed at the checkout from the worktree`);
+		assert.equal(d(`cd ${wt} && ${c}`, home), '', `${c} after a cd into the worktree`);
+		assert.equal(d(`GIT_DIR=${home}/.git ${c}`, dir), 'deny', `${c} by GIT_DIR`);
+		assert.equal(d(`git --git-dir=${home}/.git ${c.slice(4)}`, dir), 'deny', `${c} by --git-dir`);
+		assert.equal(d(c, home, 'general-purpose'), '', `${c} for another agent type`);
+	}
+	for (const c of [ 'git remote add zz u', 'git remote set-url origin u', 'git config a.b c', 'git config --unset a.b' ]) {
+		assert.equal(d(c, home), 'deny', c);
+		assert.equal(d(c, wt), 'deny', `${c} in its worktree shares the config`);
+		assert.equal(d(c, dir), '', `${c} in no repository`);
+	}
+	assert.equal(d('git status', wt), '');
+	assert.equal(d('git config --get a.b', wt), '');
+	// a lone word after checkout is a branch (a switch) or a path (a discard), told apart in the repository the line lands in
+	g(home, 'branch', 'side');
+	assert.equal(d('git checkout side', home), '');
+	assert.equal(d('git checkout nosuchbranch', home), 'deny');
+	assert.equal(d('git checkout side', home, 'general-purpose'), '');
+	assert.equal(d('git checkout nosuchbranch', home, 'general-purpose'), '');
+	assert.equal(d('git checkout nosuchbranch', wt), '');
+	assert.equal(d(`git -C ${home} checkout nosuchbranch`, wt), 'deny');
+	assert.equal(d(`git --git-dir=${home}/.git checkout side`, dir), '');
+	assert.equal(d(`git --git-dir=${home}/.git checkout nosuchbranch`, dir), 'deny');
+	assert.equal(d('git checkout side -- f', home), 'deny');
+	assert.equal(d('git checkout -b other side', home), '');
+});
+
+// `cd ""` and `git -C ""` stay put: the directory a line resolves to is the one it started in, for a push too.
+test('an empty cd or -C operand leaves the directory where it was', () => {
+	const f = repo(join(dir, 'emptycd'), { origin: THEME, fork: 'git@github.com:VizzleTF/luci.git' });
+	assert.equal(decide('cd "" && git push fork x', { cwd: f }), 'ask');
+	assert.equal(decide('git -C "" push fork x', { cwd: f }), 'ask');
+	assert.equal(decide('git -C "$X" push fork x', { cwd: f }), '');
+	assert.equal(decide('cd "$X" && git push fork x', { cwd: f }), '');
 });

@@ -11,6 +11,13 @@ The standing grant in `CLAUDE.md` `## Commits` covers every step here. A tag goe
    exits 0. Without one (the lead's own docs or config edit), run `npm run check:fast` in the
    foreground: it holds `npm test` and `agent-refs`. Done = those gate lines, or its exit 0, quoted
    in the report.
+
+   A diff with a package path (`luci-theme-footstrap/**`, `install.sh`) or a guard path
+   (`.claude/hooks/**`, `.claude/settings.json`, `.githooks/**`, `.github/workflows/**`) also needs
+   the tester's `PASS` (and `security` `CLEAN` for a guard path) on the staged content: append
+   `{ "round", "tree", "verdict", "security"?, "blocking" }` from the block to the card's `history`
+   and quote the entry in the report. `precommit-gate.sh` asks at step 3 without it. Other paths
+   ship on T0 and the pre-push check; their tester card runs after the push, same session.
 1. **Base on `origin/main`, before anything is staged** (a staged index makes a rebase refuse).
    `git fetch origin`, then `git rev-list --left-right --count origin/main...HEAD` prints
    `<behind> <ahead>`:
@@ -42,7 +49,10 @@ The standing grant in `CLAUDE.md` `## Commits` covers every step here. A tag goe
    reads `success`, or this push is the fix for it, said in the report. Only Build's push run
    counts: CodeQL, pages and Dependabot runs on `main` are not the reading. A `cancelled` or
    `skipped` latest run says nothing about main: the newest completed run before it (`-L2`) decides,
-   and the report names both.
+   and the report names both. A `failure` whose failing job's log (`tools/ci-log.sh <id>`) matches
+   a row of `docs/development.md` "Known flakes" gets one `gh run rerun <id> --failed` and a new
+   `tools/ci-watch.sh` wait; a second red, or no matching row, goes to the maintainer with the log
+   line, and a new signature gets a `tester` card to classify it.
 5. **Stand gates before the push.** What a push to `main` would prove only after the push goes to
    a `tester` card first; the lead runs no stand and waits for the verdict block.
    - The diff touches `fs-fit.js` or a scroll-anchor/floor gate (both stands, hours): acceptance

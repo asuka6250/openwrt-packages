@@ -37,6 +37,15 @@ write, both gated to a `v*` tag. It used to be workflow-wide, which handed it to
 `pull_request` run — including `npm ci` in lint, and therefore to the lifecycle scripts of every
 dev dependency.
 
+**Dependencies arrive a week late and run no install script.** `.github/dependabot.yml` sets
+`cooldown: default-days: 7` on both ecosystems (version updates only, never security updates), the
+repo's `.npmrc` sets `ignore-scripts=true` for every `npm ci` (CI, the pre-push hook, a developer's
+shell), and `pages.yml` gives `pages: write` and `id-token: write` to `deploy` alone, so the job
+that runs `npm ci` holds `contents: read` only. A new or replaced dependency needs the maintainer's word.
+No `min-release-age` in `.npmrc`: npm 11.20 never finishes installing a fresh version with a peer
+cycle (measured on eslint 10.13.0), and it might hold back a Dependabot security update; the
+cooldown and the maintainer's word on a new dependency carry the age.
+
 **Every job has a `timeout-minutes`, and every network install runs under `tools/ci-retry.sh`.**
 The default job timeout is six hours, and the two things these jobs fetch from somebody else's
 server — apt and the Playwright CDN — stall rather than fail: on the 0.13.2 tag one apt step and two
@@ -75,6 +84,20 @@ list (push, commit, tag, reset, rebase, update-ref, `gh pr|issue|release` writes
 `gh api` with a non-GET method or `-f`/`-F`/`--field`/`--raw-field`/`--input`), plus `ssh`, `scp`, `sftp`,
 `rsync` and `dev-sync.sh`. `tools/bg.sh --check <cmd>` prints that verdict and runs nothing; tests and probes
 use it. `tests/ci-tools.test.mjs` pins the parsing (stub `gh` on `PATH`) and the refusal list.
+
+## Rules the server holds
+
+Three rulesets on the repository (Settings → Rules); `gh api repos/{owner}/{repo}/rulesets` lists them.
+
+| Ruleset | Target | Rules | Bypass |
+|---|---|---|---|
+| 24042288 "main: CI must pass" | `main` | required status checks (11) | admin, always: a direct push to `main` needs it, so each push prints "Bypassed rule violations … 11 of 11" and the checks are read after the push (`tools/ci-watch.sh`) |
+| 25550110 "main: no force-push or deletion" | the default branch | `non_fast_forward`, `deletion` | none, admin included |
+| 25550119 "release tags: no move or deletion" | `refs/tags/v*` | `update`, `deletion` | none; creating a tag stays open for `/release` |
+
+The last two were created on 2026-10-21 on the maintainer's word (audit P1-5). With no bypass, no
+token gets past them: a force-push or rewrite of `main`, or moving or deleting a released tag, starts
+with the maintainer disabling that ruleset in the UI, then their word as before.
 
 ## `check` and `lint` — one gate list, package.json's
 
