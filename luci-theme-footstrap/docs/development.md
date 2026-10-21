@@ -493,8 +493,9 @@ git config core.hooksPath .githooks
 
 `commit-msg` strips Co-Authored-By, `Claude-Session:` and "Generated with" trailers from whatever
 wrote them, and leaves `Signed-off-by` alone — openwrt/luci refuses a sign-off with a
-`@users.noreply.github.com` address, so that line is load-bearing. `pre-push` runs `npm run check`;
-`git push --no-verify` is the deliberate bypass and says so on the way past.
+`@users.noreply.github.com` address, so that line is load-bearing. `pre-push` runs `npm run check`
+on the pushed commit in a clean worktree; `git push --no-verify` is the deliberate bypass and says
+so on the way past.
 
 ## The live gates: `npm run live`
 
@@ -1989,6 +1990,14 @@ anything this theme controls. A census of `document.body.children` compared in O
 runs of the identical page reads the ones where the race went the other way as a regression. Compare
 as a MULTISET instead: `Array.from(document.body.children).map(el => el.tagName + '#' + el.id + '.' +
 el.className).sort()`, duplicates counted, never a plain sequence diff.
+
+**A snapshot stand can answer 502 because its ucode and luci-base come from different days.** On
+2026-10-21 the local `owrtsnap` served 502 on every LuCI page with `Error relocating
+/usr/lib/ucode/html.so: ucv_metamethod_lookup: symbol not found` in `logread`: ucode 2026.04.24
+against luci-base 26.291, while `owrtsnapb` with ucode 2026.10.18 answered. A live gate then reports
+`owrtsnap` as not answering, not the theme. Check `curl -s -o /dev/null -w '%{http_code}'
+localhost:8022/cgi-bin/luci/` and `logread | grep relocating` before reading a snapshot finding;
+recreate the stand, or measure on `owrtsnapb`.
 
 - **Exec bits lost in a host move are invisible while `core.fileMode=false`.** `git status` stays
   clean, and a gate then dies with `Permission denied` on a `tools/*.sh` or `node_modules/.bin/*`
