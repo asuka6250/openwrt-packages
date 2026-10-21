@@ -172,7 +172,7 @@ stubbed harness only proves a module loads.
 **Pure logic — and only the part a router cannot show you** — with the unit suite:
 
 ```sh
-npm test                       # node --test, ~100 ms, no browser and no stand
+npm test                       # node --test, no browser and no stand; 39.8 s for 939 tests on CI (run 39487715282, 2026-10-20), 14 s for 1022 locally (2026-10-21)
 node --test tests/menutree.test.mjs        # one file
 node --test --test-name-pattern 'alias' tests/    # one case
 ```
@@ -1020,7 +1020,7 @@ failure mode is measured, not hypothetical. `--dry-run` prints every command any
 run without touching a tool or a router, and works with no prerequisite on `PATH` at all.
 
 **Every run — `--list` included — ends by naming what it did NOT reproduce and why**: the signed
-`release`/`pages` jobs (no local copy of either secret key), the artifact upload/download between
+`release`/`pages` jobs (they sign with CI secrets this script never reads), the artifact upload/download between
 `build` and everything downstream of it (substituted by one shared `dist/` on disk), job-level
 `timeout-minutes` (unenforced locally), and the apt-get fallback branches inside `check`'s
 gettext block and `ci-playwright.sh` (only exercised when the tool is actually missing, which it
@@ -1161,8 +1161,7 @@ tools/rate.sh 10 node tools/scroll-jank.mjs --only owrt2512
   `grep 'msg=\(sleep\|wake\)' ~/.orbstack/log/vmgr.log | tail -1` shows `sleep` while the ports are
   live but empty. Recovery: `caffeinate -u -t 2` (declares user activity, which promotes DarkWake to
   FullWake and gets `vmgr` to log a wake). Prevention on this machine: a LaunchDaemon holding
-  `caffeinate -s` (`PreventSystemSleep`, AC power only). Neither `docker` nor `owlab` is on the agent
-  shell's `PATH`: use `/usr/local/bin/docker` and `~/go/bin/owlab`.
+  `caffeinate -s` (`PreventSystemSleep`, AC power only).
 
 - **`scroll-anchor --full` with all three engines at once over three stands kills the chromium
   process about two minutes in; one engine at a time completes.** It reads as a regression in the
