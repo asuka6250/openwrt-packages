@@ -1,3 +1,5 @@
+diff --git a/root/etc/config/argon b/root/etc/config/argon
+index ee89f0c..addf03c 100644
 --- a/root/etc/config/argon
 +++ b/root/etc/config/argon
 @@ -1,7 +1,7 @@
