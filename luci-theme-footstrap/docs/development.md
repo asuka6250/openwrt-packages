@@ -1052,7 +1052,8 @@ is added only with a `tester` card's classification behind it, never to get a pu
 |---|---|---|---|---|---|
 | The reader stays put (firefox) | `firefox owrt2512 @390 top large  engine-anchoring on  /admin/network/dhcp: refill 3/3 on the same section left the reader 12px off (engineTrusted true, corrected never)` | 0/20 locally (`tools/rate.sh 20 ../tmp/task-0184-anchors-red-dhcp/run-once.sh`); 1 of 38 CI firefox push sweeps | flake, cause not named (CI strips the `fs:probe` trail); 0184 | ca12d23 | 2026-11-04 |
 | The reader stays put (firefox) | `firefox owrt2410 @1440 side normal  engine DECLINES  processes: the offset moved on its own 1 time(s) mid-flick` | 0/25 and 0/20 locally under CPU stress | flake beside a frame stall; QUIET re-measures since b2421b0; 0166, 0167 | c253c28 | 2026-11-04 |
-| The reader stays put (webkit) | `scroll-jank: … page.goto: Timeout 30000ms exceeded` or `WebKit encountered an internal error` at the first `page.goto` of `tools/scroll-jank.mjs` (any stand: owrtsnap, owrt2410) | 3 of 42 webkit attempts since 2026-10-20, a fourth on owrt2410 (run 39637956114) | infrastructure, fixed by 0189: scroll-jank's gotos go through `openPage()` (3 attempts, `tools/lib/stands.mjs`); after it, the last of three attempts prints `Timeout 20000ms exceeded`, and that red is a finding, not this row; 0184, 0189 | 4b6ac5e, 3be477c, 17b5fce, fa218ae | 2026-11-04 |
+| The pages behave on a real router (parity) | `spa-parity … /admin/status/overview -> /admin/system/package-manager @767px (Back)  back-scroll: parked at <n>px, Back restored 0px` on owrt2512 | 0/30 locally (`tools/rate.sh 30 ../tmp/task-0195-parity-back-scroll/run-once.sh`), 0/41 more under CPU throttle and stress-ng; 1 of 59 CI parity jobs since 2026-09-25 | flake: the gate reads once at a fixed 800 ms after staging; on 25.12 Overview at 767 px the restore lands 436-783 ms later as the page grows, and the router's settle exemption can miss a ceiling that moved (reproduced by injection only); 0195 | 249042a | 2026-11-04 |
+| The reader stays put (webkit) | `scroll-jank: … page.goto: Timeout 20000ms exceeded` or `page.goto: WebKit encountered an internal error` at the first `openPage` of `tools/scroll-jank.mjs` (any stand: owrtsnap, owrt2512, owrt2410) (before 0189 the timeout read `30000ms`) | 3 of 42 webkit attempts since 2026-10-20, a fourth on owrt2410 (run 39637956114); 5 of 168 first gotos after a login (3.0%) against 0 of 840 later ones, 0 of 30 chromium or firefox jobs against 10 of 30 webkit | first goto after login from a landing still loading (card 0198); fixed by 0199: `login()` returns only once the landing's `L.require` has answered (as scroll-anchor already waited, 0.09%), and `openPage()` prints `openPage: <engine> <url> attempt n/3: <error>` per failed attempt; a retry on the same page did not clear it in fd77edd, and a red with this signature after 0199 is a finding; 0184, 0189, 0198, 0199 | 4b6ac5e, 3be477c, 17b5fce, fa218ae (build run 39637958432), fd77edd (build run 39655159082) | 2026-11-04 |
 
 ## The stand's own traps
 
@@ -1255,7 +1256,10 @@ is added only with a `tester` card's classification behind it, never to get a pu
   by a lock, not by a promise**: `requireStands()` (`tools/lib/stands.mjs`), `tools/ci-local.sh` and
   `tools/install-check.sh` all take `flock` on `../tmp/stands-<id>.lock`, one per stand taken in sorted order,
   and hold it for the whole run; a second run on the same set waits, and says who holds it.
-  `--force` skips the refusal, never the lock. The holder is a child `flock` kept alive by its
+  `--force` skips the refusal, never the lock. `../tmp` there is the main checkout's from every linked
+  worktree too (`tools/lib/tmp-root.sh` and `.mjs`, the git common dir; a copy outside git keeps its own
+  parent), so a worktree run takes the same lock and the pre-push worktree's gates write into the shared
+  `../tmp`, not into their `mktemp -d`. The holder is a child `flock` kept alive by its
   stdin pipe, so the kernel frees the lock on any exit, SIGKILL included. `flock` is probed
   synchronously first: the wait loop blocks the event loop, so the spawn's async `error` event
   never fired when `flock` was missing and the loop spun forever (`timeout 5` → 124). The wait is
@@ -2024,6 +2028,10 @@ recreate the stand, or measure on `owrtsnapb`.
   any worktree whose directory it cannot see at that moment (an unmounted path, a moved checkout),
   and the session's next `git` call there fails `fatal: not a git repository`. Protect a live one
   with `git worktree lock --reason "session" <path>`; `git worktree unlock` when it is done.
+
+- **A `claude --worktree` session installs its own `node_modules`.** `settings.json` does not symlink the
+  main checkout's through `worktree.symlinkDirectories`: `npm ci` in a worktree would delete and rewrite
+  the main one. The pre-push hook links it only when the two lockfiles match, and runs `npm ci` otherwise.
 
 - **`ucode` is not on the host; it lives in a stand.** `ucode -T -c -o /dev/null <file>.ut` from the
   host reads `command not found`. Run it where LuCI runs: `docker cp <file>.ut
