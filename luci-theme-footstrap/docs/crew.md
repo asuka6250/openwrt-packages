@@ -259,8 +259,9 @@ held: `git-guard.sh` denies it, in this checkout, any `checkout` and `switch`, `
 `reset`, `stash`, `checkout-index`, `read-tree`, `write-tree`, `update-index`, `apply`, `pull`, `revert`,
 `sparse-checkout`, `add`, `rm`, `mv`, `commit`, `merge`, `rebase`, `cherry-pick`, `am`, `bisect`,
 `update-ref`, `symbolic-ref`, `reflog expire|delete|drop`, `fetch -u`, `worktree add -f|-B`, `gc --prune`,
-`prune`, any `gc.*Expire` setting, and `branch`, `remote` and `config` writes, under any unique prefix of a
-long option and behind an alias it can resolve (one it cannot resolve is denied too):
+`prune`, any `gc.*Expire` setting, a `push` into this checkout (`.`, its path or a file URL of it) or one naming
+`receive.denyCurrentBranch`, `--ignore-other-worktrees`, and `branch`, `remote` and `config` writes, under any unique prefix of a
+long option, and any git line that sets an alias itself (`-c`, `--config-env`, `GIT_CONFIG_*`):
 whatever moves HEAD or rewrites the index, the work tree or a ref the lead works on, resolved the way it reads a push
 (`cd`, `-C`, `--git-dir`, `GIT_DIR`), with the work tree judged where it resolves (`--work-tree`,
 `GIT_WORK_TREE`, else the shell's directory, which a subshell, `cd -` or `popd` restores); the round
@@ -268,6 +269,9 @@ snapshot's `GIT_INDEX_FILE=` prefix (an `export` or `env` counts, a bare assignm
 scratch repo pass, `read-tree -u` never. Three
 roles ran real git here on 2026-10-21, one of them `cd $R && git checkout -q -- .` with `R` lost
 between two Bash calls (it reverted three tracked files): a role spells every path literally in each call.
+A guard's tests run where its users stand: a clone with `origin/main` holding HEAD (the checkout's
+push state) and a `git worktree add --detach` of the round (where `.githooks/pre-push` runs them, `.git`
+a file there). A plain scratch copy hid both on 2026-10-22: card 0201 went red in the checkout, 0202 in pre-push.
 
 ## Skills
 
