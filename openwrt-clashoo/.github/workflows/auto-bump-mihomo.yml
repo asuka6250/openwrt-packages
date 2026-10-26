@@ -1,4 +1,4 @@
-name: Auto Bump Mihomo
+name: Auto Bump Mihomo Stable
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -6,119 +6,87 @@ env:
 on:
   workflow_dispatch:
   schedule:
-    - cron: '18 2 * * *'
+    - cron: '18 2 * * 1'
 
 permissions:
   contents: write
+  pull-requests: write
   actions: write
 
 jobs:
-  get_current_info:
-    runs-on: ubuntu-latest
-    outputs:
-      pkg_source_version: ${{ steps.info.outputs.pkg_source_version }}
-    steps:
-      - name: checkout
-        uses: actions/checkout@v6
-
-      - name: info
-        id: info
-        run: |
-          echo "pkg_source_version=$(grep 'PKG_SOURCE_VERSION:=' clashoo/Makefile | cut -d '=' -f 2)" >> $GITHUB_OUTPUT
-
-  get_latest_info:
-    runs-on: ubuntu-latest
-    outputs:
-      commit_sha: ${{ steps.info.outputs.commit_sha }}
-      commit_date: ${{ steps.info.outputs.commit_date }}
-      short_sha: ${{ steps.info.outputs.short_sha }}
-    steps:
-      - name: checkout mihomo
-        uses: actions/checkout@v6
-        with:
-          repository: MetaCubeX/mihomo
-          ref: Alpha
-          path: mihomo
-
-      - name: info
-        id: info
-        run: |
-          sha=$(git -C mihomo rev-parse HEAD)
-          short_sha=$(git -C mihomo rev-parse --short HEAD)
-          commit_date=$(git -C mihomo log -1 --format=%cs | tr '-' '.')
-          echo "commit_sha=${sha}" >> $GITHUB_OUTPUT
-          echo "commit_date=${commit_date}" >> $GITHUB_OUTPUT
-          echo "short_sha=${short_sha}" >> $GITHUB_OUTPUT
-
-  update:
-    needs:
-      - get_current_info
-      - get_latest_info
-    if: needs.get_current_info.outputs.pkg_source_version != needs.get_latest_info.outputs.commit_sha
+  propose:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Build and host pinned source tarball
-        id: pack
+      - name: Find latest stable release
+        id: upstream
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ needs.get_latest_info.outputs.commit_sha }}
-          SHORT_SHA: ${{ needs.get_latest_info.outputs.short_sha }}
         run: |
-          # Regenerate the source tarball once and host it, so every build
-          # downloads the exact same bytes instead of repacking git locally
-          # (local tar/gzip versions produce different hashes — issue #18).
+          tag=$(gh api repos/MetaCubeX/mihomo/releases/latest --jq '.tag_name')
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Unexpected stable tag: $tag"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          current=$(sed -n 's/^PKG_UPSTREAM_VERSION:=//p' clashoo/Makefile)
+          if [ -n "$current" ] && [ "$(printf '%s\n' "$current" "${tag#v}" | sort -V | tail -n 1)" = "$current" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pin source and create candidate
+        if: steps.upstream.outputs.current != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          set -euo pipefail
+          branch="chore/mihomo-stable-${VERSION}"
+          if gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq '.[0].number' | grep -q '[0-9]'; then
+            echo "Candidate PR already exists: $branch"
+            exit 0
+          fi
           git clone --filter=blob:none --no-checkout https://github.com/MetaCubeX/mihomo.git mihomo-src
-          git -C mihomo-src checkout "$SHA"
-          subdir="clashoo-alpha-${SHORT_SHA}"
+          git -C mihomo-src checkout "refs/tags/${TAG}"
+          sha=$(git -C mihomo-src rev-parse HEAD)
+          short_sha=$(git -C mihomo-src rev-parse --short=7 HEAD)
+          subdir="clashoo-stable-${TAG}-${short_sha}"
           tarball="${subdir}.tar.gz"
           ts=$(git -C mihomo-src log -1 --format='%ct' HEAD)
           mkdir -p "pack/${subdir}"
           git -C mihomo-src archive --format=tar HEAD | tar -x -f - -C "pack/${subdir}"
           tar --numeric-owner --owner=0 --group=0 --mode=a-s --sort=name \
             --mtime="@${ts}" -c -C pack "${subdir}" | gzip -nc > "${tarball}"
-          pkg_hash=$(sha256sum "${tarball}" | cut -d ' ' -f 1)
-          echo "pkg_hash=${pkg_hash}" >> $GITHUB_OUTPUT
-          # Upload the canonical tarball to the fixed mihomo-src release.
-          gh release upload mihomo-src "${tarball}" --repo "${{ github.repository }}" --clobber
-          # keep only the newest 3 source tarballs (never the release/tag itself)
-          gh release view mihomo-src --repo "${{ github.repository }}" --json assets \
-            --jq '.assets | sort_by(.createdAt) | reverse | .[3:] | .[].name' \
-            | while read -r old; do
-                [ -n "$old" ] && gh release delete-asset mihomo-src "$old" --repo "${{ github.repository }}" -y
-              done
+          hash=$(sha256sum "${tarball}" | cut -d ' ' -f 1)
 
-      - name: Update Makefile
-        run: |
-          sed -i "s/PKG_SHORT_SHA:=.*/PKG_SHORT_SHA:=${{ needs.get_latest_info.outputs.short_sha }}/" clashoo/Makefile
-          sed -i "s/PKG_COMMIT_DATE:=.*/PKG_COMMIT_DATE:=${{ needs.get_latest_info.outputs.commit_date }}/" clashoo/Makefile
-          # New upstream mihomo commit/date creates a new PKG_VERSION, so reset the OpenWrt package release.
-          sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" clashoo/Makefile
-          sed -i "s/PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${{ needs.get_latest_info.outputs.commit_sha }}/" clashoo/Makefile
-          sed -i "s/PKG_HASH:=.*/PKG_HASH:=${{ steps.pack.outputs.pkg_hash }}/" clashoo/Makefile
+          # The candidate build downloads this exact immutable source asset.
+          existing_digest=$(gh release view mihomo-src --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq ".assets[] | select(.name == \"$tarball\") | .digest")
+          if [ -n "$existing_digest" ] && [ "$existing_digest" != "sha256:${hash}" ]; then
+            echo "Source asset digest mismatch: $tarball"
+            exit 1
+          fi
+          if [ -z "$existing_digest" ]; then
+            gh release upload mihomo-src "$tarball" --repo "$GITHUB_REPOSITORY"
+          fi
 
-      - name: Commit, push and trigger release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          sed -i "s/^PKG_UPSTREAM_VERSION:=.*/PKG_UPSTREAM_VERSION:=${VERSION}/" clashoo/Makefile
+          sed -i "s/^PKG_SHORT_SHA:=.*/PKG_SHORT_SHA:=${short_sha}/" clashoo/Makefile
+          sed -i "s|^PKG_VERSION:=.*|PKG_VERSION:=$(TZ=Asia/Shanghai date +%Y.%m.%d).\$(PKG_UPSTREAM_VERSION)|" clashoo/Makefile
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" clashoo/Makefile
+          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${sha}/" clashoo/Makefile
+          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=${hash}/" clashoo/Makefile
           git add clashoo/Makefile
-          git diff --cached --quiet && { echo "No changes"; exit 0; }
-          git commit -m "chore: bump mihomo to alpha-${{ needs.get_latest_info.outputs.short_sha }}"
-          # main 可能在 checkout 之后被其它推送推进，直接 push 会 non-fast-forward 失败。
-          # push 前 rebase 重试若干次（bump 仅改 clashoo/Makefile，rebase 到最新 main 不会冲突）。
-          pushed=0
-          for i in 1 2 3 4 5; do
-            if git push origin HEAD:main; then pushed=1; break; fi
-            echo "push 被拒（第 $i 次），拉取 rebase 后重试…"
-            git pull --rebase origin main || { echo "rebase 失败"; exit 1; }
-            sleep 3
-          done
-          [ "$pushed" = 1 ] || { echo "推送多次仍失败"; exit 1; }
-          # 新内核已推送，触发 release.yml 自动编译并发布
-          gh workflow run release.yml -f prerelease=false
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore: bump mihomo stable to ${TAG}"
+          git push origin "HEAD:refs/heads/${branch}"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+            --title "chore: bump mihomo stable to ${TAG}" \
+            --body "Pin the mihomo stable source to ${TAG}. Review the package matrix and upgrade checks before merging."
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$branch" -f build_only=true

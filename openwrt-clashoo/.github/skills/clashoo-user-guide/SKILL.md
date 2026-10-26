@@ -75,12 +75,12 @@ init.d/clashoo  ──►  runtime/*、net/*、update/*、lib/* 脚本
 | 用户选择 | `core_type` | `dcore` | 同步出的 `core` | 实际二进制（按优先级探测） |
 |----------|-------------|---------|------------------|----------------------------|
 | Smart | `mihomo` | `1` | `1` | `/usr/bin/smart` → `/etc/clashoo/clash` → `/usr/bin/clash` |
-| mihomo 稳定版 | `mihomo` | `2` | `2` | `/usr/bin/clash-meta`（用户下载） → `/etc/clashoo/clash-meta` → `/usr/bin/mihomo` |
-| mihomo Alpha | `mihomo` | `3` | `3` | `/usr/bin/mihomo`（CI 自动 bump 的 alpha） → `/usr/bin/clash-meta` |
+| mihomo 稳定版 | `mihomo` | `2` | `2` | `/usr/share/clashoo/bin/mihomo-stable`（手动更新，新版本优先）或 `/usr/libexec/clashoo/mihomo-stable`（随包安装） |
+| mihomo Alpha | `mihomo` | `3` | `3` | `/usr/share/clashoo/bin/mihomo-alpha`（手动更新或从旧包迁移） |
 | sing-box 稳定版 | `singbox` | `4` | `4` | `/usr/bin/sing-box` ← 软链到 `/usr/bin/sing-box-stable` |
 | sing-box Alpha | `singbox` | `5` | `5` | `/usr/bin/sing-box` ← 软链到 `/usr/bin/sing-box-alpha` |
 
-> 排障要点：`/usr/bin/mihomo` 是 CI 每天自动 bump 的 **Alpha**，稳定版优先认 `clash-meta`。sing-box 稳定/Alpha 通过软链 `/usr/bin/sing-box` 共存切换。
+> 排障要点：新安装默认选 mihomo 稳定版；`/usr/bin/mihomo` 和 `/usr/bin/clash-meta` 是随包稳定版的兼容软链。旧配置选 Alpha 时必须存在独立 Alpha 文件，否则启动前会提示缺少内核。sing-box 稳定/Alpha 通过软链 `/usr/bin/sing-box` 共存切换。
 
 ### procd 进程身份（为什么不能 `pidof`）
 

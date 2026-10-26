@@ -1,11 +1,20 @@
 name: Build & Release
 
 on:
+  pull_request:
+    paths:
+      - 'clashoo/**'
+      - 'luci-app-clashoo/**'
+      - '.github/workflows/release.yml'
   push:
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
+      build_only:
+        description: '仅构建候选包，不发布 Release 或 feed'
+        type: boolean
+        default: false
       prerelease:
         description: '标记为预发布版本'
         type: boolean
@@ -18,6 +27,8 @@ jobs:
   build:
     name: ${{ matrix.arch }} · SDK ${{ matrix.sdk }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -46,11 +57,11 @@ jobs:
           PACKAGES: clashoo luci-app-clashoo
           NO_REFRESH_CHECK: true
           INDEX: 1
-          # 用稳定 dllkids key 签名（用户装一次公钥即永久信任）：
+          # 发布包用稳定 dllkids key 签名；PR 和 build_only 候选包不接触私钥：
           # KEY_BUILD = usign Ed25519 私钥，给 opkg Packages.gz 签名
           # PRIVATE_KEY = ECDSA P-256 PEM 私钥，给 apk packages.adb 签名
-          KEY_BUILD: ${{ secrets.OPKG_KEY_BUILD }}
-          PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+          KEY_BUILD: ${{ github.event_name != 'pull_request' && inputs.build_only != true && secrets.OPKG_KEY_BUILD || '' }}
+          PRIVATE_KEY: ${{ github.event_name != 'pull_request' && inputs.build_only != true && secrets.APK_PRIVATE_KEY || '' }}
 
       - name: Collect packages
         run: |
@@ -86,20 +97,32 @@ jobs:
             cp -v "$f" dist/feed/
           done
 
+      - name: Verify candidate packages
+        run: |
+          if [ '${{ matrix.sdk }}' = '24.10' ]; then
+            ls dist/release/clashoo_*_${{ matrix.arch }}.ipk >/dev/null
+            ls dist/release/luci-app-clashoo_*.ipk >/dev/null
+            test -s dist/feed/Packages.gz
+          else
+            ls dist/release/clashoo-*-${{ matrix.arch }}.apk >/dev/null
+            ls dist/release/luci-app-clashoo-*-${{ matrix.arch }}.apk >/dev/null
+            test -s dist/feed/packages.adb
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: packages-sdk${{ matrix.sdk }}-${{ matrix.arch }}
           path: dist/
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   release:
     name: Create Release
     needs: build
+    if: ${{ github.event_name != 'pull_request' && inputs.build_only != true }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write
 
     steps:
       - uses: actions/checkout@v6
@@ -232,7 +255,7 @@ jobs:
 
           cat release_notes.md
 
-      - name: Replace Existing Manual Release
+      - name: Guard Manual Release Tag
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -240,7 +263,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
-            gh release delete "$TAG" -R "$REPO" --yes --cleanup-tag
+            echo "Release $TAG already exists; use a new tag to preserve rollback packages."
+            exit 1
           fi
 
       - name: Publish Release
@@ -254,37 +278,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prune old releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          # Keep newest 6; exclude mihomo-src (hosts the pinned source tarball).
-          gh release list -R "$REPO" --limit 100 --json tagName,createdAt \
-            --jq 'map(select(.tagName != "mihomo-src")) | sort_by(.createdAt) | reverse | .[6:] | .[].tagName' > old_tags.txt
-          if [ ! -s old_tags.txt ]; then
-            echo "Releases <= 6, nothing to prune."
-            exit 0
-          fi
-          while read -r tag; do
-            [ -n "$tag" ] || continue
-            echo "Deleting release & tag: $tag"
-            gh release delete "$tag" -R "$REPO" --yes --cleanup-tag
-          done < old_tags.txt
-
-      - name: Delete old workflow runs
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 3
-
   upload_feed:
     name: Upload Feed to B2
-    needs: build
+    needs: [build, release]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() }}
+    if: ${{ github.event_name != 'pull_request' && inputs.build_only != true }}
     permissions:
       actions: write
       contents: read

@@ -49,6 +49,7 @@
 
 **双内核，一个界面**
 - **mihomo（Clash Meta）** — 稳定版 / Alpha 版 / Smart 版三选一，走 YAML 订阅
+- Clashoo 安装包自带 mihomo 正式版；新安装默认使用正式版。Alpha 可在「系统 → 内核/数据组件」手动安装，已有设备保留原来的内核选择。
 - **sing-box** — 稳定版 / Alpha 版可切，走 JSON 配置文件
 - 内核切换无需重装，同一套 UCI 配置自动适配两端
 
