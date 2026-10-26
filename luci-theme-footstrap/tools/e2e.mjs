@@ -12,12 +12,13 @@
  *      full load at desktop and phone width, and every entry of footstrap's menu by a click on it
  *      (crawl() below says what fails a page); then tools/anchor-check.mjs: a poll tick that grows
  *      the page above a parked reader leaves them where they were, in Chromium, Firefox and WebKit
+ *      (--no-anchor leaves it out: CI runs it as a job of its own, on a router of its own)
  *   5. remove the package                          -> LuCI falls back to bootstrap and still serves
  *   6. install this build again                    -> offered, active theme left alone
  *
  * No list of expected problems: the stock theme on the same router is the reference.
  *
- *   node tools/e2e.mjs --router owrt2512 --old <last release pkg> --new <this build pkg> [--out dir]
+ *   node tools/e2e.mjs --router owrt2512 --old <last release pkg> --new <this build pkg> [--out dir] [--no-anchor]
  *
  * Exit 0 when every step passed, 1 otherwise; the report, anchor-check's log and one screenshot per
  * page and width land in --out (default ../tmp/e2e-<router>). */
@@ -34,9 +35,10 @@ const { values: opt } = parseArgs({ options: {
 	old: { type: 'string' },
 	new: { type: 'string' },
 	out: { type: 'string' },
+	'no-anchor': { type: 'boolean' },
 } });
 if (!opt.router || !opt.old || !opt.new) {
-	console.error('usage: node tools/e2e.mjs --router <id> --old <pkg> --new <pkg> [--out dir]');
+	console.error('usage: node tools/e2e.mjs --router <id> --old <pkg> --new <pkg> [--out dir] [--no-anchor]');
 	process.exit(2);
 }
 const OUT = opt.out || join(ROOT, '..', 'tmp', `e2e-${opt.router}`);
@@ -333,9 +335,9 @@ async function session(browser, viewport) {
 }
 
 /* Pages read at once, each in a logged-in context of its own. Most of a page's time is the span it
- * is watched, so four cut a pass about fourfold; the reference and footstrap run at the same count,
+ * is watched, so more pages at once cut a pass; the reference and footstrap run at the same count,
  * so the router carries the same load under both. */
-const WORKERS = 4;
+const WORKERS = 8;
 const sessions = (browser, viewport) => Promise.all(Array.from({ length: WORKERS }, () => session(browser, viewport)));
 const closeAll = (list) => Promise.all(list.map((s) => s.ctx.close()));
 
@@ -369,17 +371,40 @@ async function crawl(browser) {
 
 	const desks = await sessions(browser, DESK);
 	const desktop = await pass('desktop', paths, desks, (s, p) => open(s.page, s.seen, p, { shotDir: dir('footstrap', 'desktop'), span: LONG, menu: true }));
-	await closeAll(desks.slice(1));
-	/* one page, entry after entry: each click leaves from the view the last one rendered */
-	const desk = desks[0];
-	const entries = await menuEntries(desk.page);
-	await desk.page.goto(BASE + entries[entries.length - 1].path, { waitUntil: 'load' }).catch(() => {});
-	const clicks = await pass('click', entries, [ desk ], (s, e) => click(s.page, s.seen, e));
-	await desk.ctx.close();
+	await closeAll(desks.slice(2));
+	/* two pages, each taking half the entries one after another: each click leaves from the view the
+	 * last one rendered, and each page starts on the other half's last entry */
+	const entries = await menuEntries(desks[0].page);
+	const half = Math.ceil(entries.length / 2);
+	const chains = [ entries.slice(0, half), entries.slice(half) ];
+	const t0 = Date.now(), clicks = {};
+	await Promise.all(chains.map(async (chain, i) => {
+		const s = desks[i], start = chains[1 - i].at(-1) || chain.at(-1);
+		await s.page.goto(BASE + start.path, { waitUntil: 'load' }).catch(() => {});
+		for (const e of chain) clicks[e.path] = await click(s.page, s.seen, e);
+	}));
+	console.log(`  click: ${entries.length} in ${Math.round((Date.now() - t0) / 1000)} s`);
+	await closeAll(desks.slice(0, 2));
 
 	const phones = await sessions(browser, PHONE);
 	const phone = await pass('phone', paths, phones, (s, p) => open(s.page, s.seen, p, { shotDir: dir('footstrap', 'phone'), span: SHORT, menu: true }));
 	await closeAll(phones);
+
+	/* LuCI's process_list (luci/sys.uc, 24.10 and 25.12) answers an empty list when another rpcd
+	 * child exits while it reads top's output, as a neighbour's file.exec does: a view short of
+	 * bootstrap's text is read once more on its own, with nothing else loading. A theme that hides
+	 * a view hides it again. */
+	for (const [ how, results, viewport, span ] of [ [ 'desktop', desktop, DESK, LONG ], [ 'phone', phone, PHONE, SHORT ] ]) {
+		const thin = paths.filter((p) => bs[p] && results[p].text < bs[p].text / 2);
+		if (!thin.length) continue;
+		const s = await session(browser, viewport);
+		for (const p of thin) {
+			const before = results[p].text;
+			results[p] = await open(s.page, s.seen, p, { shotDir: dir('footstrap', how), span, menu: true });
+			console.log(`  again, alone: ${how} ${p}: ${before} -> ${results[p].text} characters (bootstrap ${bs[p].text})`);
+		}
+		await s.ctx.close();
+	}
 
 	const pages = [];
 	for (const p of paths) {
@@ -437,17 +462,19 @@ try {
 	} finally { await browser.close(); }
 
 	/* the installed build, still the active theme */
-	const anchor = spawnSync(process.execPath, [ join(ROOT, 'tools', 'anchor-check.mjs'), '--router', opt.router ], { encoding: 'utf8', timeout: 900000 });
-	const anchorLog = `${anchor.stdout || ''}${anchor.stderr || ''}`;
-	writeFileSync(join(OUT, 'anchor-check.txt'), anchorLog);
-	check('a poll tick that changes the page above the reader leaves them in place', anchor.status === 0,
-		anchorLog.split('\n').filter((l) => /^FAIL |^anchor-check /.test(l)).join(' | ') || `exit ${anchor.status}`);
+	if (!opt['no-anchor']) {
+		const anchor = spawnSync(process.execPath, [ join(ROOT, 'tools', 'anchor-check.mjs'), '--router', opt.router ], { encoding: 'utf8', timeout: 900000 });
+		const anchorLog = `${anchor.stdout || ''}${anchor.stderr || ''}`;
+		writeFileSync(join(OUT, 'anchor-check.txt'), anchorLog);
+		check('a poll tick that changes the page above the reader leaves them in place', anchor.status === 0,
+			anchorLog.split('\n').filter((l) => /^FAIL |^anchor-check /.test(l)).join(' | ') || `exit ${anchor.status}`);
+	}
 
 	const rmOut = remove();
 	check('the package removes', installedVersion() === '', rmOut.split('\n').slice(-1)[0]);
 	check('removal falls back to bootstrap', theme() === '/luci-static/bootstrap', theme());
 	/* LuCI answers the login form with a 403, so the body is the evidence, not the status */
-	const form = await fetch(BASE + '/').then((r) => r.text(), (e) => String(e));
+	const form = await fetch(BASE + '/', { signal: AbortSignal.timeout(15000) }).then((r) => r.text(), (e) => String(e));
 	check('LuCI still serves its login form after removal', /luci_password/.test(form));
 
 	install(opt.new);
