@@ -129,8 +129,37 @@ wget -O - https://raw.githubusercontent.com/kenzok8/openwrt-clashoo/refs/heads/m
 大陆网络访问 GitHub 受限，可用镜像加速：
 
 ```bash
-wget --no-check-certificate -O - https://ghfast.top/https://raw.githubusercontent.com/kenzok8/openwrt-clashoo/refs/heads/main/scripts/install.sh | ash
+wget -O - https://ghfast.top/https://raw.githubusercontent.com/kenzok8/openwrt-clashoo/refs/heads/main/scripts/install.sh | ash
 ```
+
+安装脚本的校验行为：
+
+- 默认只从**签名 feed** 安装：先比对内置的公钥指纹，再用 apk/opkg 校验索引签名与包摘要
+- 公钥指纹不匹配、索引验签失败或包摘要不符时**直接停止**，不会自动降级
+- 只有签名 feed 不可达（网络原因）时，才可以用 `CLASHOO_ALLOW_GITHUB_FALLBACK=1` 显式开启 GitHub Release 回退；该路径只校验 GitHub 记录的 SHA-256，**不是包签名验证**，也不防发布账号失陷
+
+```bash
+CLASHOO_ALLOW_GITHUB_FALLBACK=1 sh install.sh
+```
+
+脚本自己会导入 feed 公钥，不需要手工操作。公钥指纹如下（`scripts/install.sh` 里写死的就是这两个值）：
+
+| 公钥 | 用途 | SHA-256 |
+|---|---|---|
+| `dllkids-feed.pub.pem` | OpenWrt 25.12+ 的 apk 索引签名（ECDSA P-256） | `ea9dd08b41e6b0fc7ffda166a89b2b4904ad5607bf77d82c9f7f2a54e63a8948` |
+| `dllkids-feed.pub` | 24.10 及更早的 opkg `Packages.gz` 签名（usign Ed25519） | `216565b4d2c50f90da39ee1b19f1c6d2de0392c0043ca9bea311ac831a44779e` |
+
+opkg 公钥 ID（`/etc/opkg/keys/` 下的文件名）：`f2a0779946829e7a`
+
+想自己核对公钥：
+
+```sh
+curl -fsSLO https://down.dllkids.xyz/openwrt-feed/keys/dllkids-feed.pub.pem
+curl -fsSLO https://down.dllkids.xyz/openwrt-feed/keys/dllkids-feed.pub
+sha256sum dllkids-feed.pub dllkids-feed.pub.pem
+```
+
+能防什么、不能防什么：能防链路上的中间人、下载到的公钥被替换、包索引被篡改；防不住同时打穿脚本来源（GitHub 或镜像）和 feed 源站的攻击者，也防不住发布账号失陷——脚本没法为自己背书，真要防这一层只能人工核对上面的指纹。换密钥时先改 `scripts/install.sh` 里的常量，再改本表。
 
 ### 软件源安装
 
@@ -166,7 +195,7 @@ wget -O - https://raw.githubusercontent.com/kenzok8/openwrt-clashoo/refs/heads/m
 大陆网络访问 GitHub 受限，可用镜像加速：
 
 ```bash
-wget --no-check-certificate -O - https://ghfast.top/https://raw.githubusercontent.com/kenzok8/openwrt-clashoo/refs/heads/main/scripts/uninstall.sh | ash
+wget -O - https://ghfast.top/https://raw.githubusercontent.com/kenzok8/openwrt-clashoo/refs/heads/main/scripts/uninstall.sh | ash
 ```
 
 ---

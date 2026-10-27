@@ -21,6 +21,14 @@ REMOTE="${REMOTE:?set REMOTE, e.g. b2:bucket}"
 KEEP="${KEEP:-1}"
 DRY="${DRY:-1}"
 
+# KEEP comes from a manual workflow_dispatch input. awk coerces junk to 0, so
+# "abc" or "-1" would put every file of a group on the delete list (--b2-hard-delete).
+# Fail closed instead of pruning the whole feed.
+case "$KEEP" in
+  *[!0-9]*) echo "KEEP must be a positive integer, got '$KEEP'" >&2; exit 2 ;;
+esac
+[ "$KEEP" -ge 1 ] || { echo "KEEP must be >= 1, got '$KEEP'" >&2; exit 2; }
+
 # Sub-paths under the bucket to clean: the firmware tree plus every per-project
 # source feed under openwrt-feed/ (anything not named like an SDK release, since
 # openwrt-feed/<sdk>/<arch>/ is aggregate-feed's mirror and is off limits).
