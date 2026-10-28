@@ -1,3 +1,10 @@
+## [0.14.18] — 2026-10-28
+
+### Fixed
+
+- **Opening a ComboButton menu (the Wi-Fi client's Disconnect) no longer turns the table into cards.** Since 0.14.17 the open list reached past the table's edge, and the theme read that as a table too wide for the page.
+- **The Status badge in an interface's settings stays inside the dialog on a phone.** A long IPv6 address did not wrap, and the badge ran past the card's edge.
+
 ## [0.14.17] — 2026-10-27
 
 ### Added
@@ -4781,6 +4788,7 @@ line, not one per tag. The individual patch releases are in the git history.
   nested `calc()`, which broke the layout outright. JS minification came back in 0.7.12,
   once jsmin was proven safe by a token-equivalence gate.
 
+[0.14.18]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.17...v0.14.18
 [0.14.17]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.16...v0.14.17
 [0.14.16]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.15...v0.14.16
 [0.14.15]: https://github.com/VizzleTF/luci-theme-footstrap/compare/v0.14.14...v0.14.15
