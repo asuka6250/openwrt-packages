@@ -42,6 +42,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Prepare rclone
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -719,6 +723,8 @@ jobs:
           printf '%s\n' "$APK_PUB_KEY" > merged/keys/dllkids-feed.pub.pem
 
           rclone copy merged/keys/ "r2:${R2_BUCKET}/openwrt-feed/keys/" --checksum --fast-list --stats 30s --stats-one-line --stats-log-level NOTICE
+
+          rclone copyto scripts/feed-setup.sh "r2:${R2_BUCKET}/openwrt-feed/openwrt-feed-setup.sh" --checksum --stats 30s --stats-one-line --stats-log-level NOTICE
 
           MODE=$(grep '^MODE=' incremental-plan.txt | cut -d= -f2)
           [ -n "$MODE" ] || MODE=incremental
